@@ -1,6 +1,6 @@
 // Service Worker for BIST Borsa Analiz PWA
-const CACHE_NAME = 'borsa-v1';
-const DATA_CACHE = 'borsa-data-v1';
+const CACHE_NAME = 'Temist-v2';
+const DATA_CACHE = 'Temist-data-v2';
 
 // Static assets — cache-first
 const STATIC_ASSETS = [
