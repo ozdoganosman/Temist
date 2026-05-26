@@ -180,23 +180,23 @@ export default function ChartContainer({
       }
     };
 
-    const onMouseDown = (e: MouseEvent) => {
-      if (!containerRef.current || e.button !== 0) return;
+    const handleDragStart = (clientX: number, clientY: number, preventDefault: () => void) => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
 
       const gridLeft = rect.left + 80;
       const gridRight = rect.right - 80;
-      const distFromBottom = rect.bottom - e.clientY;
-      const clickY = e.clientY - rect.top;
+      const distFromBottom = rect.bottom - clientY;
+      const clickY = clientY - rect.top;
 
       // Let ECharts handle slider zone natively
       if (distFromBottom <= SLIDER_ZONE_HEIGHT) {
         return;
       }
 
-      if (e.clientX < gridLeft || e.clientX > gridRight) {
+      if (clientX < gridLeft || clientX > gridRight) {
         dragOnPriceAxis = true;
-        priceAxisDragStartY = e.clientY;
+        priceAxisDragStartY = clientY;
 
         const opt = chart.getOption() as any;
         const grids = opt.grid || [];
@@ -213,7 +213,7 @@ export default function ChartContainer({
 
         activeYAxisIdx = 0;
         activeYAxisId = 'y-axis-price';
-        if (e.clientX < gridLeft) {
+        if (clientX < gridLeft) {
           const foundIdx = yAxes.findIndex((y: any) => y.id === 'y-axis-volume');
           if (foundIdx !== -1) {
             activeYAxisIdx = foundIdx;
@@ -230,17 +230,17 @@ export default function ChartContainer({
         const yAxisModel = (chart as any).getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
         const extent = yAxisModel?.axis?.scale?.getExtent?.();
         if (extent) {
-          priceAxisDragStartY = e.clientY;
+          priceAxisDragStartY = clientY;
           priceAxisStartYMin = extent[0];
           priceAxisStartYMax = extent[1];
         }
-        e.preventDefault();
+        preventDefault();
         return;
       }
 
       dragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
+      dragStartX = clientX;
+      dragStartY = clientY;
       const opt = chart.getOption() as any;
       const grids = opt.grid || [];
       const yAxes = opt.yAxis || [];
@@ -270,14 +270,15 @@ export default function ChartContainer({
         startYMin = extent2[0];
         startYMax = extent2[1];
       }
-      e.preventDefault();
+      preventDefault();
     };
 
-    const onMouseMove = (e: MouseEvent) => {
+    const handleDragMove = (clientX: number, clientY: number, preventDefault?: () => void) => {
       if (!containerRef.current) return;
 
       if (dragOnPriceAxis) {
-        const dy = e.clientY - priceAxisDragStartY;
+        if (preventDefault) preventDefault();
+        const dy = clientY - priceAxisDragStartY;
         const rect = containerRef.current.getBoundingClientRect();
         
         const opt = chart.getOption() as any;
@@ -303,9 +304,10 @@ export default function ChartContainer({
       }
 
       if (!dragging) return;
+      if (preventDefault) preventDefault();
       const rect = containerRef.current.getBoundingClientRect();
 
-      const dx = e.clientX - dragStartX;
+      const dx = clientX - dragStartX;
       const pxRange = rect.width;
       const zoomRange = startZoomEnd - startZoomStart;
       const shift = -(dx / pxRange) * zoomRange;
@@ -320,7 +322,7 @@ export default function ChartContainer({
       });
 
       if (activeYAxisId && activeYAxisId !== '') {
-        const dy = e.clientY - dragStartY;
+        const dy = clientY - dragStartY;
         const opt = chart.getOption() as any;
         const yAxes = opt.yAxis || [];
         const gIdx = yAxes[activeYAxisIdx]?.gridIndex ?? 0;
@@ -341,16 +343,54 @@ export default function ChartContainer({
       }
     };
 
-    const onMouseUp = () => {
+    const handleDragEnd = () => {
       dragging = false;
       dragOnPriceAxis = false;
     };
 
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      handleDragStart(e.clientX, e.clientY, () => e.preventDefault());
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      handleDragMove(e.clientX, e.clientY);
+    };
+
+    const onMouseUp = () => {
+      handleDragEnd();
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        handleDragStart(touch.clientX, touch.clientY, () => {
+          if (e.cancelable) e.preventDefault();
+        });
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        handleDragMove(touch.clientX, touch.clientY, () => {
+          if (e.cancelable) e.preventDefault();
+        });
+      }
+    };
+
+    const onTouchEnd = () => {
+      handleDragEnd();
+    };
+
     const el = containerRef.current;
     el.addEventListener('mousedown', onMouseDown);
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('mousemove', onHoverMove);
     document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
     document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('touchend', onTouchEnd);
 
     const onDblClick = (e: MouseEvent) => {
       if (!containerRef.current) return;
@@ -469,8 +509,11 @@ export default function ChartContainer({
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('mousedown', onMouseDown);
+      el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('mousemove', onHoverMove);
       el.removeEventListener('dblclick', onDblClick);
       ro.disconnect();

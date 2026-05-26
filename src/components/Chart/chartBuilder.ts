@@ -477,6 +477,7 @@ export function buildOption(
       boundaryGap: true,
       axisLine: { lineStyle: { color: tc.border } },
       axisLabel: {
+        show: !hasSubPanels,
         color: tc.text,
         fontSize: 11,
         ...(intradayLabelFormatter ? { formatter: intradayLabelFormatter } : {}),
