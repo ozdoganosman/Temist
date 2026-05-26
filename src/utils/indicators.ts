@@ -528,3 +528,143 @@ export function computeATR(highs: number[], lows: number[], closes: number[], pe
 
   return { atr: atrVals, atrPct };
 }
+
+// ── 10. Williams Paşa ──────────────────────────
+
+export interface WilliamsPasaResult {
+  percentR: (number | null)[];
+  emaWil: (number | null)[];
+}
+
+export function computeWilliamsPasa(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  length = 260,
+  emaLen = 260
+): WilliamsPasaResult {
+  const n = closes.length;
+  const percentR: (number | null)[] = new Array(n).fill(null);
+
+  const hh = rollingHighest(highs, length);
+  const ll = rollingLowest(lows, length);
+
+  for (let i = length - 1; i < n; i++) {
+    const hVal = hh[i];
+    const lVal = ll[i];
+    if (hVal === null || lVal === null) continue;
+    const range = hVal - lVal;
+    if (range === 0) {
+      percentR[i] = 50.0;
+    } else {
+      percentR[i] = (100.0 * (closes[i] - lVal)) / range;
+    }
+  }
+
+  const emaWil = ema(percentR, emaLen);
+  return { percentR, emaWil };
+}
+
+// ── 11. Nizami Cedid ──────────────────────────
+
+export interface NizamiCedidResult {
+  macd: (number | null)[];
+  signal: (number | null)[];
+  emacd: (number | null)[];
+  histogram: (number | null)[];
+  delta: (number | null)[];
+  condition: (boolean | null)[];
+}
+
+export function computeNizamiCedid(
+  closes: number[],
+  volumes: number[],
+  fast = 120,
+  slow = 260,
+  signalLen = 50,
+  vwmaLen = 185,
+  longEma1 = 377,
+  longEma2 = 610
+): NizamiCedidResult {
+  const n = closes.length;
+  const closesN = closes as (number | null)[];
+  const fastMa = ema(closesN, fast);
+  const slowMa = ema(closesN, slow);
+
+  const macd: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    if (fastMa[i] !== null && slowMa[i] !== null) {
+      macd[i] = fastMa[i]! - slowMa[i]!;
+    }
+  }
+
+  const signal = ema(macd, signalLen);
+
+  const macdVol: (number | null)[] = new Array(n).fill(null);
+  const volClean: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const mVal = macd[i] ?? 0;
+    const vVal = volumes[i] ?? 0;
+    volClean[i] = vVal;
+    macdVol[i] = mVal * vVal;
+  }
+
+  const sumMacdVol = smaCalc(macdVol, vwmaLen);
+  const sumVol = smaCalc(volClean, vwmaLen);
+  const emacd: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const sv = sumVol[i];
+    const smv = sumMacdVol[i];
+    if (sv !== null && smv !== null && sv > 0) {
+      emacd[i] = smv / sv;
+    }
+  }
+
+  const histogram: (number | null)[] = new Array(n).fill(null);
+  const delta: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    if (macd[i] !== null && signal[i] !== null) {
+      histogram[i] = macd[i]! - signal[i]!;
+    }
+    if (macd[i] !== null && emacd[i] !== null) {
+      delta[i] = macd[i]! - emacd[i]!;
+    }
+  }
+
+  // Normalize by fastMa
+  const normMacd: (number | null)[] = new Array(n).fill(null);
+  const normSignal: (number | null)[] = new Array(n).fill(null);
+  const normEmacd: (number | null)[] = new Array(n).fill(null);
+  const normHistogram: (number | null)[] = new Array(n).fill(null);
+  const normDelta: (number | null)[] = new Array(n).fill(null);
+
+  for (let i = 0; i < n; i++) {
+    const f = fastMa[i];
+    if (f !== null && f !== 0) {
+      if (macd[i] !== null) normMacd[i] = macd[i]! / f;
+      if (signal[i] !== null) normSignal[i] = signal[i]! / f;
+      if (emacd[i] !== null) normEmacd[i] = emacd[i]! / f;
+      if (histogram[i] !== null) normHistogram[i] = histogram[i]! / f;
+      if (delta[i] !== null) normDelta[i] = delta[i]! / f;
+    }
+  }
+
+  const emaLong1 = ema(closesN, longEma1);
+  const emaLong2 = ema(closesN, longEma2);
+  const condition: (boolean | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    if (emaLong1[i] !== null && emaLong2[i] !== null) {
+      condition[i] = emaLong1[i]! > emaLong2[i]!;
+    }
+  }
+
+  return {
+    macd: normMacd,
+    signal: normSignal,
+    emacd: normEmacd,
+    histogram: normHistogram,
+    delta: normDelta,
+    condition,
+  };
+}
+

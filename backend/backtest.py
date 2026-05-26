@@ -391,6 +391,85 @@ def obv_signals(
     return signals
 
 
+def williams_pasa_signals(
+    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
+    length: int = 260, ema_len: int = 260
+) -> np.ndarray:
+    """Williams Pasa signals at every bar. <5 bullish, >98 bearish."""
+    n = len(closes)
+    signals = np.zeros(n, dtype=np.int8)
+    if n < length + ema_len:
+        return signals
+
+    hh = rolling_highest(highs, length)
+    ll = rolling_lowest(lows, length)
+
+    percent_r = np.full(n, np.nan)
+    for i in range(length - 1, n):
+        h_val = hh[i]
+        l_val = ll[i]
+        if np.isnan(h_val) or np.isnan(l_val):
+            continue
+        rng = h_val - l_val
+        if rng == 0:
+            percent_r[i] = 50.0
+        else:
+            percent_r[i] = 100.0 * (closes[i] - l_val) / rng
+
+    for i in range(length - 1, n):
+        r_val = percent_r[i]
+        if np.isnan(r_val):
+            continue
+        if r_val < 5:
+            signals[i] = 1
+        elif r_val > 98:
+            signals[i] = -1
+
+    return signals
+
+
+def nizami_cedid_signals(
+    closes: np.ndarray, volumes: np.ndarray,
+    fast: int = 120, slow: int = 260, signal: int = 50, vwma_len: int = 185
+) -> np.ndarray:
+    """NizamiCedid signals. delta = macd - eMacD. delta > 0 bullish, delta < 0 bearish."""
+    n = len(closes)
+    signals = np.zeros(n, dtype=np.int8)
+    if n < slow + vwma_len:
+        return signals
+
+    fast_ma = ema(closes, fast)
+    slow_ma = ema(closes, slow)
+    macd = fast_ma - slow_ma
+
+    vol_clean = np.nan_to_num(volumes, nan=0.0)
+    macd_clean = np.nan_to_num(macd, nan=0.0)
+    macd_vol = macd_clean * vol_clean
+    
+    sum_macd_vol = sma(macd_vol, vwma_len)
+    sum_vol = sma(vol_clean, vwma_len)
+
+    e_macd = np.full(n, np.nan)
+    for i in range(n):
+        sv = sum_vol[i]
+        smv = sum_macd_vol[i]
+        if not np.isnan(sv) and not np.isnan(smv) and sv > 0:
+            e_macd[i] = smv / sv
+
+    delta = macd - e_macd
+
+    for i in range(n):
+        d_val = delta[i]
+        if np.isnan(d_val):
+            continue
+        if d_val > 0:
+            signals[i] = 1
+        elif d_val < 0:
+            signals[i] = -1
+
+    return signals
+
+
 # ──────────────────────────────────────────────
 # Backtest indicator registry
 # ──────────────────────────────────────────────
@@ -435,6 +514,16 @@ BACKTEST_INDICATORS: list[dict] = [
         "name": "obv",
         "label": "OBV",
         "fn": lambda o, h, l, c, v: obv_signals(c, v),
+    },
+    {
+        "name": "williams_pasa",
+        "label": "Williams Pasa",
+        "fn": lambda o, h, l, c, v: williams_pasa_signals(h, l, c),
+    },
+    {
+        "name": "nizami_cedid",
+        "label": "Nizami Cedid",
+        "fn": lambda o, h, l, c, v: nizami_cedid_signals(c, v),
     },
 ]
 

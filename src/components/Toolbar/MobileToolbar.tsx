@@ -26,6 +26,16 @@ interface MobileToolbarProps {
   showIchimoku: boolean;
   onToggleOBV: () => void;
   showOBV: boolean;
+  onToggleWilliamsPasa: () => void;
+  showWilliamsPasa: boolean;
+  onToggleNizamiCedid: () => void;
+  showNizamiCedid: boolean;
+  onToggleEMAOverlay: () => void;
+  showEMAOverlay: boolean;
+  onTogglePearsonChannels: () => void;
+  showPearsonChannels: boolean;
+  onToggleMATLRNS: () => void;
+  showMATLRNS: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -162,6 +172,16 @@ export default function MobileToolbar({
   showIchimoku,
   onToggleOBV,
   showOBV,
+  onToggleWilliamsPasa,
+  showWilliamsPasa,
+  onToggleNizamiCedid,
+  showNizamiCedid,
+  onToggleEMAOverlay,
+  showEMAOverlay,
+  onTogglePearsonChannels,
+  showPearsonChannels,
+  onToggleMATLRNS,
+  showMATLRNS,
   logScale,
   onToggleLogScale,
   activeView,
@@ -256,34 +276,10 @@ export default function MobileToolbar({
             Grafik
           </button>
           <button
-            className={`mib-btn mib-multi ${activeView === 'multichart' ? 'active' : ''}`}
-            onClick={() => onViewChange('multichart')}
-          >
-            Coklu
-          </button>
-          <button
-            className={`mib-btn mib-analysis ${activeView === 'analysis' ? 'active' : ''}`}
-            onClick={() => onViewChange('analysis')}
-          >
-            Analiz
-          </button>
-          <button
-            className={`mib-btn mib-backtest ${activeView === 'backtest' ? 'active' : ''}`}
-            onClick={() => onViewChange('backtest')}
-          >
-            Backtest
-          </button>
-          <button
             className={`mib-btn mib-finansal ${activeView === 'finansal' ? 'active' : ''}`}
             onClick={() => onViewChange('finansal')}
           >
             Finansal
-          </button>
-          <button
-            className={`mib-btn mib-kripto ${activeView === 'kripto' ? 'active' : ''}`}
-            onClick={() => onViewChange('kripto')}
-          >
-            Kripto
           </button>
         </div>
 
@@ -349,34 +345,22 @@ export default function MobileToolbar({
             {isChart && (
               <div className="mm-section">
                 <div className="mm-section-title">Indikatorler</div>
-                <button className={`mm-item ${showBollinger ? 'active' : ''}`} onClick={() => onToggleBollinger()}>
-                  Bollinger
+                <button className={`mm-item ${showWilliamsPasa ? 'active' : ''}`} onClick={() => onToggleWilliamsPasa()}>
+                  Williams Paşa
                 </button>
-                <button className={`mm-item ${showRSI ? 'active' : ''}`} onClick={() => onToggleRSI()}>
-                  RSI
+                <button className={`mm-item ${showNizamiCedid ? 'active' : ''}`} onClick={() => onToggleNizamiCedid()}>
+                  Nizami Cedid
                 </button>
-                <button className={`mm-item ${showMACD ? 'active' : ''}`} onClick={() => onToggleMACD()}>
-                  MACD
+                <button className={`mm-item ${showEMAOverlay ? 'active' : ''}`} onClick={() => onToggleEMAOverlay()}>
+                  EMA
                 </button>
-                <button className={`mm-item ${showStochRSI ? 'active' : ''}`} onClick={() => onToggleStochRSI()}>
-                  Stoch RSI
+                <button className={`mm-item ${showPearsonChannels ? 'active' : ''}`} onClick={() => onTogglePearsonChannels()}>
+                  3ChanPers
                 </button>
-                <button className={`mm-item ${showSuperTrend ? 'active' : ''}`} onClick={() => onToggleSuperTrend()}>
-                  SuperTrend
+                <button className={`mm-item ${showMATLRNS ? 'active' : ''}`} onClick={() => onToggleMATLRNS()}>
+                  MATLRNS
                 </button>
-                <button className={`mm-item ${showIchimoku ? 'active' : ''}`} onClick={() => onToggleIchimoku()}>
-                  Ichimoku
-                </button>
-                <button className={`mm-item ${showOBV ? 'active' : ''}`} onClick={() => onToggleOBV()}>
-                  OBV
-                </button>
-                <button
-                  className={`mm-item ${showSignals ? 'active' : ''}`}
-                  onClick={() => onToggleSignals()}
-                  aria-label="Al Sat sinyalleri"
-                >
-                  Al/Sat
-                </button>
+
                 <button
                   className={`mm-item ${showFinancials ? 'active' : ''}`}
                   onClick={() => onToggleFinancials()}
@@ -400,36 +384,6 @@ export default function MobileToolbar({
                 Grafik
               </button>
               <button
-                className={`mm-item ${activeView === 'multichart' ? 'active' : ''}`}
-                onClick={() => {
-                  onViewChange('multichart');
-                  setMenuOpen(false);
-                }}
-                aria-label="Coklu grafik"
-              >
-                Coklu Grafik
-              </button>
-              <button
-                className={`mm-item ${activeView === 'analysis' ? 'active' : ''}`}
-                onClick={() => {
-                  onViewChange('analysis');
-                  setMenuOpen(false);
-                }}
-                aria-label="Piyasa Analizi"
-              >
-                Piyasa Analizi
-              </button>
-              <button
-                className={`mm-item ${activeView === 'backtest' ? 'active' : ''}`}
-                onClick={() => {
-                  onViewChange('backtest');
-                  setMenuOpen(false);
-                }}
-                aria-label="Backtest"
-              >
-                Backtest
-              </button>
-              <button
                 className={`mm-item ${activeView === 'finansal' ? 'active' : ''}`}
                 onClick={() => {
                   onViewChange('finansal');
@@ -438,16 +392,6 @@ export default function MobileToolbar({
                 aria-label="Finansal Analiz"
               >
                 Finansal Analiz
-              </button>
-              <button
-                className={`mm-item ${activeView === 'kripto' ? 'active' : ''}`}
-                onClick={() => {
-                  onViewChange('kripto');
-                  setMenuOpen(false);
-                }}
-                aria-label="Kripto"
-              >
-                Kripto
               </button>
             </div>
           </div>

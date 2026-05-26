@@ -47,7 +47,7 @@ HISTORY_DIR = OUT / "history"
 FINANCIALS_DIR = OUT / "financials"
 
 # ── Config ─────────────────────────────────────
-MAX_WORKERS = 10
+MAX_WORKERS = 5
 
 
 # ──────────────────────────────────────────────
@@ -74,30 +74,37 @@ def build_symbols():
 
 def _fetch_one_history(symbol: str) -> tuple[str, list[dict] | None]:
     """Fetch OHLCV for one symbol. Returns (symbol, data_list | None)."""
-    try:
-        t = bp.Ticker(symbol)
-        df = t.history(period="max", interval="1d")
-        if df is None or df.empty or len(df) < 5:
-            return symbol, None
+    import time
+    for attempt in range(4):
+        try:
+            t = bp.Ticker(symbol)
+            df = t.history(period="max", interval="1d")
+            if df is None or df.empty or len(df) < 5:
+                return symbol, None
 
-        records = []
-        for idx, row in df.iterrows():
-            dt = str(idx)
-            if "T" in dt:
-                dt = dt.split("T")[0]
-            elif " " in dt:
-                dt = dt.split(" ")[0]
-            records.append({
-                "date": dt,
-                "open": round(float(row["Open"]), 2),
-                "high": round(float(row["High"]), 2),
-                "low": round(float(row["Low"]), 2),
-                "close": round(float(row["Close"]), 2),
-                "volume": int(row["Volume"]) if not np.isnan(row["Volume"]) else 0,
-            })
-        return symbol, records
-    except Exception as e:
-        return symbol, None
+            records = []
+            for idx, row in df.iterrows():
+                dt = str(idx)
+                if "T" in dt:
+                    dt = dt.split("T")[0]
+                elif " " in dt:
+                    dt = dt.split(" ")[0]
+                records.append({
+                    "date": dt,
+                    "open": round(float(row["Open"]), 2),
+                    "high": round(float(row["High"]), 2),
+                    "low": round(float(row["Low"]), 2),
+                    "close": round(float(row["Close"]), 2),
+                    "volume": int(row["Volume"]) if not np.isnan(row["Volume"]) else 0,
+                })
+            return symbol, records
+        except Exception as e:
+            if attempt < 3:
+                # Add delay before retrying
+                time.sleep(1.0 * (attempt + 1))
+            else:
+                return symbol, None
+    return symbol, None
 
 
 def build_history(symbols: list[str]):
@@ -287,13 +294,14 @@ def _process_financials_df(df, report_name: str) -> dict:
 def _fetch_one_financial(symbol: str) -> tuple[str, dict | None]:
     """Fetch financials for one symbol and split into 3 reports."""
     from isyatirimhisse import fetch_financials as isy_fetch
+    from datetime import datetime
 
     fg = "2" if symbol in BANK_SYMBOLS else "1"
     try:
         df = isy_fetch(
             symbols=symbol,
             start_year=2005,
-            end_year=2025,
+            end_year=datetime.now().year,
             exchange="TRY",
             financial_group=fg,
         )

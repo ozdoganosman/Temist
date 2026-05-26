@@ -26,6 +26,16 @@ interface ToolbarProps {
   showIchimoku: boolean;
   onToggleOBV: () => void;
   showOBV: boolean;
+  onToggleWilliamsPasa: () => void;
+  showWilliamsPasa: boolean;
+  onToggleNizamiCedid: () => void;
+  showNizamiCedid: boolean;
+  onToggleEMAOverlay: () => void;
+  showEMAOverlay: boolean;
+  onTogglePearsonChannels: () => void;
+  showPearsonChannels: boolean;
+  onToggleMATLRNS: () => void;
+  showMATLRNS: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -84,6 +94,16 @@ export default function Toolbar({
   showIchimoku,
   onToggleOBV,
   showOBV,
+  onToggleWilliamsPasa,
+  showWilliamsPasa,
+  onToggleNizamiCedid,
+  showNizamiCedid,
+  onToggleEMAOverlay,
+  showEMAOverlay,
+  onTogglePearsonChannels,
+  showPearsonChannels,
+  onToggleMATLRNS,
+  showMATLRNS,
   logScale,
   onToggleLogScale,
   activeView,
@@ -143,39 +163,11 @@ export default function Toolbar({
             Grafik
           </button>
           <button
-            className={`toolbar-btn multichart-btn ${activeView === 'multichart' ? 'active' : ''}`}
-            onClick={() => onViewChange('multichart')}
-            aria-label="Coklu grafik"
-          >
-            Coklu
-          </button>
-          <button
-            className={`toolbar-btn analysis-btn ${activeView === 'analysis' ? 'active' : ''}`}
-            onClick={() => onViewChange('analysis')}
-            aria-label="Piyasa Analizi"
-          >
-            Piyasa Analizi
-          </button>
-          <button
-            className={`toolbar-btn backtest-btn ${activeView === 'backtest' ? 'active' : ''}`}
-            onClick={() => onViewChange('backtest')}
-            aria-label="Backtest"
-          >
-            Backtest
-          </button>
-          <button
             className={`toolbar-btn finansal-btn ${activeView === 'finansal' ? 'active' : ''}`}
             onClick={() => onViewChange('finansal')}
             aria-label="Finansal veriler"
           >
             Finansal
-          </button>
-          <button
-            className={`toolbar-btn kripto-btn ${activeView === 'kripto' ? 'active' : ''}`}
-            onClick={() => onViewChange('kripto')}
-            aria-label="Kripto"
-          >
-            Kripto
           </button>
         </div>
 
@@ -226,48 +218,39 @@ export default function Toolbar({
       {isChart && (
         <div className="toolbar-section">
           <button
-            className={`toolbar-btn ${showBollinger ? 'active' : ''}`}
-            onClick={onToggleBollinger}
-            aria-label="Bollinger goster"
+            className={`toolbar-btn ${showWilliamsPasa ? 'active' : ''}`}
+            onClick={onToggleWilliamsPasa}
+            aria-label="Williams Paşa goster"
           >
-            Bollinger
-          </button>
-          <button className={`toolbar-btn ${showRSI ? 'active' : ''}`} onClick={onToggleRSI} aria-label="RSI goster">
-            RSI
-          </button>
-          <button className={`toolbar-btn ${showMACD ? 'active' : ''}`} onClick={onToggleMACD} aria-label="MACD goster">
-            MACD
+            Williams Paşa
           </button>
           <button
-            className={`toolbar-btn ${showStochRSI ? 'active' : ''}`}
-            onClick={onToggleStochRSI}
-            aria-label="Stoch RSI goster"
+            className={`toolbar-btn ${showNizamiCedid ? 'active' : ''}`}
+            onClick={onToggleNizamiCedid}
+            aria-label="Nizami Cedid goster"
           >
-            Stoch RSI
+            Nizami Cedid
           </button>
           <button
-            className={`toolbar-btn ${showSuperTrend ? 'active' : ''}`}
-            onClick={onToggleSuperTrend}
-            aria-label="SuperTrend goster"
+            className={`toolbar-btn ${showEMAOverlay ? 'active' : ''}`}
+            onClick={onToggleEMAOverlay}
+            aria-label="EMA goster"
           >
-            SuperTrend
+            EMA
           </button>
           <button
-            className={`toolbar-btn ${showIchimoku ? 'active' : ''}`}
-            onClick={onToggleIchimoku}
-            aria-label="Ichimoku goster"
+            className={`toolbar-btn ${showPearsonChannels ? 'active' : ''}`}
+            onClick={onTogglePearsonChannels}
+            aria-label="Pearson Kanalları goster"
           >
-            Ichimoku
-          </button>
-          <button className={`toolbar-btn ${showOBV ? 'active' : ''}`} onClick={onToggleOBV} aria-label="OBV goster">
-            OBV
+            3ChanPers
           </button>
           <button
-            className={`toolbar-btn signal-btn ${showSignals ? 'active' : ''}`}
-            onClick={onToggleSignals}
-            aria-label="Al Sat sinyalleri"
+            className={`toolbar-btn ${showMATLRNS ? 'active' : ''}`}
+            onClick={onToggleMATLRNS}
+            aria-label="MATLRNS goster"
           >
-            Al/Sat
+            MATLRNS
           </button>
           <button
             className={`toolbar-btn ${showFinancials ? 'active' : ''}`}

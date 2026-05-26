@@ -851,6 +851,163 @@ class ATRIndicator(BaseIndicator):
         )
 
 
+class WilliamsPasaIndicator(BaseIndicator):
+    """Williams Pasa Indicator: 260-period Williams %R shifted to [0, 100], and its 260-period EMA."""
+
+    def __init__(self, length: int = 260, ema_len: int = 260):
+        self._length = length
+        self._ema_len = ema_len
+
+    @property
+    def name(self) -> str:
+        return "williams_pasa"
+
+    @property
+    def label(self) -> str:
+        return "Williams Pasa"
+
+    def compute(self, opens, highs, lows, closes, volumes) -> IndicatorResult | None:
+        n = len(closes)
+        if n < self._length + self._ema_len:
+            return None
+
+        # Williams %R shifted to 0-100: 100 * (close - min) / (max - min)
+        hh = rolling_highest(highs, self._length)
+        ll = rolling_lowest(lows, self._length)
+
+        percent_r = np.full(n, np.nan)
+        for i in range(self._length - 1, n):
+            h_val = hh[i]
+            l_val = ll[i]
+            if np.isnan(h_val) or np.isnan(l_val):
+                continue
+            rng = h_val - l_val
+            if rng == 0:
+                percent_r[i] = 50.0
+            else:
+                percent_r[i] = 100.0 * (closes[i] - l_val) / rng
+
+        ema_wil = ema(percent_r, self._ema_len)
+
+        last_r = float(percent_r[-1]) if not np.isnan(percent_r[-1]) else None
+        last_ema = float(ema_wil[-1]) if not np.isnan(ema_wil[-1]) else None
+
+        if last_r is None:
+            return None
+
+        score = (last_r - 50.0) / 50.0
+
+        if last_r < 5:
+            signal = "bullish"
+        elif last_r > 98:
+            signal = "bearish"
+        else:
+            signal = "neutral"
+
+        return IndicatorResult(
+            name=self.name, label=self.label,
+            score=round(score, 4), signal=signal,
+            details={
+                "r": round(last_r, 2),
+                "ema": round(last_ema, 2) if last_ema is not None else None,
+            },
+        )
+
+
+class NizamiCedidIndicator(BaseIndicator):
+    """NizamiCedid Indicator: 3. Selim custom normalized MACD with VWMA and trend regime."""
+
+    def __init__(self, fast: int = 120, slow: int = 260, signal: int = 50, vwma_len: int = 185, ema_long1: int = 377, ema_long2: int = 610):
+        self._fast = fast
+        self._slow = slow
+        self._signal = signal
+        self._vwma_len = vwma_len
+        self._ema_long1 = ema_long1
+        self._ema_long2 = ema_long2
+
+    @property
+    def name(self) -> str:
+        return "nizami_cedid"
+
+    @property
+    def label(self) -> str:
+        return "Nizami Cedid"
+
+    def compute(self, opens, highs, lows, closes, volumes) -> IndicatorResult | None:
+        n = len(closes)
+        if n < self._ema_long2:
+            return None
+
+        fast_ma = ema(closes, self._fast)
+        slow_ma = ema(closes, self._slow)
+        macd = fast_ma - slow_ma
+        signal_line = ema(macd, self._signal)
+        histogram = macd - signal_line
+
+        # VWMA of macd: sma(macd * vol, 185) / sma(vol, 185)
+        vol_clean = np.nan_to_num(volumes, nan=0.0)
+        macd_clean = np.nan_to_num(macd, nan=0.0)
+        macd_vol = macd_clean * vol_clean
+        
+        sum_macd_vol = sma(macd_vol, self._vwma_len)
+        sum_vol = sma(vol_clean, self._vwma_len)
+
+        e_macd = np.full(n, np.nan)
+        for i in range(n):
+            sv = sum_vol[i]
+            smv = sum_macd_vol[i]
+            if not np.isnan(sv) and not np.isnan(smv) and sv > 0:
+                e_macd[i] = smv / sv
+
+        delta = macd - e_macd
+
+        ema_long1_val = ema(closes, self._ema_long1)
+        ema_long2_val = ema(closes, self._ema_long2)
+
+        last_macd = float(macd[-1]) if not np.isnan(macd[-1]) else None
+        last_sig = float(signal_line[-1]) if not np.isnan(signal_line[-1]) else None
+        last_hist = float(histogram[-1]) if not np.isnan(histogram[-1]) else None
+        last_emacd = float(e_macd[-1]) if not np.isnan(e_macd[-1]) else None
+        last_delta = float(delta[-1]) if not np.isnan(delta[-1]) else None
+        last_fast = float(fast_ma[-1]) if not np.isnan(fast_ma[-1]) else None
+
+        last_long1 = float(ema_long1_val[-1]) if not np.isnan(ema_long1_val[-1]) else None
+        last_long2 = float(ema_long2_val[-1]) if not np.isnan(ema_long2_val[-1]) else None
+
+        if last_delta is None or last_fast == 0:
+            return None
+
+        norm_delta = last_delta / last_fast
+        norm_macd = last_macd / last_fast if last_macd is not None else None
+        norm_sig = last_sig / last_fast if last_sig is not None else None
+        norm_emacd = last_emacd / last_fast if last_emacd is not None else None
+        norm_hist = last_hist / last_fast if last_hist is not None else None
+
+        score = max(-1.0, min(1.0, norm_delta * 100))
+
+        if last_delta > 0:
+            signal = "bullish"
+        elif last_delta < 0:
+            signal = "bearish"
+        else:
+            signal = "neutral"
+
+        condition = bool(last_long1 > last_long2) if (last_long1 is not None and last_long2 is not None) else False
+
+        return IndicatorResult(
+            name=self.name, label=self.label,
+            score=round(score, 4), signal=signal,
+            details={
+                "macd": round(norm_macd, 4) if norm_macd is not None else None,
+                "signal_line": round(norm_sig, 4) if norm_sig is not None else None,
+                "emacd": round(norm_emacd, 4) if norm_emacd is not None else None,
+                "histogram": round(norm_hist, 4) if norm_hist is not None else None,
+                "delta": round(norm_delta, 4),
+                "condition": condition,
+            },
+        )
+
+
 # ──────────────────────────────────────────────
 # Indicator Registry
 # ──────────────────────────────────────────────
@@ -865,6 +1022,8 @@ INDICATOR_REGISTRY: list[BaseIndicator] = [
     IchimokuIndicator(9, 26, 52, 26),
     OBVIndicator(20),
     ATRIndicator(14),
+    WilliamsPasaIndicator(260, 260),
+    NizamiCedidIndicator(120, 260, 50, 185, 377, 610),
 ]
 
 

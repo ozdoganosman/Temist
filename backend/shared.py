@@ -109,7 +109,7 @@ def _get_cached_financials(symbol: str, fg: str):
     df = isy_fetch_financials(
         symbols=symbol,
         start_year=2005,
-        end_year=2025,
+        end_year=datetime.now().year,
         exchange="TRY",
         financial_group=fg,
     )

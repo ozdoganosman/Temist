@@ -31,6 +31,11 @@ interface ChartContainerProps {
   showSuperTrend?: boolean;
   showIchimoku?: boolean;
   showOBV?: boolean;
+  showWilliamsPasa?: boolean;
+  showNizamiCedid?: boolean;
+  showEMAOverlay?: boolean;
+  showPearsonChannels?: boolean;
+  showMATLRNS?: boolean;
   showSignals?: boolean;
   signalConfig?: SignalConfig;
   logScale?: boolean;
@@ -48,6 +53,11 @@ export default function ChartContainer({
   showSuperTrend = false,
   showIchimoku = false,
   showOBV = false,
+  showWilliamsPasa = false,
+  showNizamiCedid = false,
+  showEMAOverlay = false,
+  showPearsonChannels = false,
+  showMATLRNS = false,
   showSignals = false,
   signalConfig,
   logScale = false,
@@ -128,12 +138,8 @@ export default function ChartContainer({
     let priceAxisDragStartY = 0;
     let priceAxisStartYMin = 0;
     let priceAxisStartYMax = 0;
-
-    // Slider (time bar) drag state
-    let sliderDragging = false;
-    let sliderDragStartX = 0;
-    let sliderStartZoomStart = 0;
-    let sliderStartZoomEnd = 100;
+    let activeYAxisIdx = 0;
+    let activeYAxisId = 'y-axis-price';
 
     // Cursor change on hover over axis areas
     const setCursorOnAll = (cursor: string) => {
@@ -146,15 +152,29 @@ export default function ChartContainer({
     };
     const SLIDER_ZONE_HEIGHT = 34;
     const onHoverMove = (e: MouseEvent) => {
-      if (!containerRef.current || dragging || dragOnPriceAxis || sliderDragging) return;
+      if (!containerRef.current || dragging || dragOnPriceAxis) return;
       const rect = containerRef.current.getBoundingClientRect();
       const gridRight = rect.right - 80;
       const gridLeft = rect.left + 80;
       const distFromBottom = rect.bottom - e.clientY;
-      if (distFromBottom <= SLIDER_ZONE_HEIGHT && e.clientX > gridLeft && e.clientX < gridRight) {
-        setCursorOnAll('ew-resize');
-      } else if (e.clientX > gridRight || e.clientX < gridLeft) {
-        setCursorOnAll('ns-resize');
+      const clickY = e.clientY - rect.top;
+
+      if (distFromBottom > SLIDER_ZONE_HEIGHT && (e.clientX > gridRight || e.clientX < gridLeft)) {
+        const opt = chart.getOption() as any;
+        const grids = opt.grid || [];
+        const testX = rect.width / 2;
+        let overGrid = false;
+        for (let i = 0; i < grids.length; i++) {
+          if (chart.containPixel({ gridIndex: i }, [testX, clickY])) {
+            overGrid = true;
+            break;
+          }
+        }
+        if (overGrid) {
+          setCursorOnAll('ns-resize');
+        } else {
+          setCursorOnAll('');
+        }
       } else {
         setCursorOnAll('');
       }
@@ -167,42 +187,50 @@ export default function ChartContainer({
       const gridLeft = rect.left + 80;
       const gridRight = rect.right - 80;
       const distFromBottom = rect.bottom - e.clientY;
-      if (distFromBottom <= SLIDER_ZONE_HEIGHT && e.clientX > gridLeft && e.clientX < gridRight) {
-        sliderDragging = true;
-        sliderDragStartX = e.clientX;
-        const opt = chart.getOption() as {
-          dataZoom?: Array<{ start?: number; end?: number }>;
-        };
-        sliderStartZoomStart = opt.dataZoom?.[0]?.start ?? 0;
-        sliderStartZoomEnd = opt.dataZoom?.[0]?.end ?? 100;
-        setCursorOnAll('ew-resize');
-        e.preventDefault();
+      const clickY = e.clientY - rect.top;
+
+      // Let ECharts handle slider zone natively
+      if (distFromBottom <= SLIDER_ZONE_HEIGHT) {
         return;
       }
 
-      if (e.clientX < gridLeft) {
+      if (e.clientX < gridLeft || e.clientX > gridRight) {
         dragOnPriceAxis = true;
         priceAxisDragStartY = e.clientY;
-        const yAxisModel = chart.getModel()?.getComponent('yAxis', 0) as unknown as
-          | { axis?: { scale?: { getExtent?: () => [number, number] } } }
-          | undefined;
-        const extent = yAxisModel?.axis?.scale?.getExtent?.();
-        if (extent) {
-          priceAxisStartYMin = extent[0];
-          priceAxisStartYMax = extent[1];
+
+        const opt = chart.getOption() as any;
+        const grids = opt.grid || [];
+        const yAxes = opt.yAxis || [];
+        const testX = rect.width / 2;
+
+        let gIdx = 0;
+        for (let i = 0; i < grids.length; i++) {
+          if (chart.containPixel({ gridIndex: i }, [testX, clickY])) {
+            gIdx = i;
+            break;
+          }
         }
-        e.preventDefault();
-        return;
-      }
 
-      if (e.clientX > gridRight) {
-        dragOnPriceAxis = true;
-        priceAxisDragStartY = e.clientY;
-        const yAxisModel = chart.getModel()?.getComponent('yAxis', 0) as unknown as
-          | { axis?: { scale?: { getExtent?: () => [number, number] } } }
-          | undefined;
+        activeYAxisIdx = 0;
+        activeYAxisId = 'y-axis-price';
+        if (e.clientX < gridLeft) {
+          const foundIdx = yAxes.findIndex((y: any) => y.id === 'y-axis-volume');
+          if (foundIdx !== -1) {
+            activeYAxisIdx = foundIdx;
+            activeYAxisId = 'y-axis-volume';
+          }
+        } else {
+          const foundIdx = yAxes.findIndex((y: any) => y.gridIndex === gIdx && y.position !== 'left');
+          if (foundIdx !== -1) {
+            activeYAxisIdx = foundIdx;
+            activeYAxisId = yAxes[foundIdx].id || 'y-axis-price';
+          }
+        }
+
+        const yAxisModel = chart.getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
         const extent = yAxisModel?.axis?.scale?.getExtent?.();
         if (extent) {
+          priceAxisDragStartY = e.clientY;
           priceAxisStartYMin = extent[0];
           priceAxisStartYMax = extent[1];
         }
@@ -213,14 +241,30 @@ export default function ChartContainer({
       dragging = true;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
-      const opt = chart.getOption() as {
-        dataZoom?: Array<{ start?: number; end?: number }>;
-      };
+      const opt = chart.getOption() as any;
+      const grids = opt.grid || [];
+      const yAxes = opt.yAxis || [];
+      const testX = rect.width / 2;
+
+      let gIdx = 0;
+      for (let i = 0; i < grids.length; i++) {
+        if (chart.containPixel({ gridIndex: i }, [testX, clickY])) {
+          gIdx = i;
+          break;
+        }
+      }
+
       startZoomStart = opt.dataZoom?.[0]?.start ?? 0;
       startZoomEnd = opt.dataZoom?.[0]?.end ?? 100;
-      const yAxisModel = chart.getModel()?.getComponent('yAxis', 0) as unknown as
-        | { axis?: { scale?: { getExtent?: () => [number, number] } } }
-        | undefined;
+
+      activeYAxisIdx = 0;
+      activeYAxisId = 'y-axis-price';
+      const foundIdx = yAxes.findIndex((y: any) => y.gridIndex === gIdx && y.position !== 'left');
+      if (foundIdx !== -1) {
+        activeYAxisIdx = foundIdx;
+        activeYAxisId = yAxes[foundIdx].id || 'y-axis-price';
+      }
+      const yAxisModel = chart.getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
       const extent = yAxisModel?.axis?.scale?.getExtent?.();
       if (extent) {
         startYMin = extent[0];
@@ -232,42 +276,24 @@ export default function ChartContainer({
     const onMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
 
-      if (sliderDragging) {
-        const dx = e.clientX - sliderDragStartX;
-        const rect = containerRef.current.getBoundingClientRect();
-        const pxWidth = rect.width - 160;
-        const range = sliderStartZoomEnd - sliderStartZoomStart;
-        const mid = (sliderStartZoomStart + sliderStartZoomEnd) / 2;
-        const scaleFactor = 1 + (dx / pxWidth) * 2;
-        const newHalf = (range / 2) * Math.max(0.02, scaleFactor);
-        const newStart = Math.max(0, mid - newHalf);
-        const newEnd = Math.min(100, mid + newHalf);
-        chart.dispatchAction({
-          type: 'dataZoom',
-          dataZoomIndex: 0,
-          start: newStart,
-          end: newEnd,
-        });
-        chart.dispatchAction({
-          type: 'dataZoom',
-          dataZoomIndex: 1,
-          start: newStart,
-          end: newEnd,
-        });
-        return;
-      }
-
       if (dragOnPriceAxis) {
         const dy = e.clientY - priceAxisDragStartY;
         const rect = containerRef.current.getBoundingClientRect();
-        const pxHeight = rect.height - 70;
+        
+        const opt = chart.getOption() as any;
+        const yAxes = opt.yAxis || [];
+        const gIdx = yAxes[activeYAxisIdx]?.gridIndex ?? 0;
+        const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
+
         const yRange = priceAxisStartYMax - priceAxisStartYMin;
         const mid = (priceAxisStartYMin + priceAxisStartYMax) / 2;
-        const scaleFactor = 1 + (dy / pxHeight) * 2;
+        const scaleFactor = 1 + (dy / gridHeight) * 2;
         const newHalf = (yRange / 2) * Math.max(0.1, scaleFactor);
+        
         chart.setOption({
           yAxis: [
             {
+              id: activeYAxisId,
               min: mid - newHalf,
               max: mid + newHalf,
             },
@@ -293,25 +319,31 @@ export default function ChartContainer({
         end: newEnd,
       });
 
-      const dy = e.clientY - dragStartY;
-      const pxHeight = rect.height - 70;
-      const yRange = startYMax - startYMin;
-      const yShift = (dy / pxHeight) * yRange;
+      if (activeYAxisId && activeYAxisId !== '') {
+        const dy = e.clientY - dragStartY;
+        const opt = chart.getOption() as any;
+        const yAxes = opt.yAxis || [];
+        const gIdx = yAxes[activeYAxisIdx]?.gridIndex ?? 0;
+        const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
 
-      chart.setOption({
-        yAxis: [
-          {
-            min: startYMin + yShift,
-            max: startYMax + yShift,
-          },
-        ],
-      });
+        const yRange = startYMax - startYMin;
+        const yShift = (dy / gridHeight) * yRange;
+
+        chart.setOption({
+          yAxis: [
+            {
+              id: activeYAxisId,
+              min: startYMin + yShift,
+              max: startYMax + yShift,
+            },
+          ],
+        });
+      }
     };
 
     const onMouseUp = () => {
       dragging = false;
       dragOnPriceAxis = false;
-      sliderDragging = false;
     };
 
     const el = containerRef.current;
@@ -320,10 +352,91 @@ export default function ChartContainer({
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
 
-    const onDblClick = () => {
-      chart.setOption({
-        yAxis: [{ min: undefined, max: undefined }],
-      });
+    const onDblClick = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const gridLeft = rect.left + 80;
+      const gridRight = rect.right - 80;
+      const distFromBottom = rect.bottom - e.clientY;
+      const clickY = e.clientY - rect.top;
+
+      // Let ECharts handle slider zone natively
+      if (distFromBottom <= SLIDER_ZONE_HEIGHT) {
+        return;
+      }
+
+      const opt = chart.getOption() as any;
+      const yAxes = opt.yAxis || [];
+
+      // Calculate default volume max limit to prevent volume bars from overlapping the price chart
+      const maxVol = filtered.reduce((m, d) => Math.max(m, d.volume), 0);
+      const volAxisMax = maxVol > 0 ? maxVol * 10 : 100;
+
+      if (e.clientX < gridLeft || e.clientX > gridRight) {
+        const grids = opt.grid || [];
+        const testX = rect.width / 2;
+
+        let gIdx = 0;
+        for (let i = 0; i < grids.length; i++) {
+          if (chart.containPixel({ gridIndex: i }, [testX, clickY])) {
+            gIdx = i;
+            break;
+          }
+        }
+
+        let targetYAxisId = 'y-axis-price';
+        if (e.clientX < gridLeft) {
+          const foundIdx = yAxes.findIndex((y: any) => y.id === 'y-axis-volume');
+          if (foundIdx !== -1) {
+            targetYAxisId = 'y-axis-volume';
+          }
+        } else {
+          const foundIdx = yAxes.findIndex((y: any) => y.gridIndex === gIdx && y.position !== 'left');
+          if (foundIdx !== -1) {
+            targetYAxisId = yAxes[foundIdx].id || 'y-axis-price';
+          }
+        }
+
+        if (targetYAxisId === 'y-axis-volume') {
+          chart.setOption({
+            yAxis: [
+              {
+                id: 'y-axis-volume',
+                min: 0,
+                max: volAxisMax,
+              },
+            ],
+          });
+        } else {
+          chart.setOption({
+            yAxis: [
+              {
+                id: targetYAxisId,
+                min: undefined,
+                max: undefined,
+              },
+            ],
+          });
+        }
+      } else {
+        const newYAxisOpt = yAxes.map((y: any) => {
+          if (y.id === 'y-axis-volume') {
+            return {
+              id: y.id,
+              min: 0,
+              max: volAxisMax,
+            };
+          }
+          return {
+            id: y.id,
+            min: undefined,
+            max: undefined,
+          };
+        });
+        chart.setOption({
+          yAxis: newYAxisOpt,
+        });
+      }
     };
     el.addEventListener('dblclick', onDblClick);
 
@@ -407,6 +520,11 @@ export default function ChartContainer({
       showIchimoku,
       showOBV,
       interval,
+      showWilliamsPasa,
+      showNizamiCedid,
+      showEMAOverlay,
+      showPearsonChannels,
+      showMATLRNS,
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -432,6 +550,11 @@ export default function ChartContainer({
     showSuperTrend,
     showIchimoku,
     showOBV,
+    showWilliamsPasa,
+    showNizamiCedid,
+    showEMAOverlay,
+    showPearsonChannels,
+    showMATLRNS,
     logScale,
     signalEvents,
     signalConfig,

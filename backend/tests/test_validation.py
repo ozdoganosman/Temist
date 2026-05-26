@@ -53,3 +53,10 @@ def test_clear_financials_cache():
     assert response.status_code == 200
     data = response.json()
     assert "cleared" in data
+
+
+def test_health_check():
+    """Health check endpoint should return 200 OK."""
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

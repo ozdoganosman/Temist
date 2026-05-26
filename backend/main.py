@@ -29,6 +29,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
+
+
 from routers import symbols, history, financials, scan, ml, ws
 
 app.include_router(symbols.router)

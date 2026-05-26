@@ -19,6 +19,11 @@ interface SavedOverlays {
   showSuperTrend: boolean;
   showIchimoku: boolean;
   showOBV: boolean;
+  showWilliamsPasa: boolean;
+  showNizamiCedid: boolean;
+  showEMAOverlay: boolean;
+  showPearsonChannels: boolean;
+  showMATLRNS: boolean;
 }
 
 type ToggleKey = keyof Omit<IndicatorState, 'signalConfig' | 'signalDateRange' | '_savedOverlays'>;
@@ -31,6 +36,11 @@ interface IndicatorState {
   showSuperTrend: boolean;
   showIchimoku: boolean;
   showOBV: boolean;
+  showWilliamsPasa: boolean;
+  showNizamiCedid: boolean;
+  showEMAOverlay: boolean;
+  showPearsonChannels: boolean;
+  showMATLRNS: boolean;
   showFinancials: boolean;
   showSignals: boolean;
   logScale: boolean;
@@ -54,6 +64,11 @@ const initialState: IndicatorState = {
   showSuperTrend: false,
   showIchimoku: false,
   showOBV: false,
+  showWilliamsPasa: false,
+  showNizamiCedid: false,
+  showEMAOverlay: false,
+  showPearsonChannels: false,
+  showMATLRNS: false,
   showFinancials: false,
   showSignals: false,
   logScale: false,
@@ -72,6 +87,11 @@ function syncOverlaysFromConfig(state: IndicatorState, config: SignalConfig): Pa
     showSuperTrend: config.supertrend.enabled,
     showIchimoku: config.ichimoku.enabled,
     showOBV: config.obv.enabled,
+    showWilliamsPasa: config.williamsPasa?.enabled ?? false,
+    showNizamiCedid: config.nizamiCedid?.enabled ?? false,
+    showEMAOverlay: false,
+    showPearsonChannels: false,
+    showMATLRNS: false,
   };
 }
 
@@ -96,6 +116,11 @@ function indicatorReducer(state: IndicatorState, action: IndicatorAction): Indic
               showSuperTrend: state.showSuperTrend,
               showIchimoku: state.showIchimoku,
               showOBV: state.showOBV,
+              showWilliamsPasa: state.showWilliamsPasa,
+              showNizamiCedid: state.showNizamiCedid,
+              showEMAOverlay: state.showEMAOverlay,
+              showPearsonChannels: state.showPearsonChannels,
+              showMATLRNS: state.showMATLRNS,
             },
             ...syncOverlaysFromConfig(state, state.signalConfig),
           };

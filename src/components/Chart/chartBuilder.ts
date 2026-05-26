@@ -11,9 +11,13 @@ import {
   computeOBV,
   computeSuperTrend,
   computeIchimoku,
-  computeBollingerBands,
+  computeWilliamsPasa,
+  computeNizamiCedid,
+  ema,
 } from '../../utils/indicators';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
+import { computeAllPearsonChannels, DEFAULT_PEARSON_CONFIGS } from '../../utils/pearsonChannels';
+import { computeMATLRNS } from '../../utils/matlrns';
 
 interface SignalPoint {
   value: [number, number];
@@ -87,6 +91,22 @@ function generateFutureDates(lastDate: string, count: number): string[] {
   return result;
 }
 
+function formatIndicatorVal(v: number): string {
+  if (v === null || v === undefined || isNaN(v)) return '';
+  if (v === 0) return '0';
+  const abs = Math.abs(v);
+  if (abs >= 1000) {
+    return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+  if (abs >= 1) {
+    return v.toFixed(2);
+  }
+  if (abs >= 0.0001) {
+    return Number(v.toFixed(4)).toString();
+  }
+  return v.toExponential(2);
+}
+
 export function addPadding(
   dates: string[],
   ohlcArr: unknown[],
@@ -108,6 +128,205 @@ export function addPadding(
   };
 }
 
+function computeNizamiCedidRegimeAreas(condition: (boolean | null)[], rawDates: string[]): any[] {
+  const areas: any[] = [];
+  let startIdx: number | null = null;
+  for (let i = 0; i < condition.length; i++) {
+    const cond = condition[i];
+    if (cond === true) {
+      if (startIdx === null) {
+        startIdx = i;
+      }
+    } else {
+      if (startIdx !== null) {
+        areas.push([
+          { xAxis: rawDates[startIdx], itemStyle: { color: 'rgba(76, 175, 80, 0.04)' } },
+          { xAxis: rawDates[i - 1] }
+        ]);
+        startIdx = null;
+      }
+    }
+  }
+  if (startIdx !== null) {
+    areas.push([
+          { xAxis: rawDates[startIdx], itemStyle: { color: 'rgba(76, 175, 80, 0.04)' } },
+          { xAxis: rawDates[rawDates.length - 1] }
+    ]);
+  }
+  return areas;
+}
+
+function computeEMARegimeAreas(
+  closes: number[],
+  rawDates: string[],
+  _pad: number,
+  _total: number
+): any[] {
+  const n = closes.length;
+  const allPeriods = [8, 13, 21, 34, 55, 89, 144, 233, 377, 610];
+  const periods = allPeriods.filter(p => n >= p);
+  if (periods.length < 2) return [];
+  
+  const emas = periods.map(p => ema(closes, p));
+  const maxPeriod = periods[periods.length - 1];
+  const totalPairs = periods.length - 1;
+  
+  const areas: any[] = [];
+  let currentStartIdx: number | null = null;
+  let currentScore: number | null = null;
+
+  for (let i = maxPeriod; i < n; i++) {
+    let sum = 0;
+    let valid = true;
+    for (let j = 0; j < periods.length; j++) {
+      if (emas[j][i] === null) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) {
+      if (currentStartIdx !== null && currentScore !== null) {
+        const r = Math.round(239 - (239 - 76) * currentScore);
+        const g = Math.round(83 + (175 - 83) * currentScore);
+        const b = 80;
+        const color = `rgba(${r}, ${g}, ${b}, 0.15)`;
+        areas.push([
+          { xAxis: rawDates[currentStartIdx], itemStyle: { color } },
+          { xAxis: rawDates[i] }
+        ]);
+        currentStartIdx = null;
+        currentScore = null;
+      }
+      continue;
+    }
+
+    const spread = 0.003; // Normalization spread
+    for (let j = 0; j < totalPairs; j++) {
+      const emaCurr = emas[j][i];
+      const emaNext = emas[j+1][i];
+      if (emaCurr !== null && emaNext !== null) {
+        const diffRatio = (emaCurr - emaNext) / emaNext;
+        const clamped = Math.max(-1, Math.min(1, diffRatio / spread));
+        sum += clamped;
+      }
+    }
+    const score = (sum / totalPairs + 1) / 2; // Map [-1, 1] to [0, 1]
+
+    if (currentScore === null) {
+      currentStartIdx = i;
+      currentScore = score;
+    } else if (Math.abs(currentScore - score) > 0.03) {
+      const r = Math.round(239 - (239 - 76) * currentScore);
+      const g = Math.round(83 + (175 - 83) * currentScore);
+      const b = 80;
+      const color = `rgba(${r}, ${g}, ${b}, 0.15)`;
+      areas.push([
+        { xAxis: rawDates[currentStartIdx!], itemStyle: { color } },
+        { xAxis: rawDates[i] }
+      ]);
+      currentStartIdx = i;
+      currentScore = score;
+    }
+  }
+
+  if (currentStartIdx !== null && currentScore !== null) {
+    const r = Math.round(239 - (239 - 76) * currentScore);
+    const g = Math.round(83 + (175 - 83) * currentScore);
+    const b = 80;
+    const color = `rgba(${r}, ${g}, ${b}, 0.15)`;
+    areas.push([
+      { xAxis: rawDates[currentStartIdx], itemStyle: { color } },
+      { xAxis: rawDates[n - 1] }
+    ]);
+  }
+  
+  return areas;
+}
+
+function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any {
+  const rowHeight = 32;
+  const tableWidth = 280;
+  const tableHeight = 40 + results.length * rowHeight;
+
+  const children: any[] = [
+    {
+      type: 'rect',
+      shape: { width: tableWidth, height: tableHeight, r: 8 },
+      style: {
+        fill: tc.tooltipBg,
+        stroke: tc.border,
+        lineWidth: 2,
+        shadowBlur: 14,
+        shadowColor: 'rgba(0,0,0,0.5)',
+      },
+    },
+    // Header Row
+    {
+      type: 'text',
+      left: 20,
+      top: 10,
+      style: {
+        text: 'Kanal (Pearson)',
+        fill: tc.text,
+        font: 'bold 14px sans-serif',
+      },
+    },
+    {
+      type: 'text',
+      left: 200,
+      top: 10,
+      style: {
+        text: 'Pearson R',
+        fill: tc.text,
+        font: 'bold 14px sans-serif',
+      },
+    },
+    {
+      type: 'line',
+      shape: { x1: 0, y1: 34, x2: tableWidth, y2: 34 },
+      style: { stroke: tc.border, lineWidth: 2 },
+    },
+  ];
+
+  results.forEach((res, i) => {
+    const y = 42 + i * rowHeight;
+    const rVal = res.r;
+    const rStr = rVal.toFixed(2);
+    const rColor = rVal >= 0.5 ? '#26a69a' : rVal <= -0.5 ? '#ef5350' : tc.text;
+
+    children.push(
+      {
+        type: 'text',
+        left: 20,
+        top: y,
+        style: {
+          text: `${res.label} (${res.p})`,
+          fill: tc.text,
+          font: '13px sans-serif',
+        },
+      },
+      {
+        type: 'text',
+        left: 200,
+        top: y,
+        style: {
+          text: rStr,
+          fill: rColor,
+          font: 'bold 13px sans-serif',
+        },
+      }
+    );
+  });
+
+  return {
+    type: 'group',
+    right: 90,
+    bottom: bottom,
+    z: 100,
+    children,
+  };
+}
+
 export function buildOption(
   filtered: OHLCVData[],
   symbol: string,
@@ -124,6 +343,11 @@ export function buildOption(
   showIchimoku = false,
   showOBV = false,
   interval?: Interval,
+  showWilliamsPasa = false,
+  showNizamiCedid = false,
+  showEMAOverlay = false,
+  showPearsonChannels = false,
+  showMATLRNS = false,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -155,6 +379,21 @@ export function buildOption(
   const lastPriceColor =
     lastClose !== null && lastOpen !== null ? (lastClose >= lastOpen ? UP_COLOR : DOWN_COLOR) : tc.text;
 
+  let regimeAreas: any[] = [];
+  if (showNizamiCedid && filtered.length > 610) {
+    const closes = filtered.map((d) => d.close);
+    const vols = filtered.map((d) => d.volume);
+    const fast = sigConfig?.nizamiCedid?.fast ?? 120;
+    const slow = sigConfig?.nizamiCedid?.slow ?? 260;
+    const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
+    const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
+    const ncResult = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
+    regimeAreas = computeNizamiCedidRegimeAreas(ncResult.condition, rawDates);
+  } else if (showEMAOverlay && filtered.length > 21) {
+    const closes = filtered.map((d) => d.close);
+    regimeAreas = computeEMARegimeAreas(closes, rawDates, padded.offset, total);
+  }
+
   const mainSeries: echarts.SeriesOption = {
     name: symbol,
     type: 'candlestick' as const,
@@ -165,6 +404,10 @@ export function buildOption(
       borderColor: UP_COLOR,
       borderColor0: DOWN_COLOR,
     },
+    markArea: regimeAreas.length > 0 ? {
+      silent: true,
+      data: regimeAreas,
+    } : undefined,
     markLine:
       lastClose !== null
         ? {
@@ -196,6 +439,8 @@ export function buildOption(
   if (showMACD) subPanels.push('macd');
   if (showStochRSI) subPanels.push('stochRsi');
   if (showOBV) subPanels.push('obv');
+  if (showWilliamsPasa) subPanels.push('williams_pasa');
+  if (showNizamiCedid) subPanels.push('nizami_cedid');
   const hasSubPanels = subPanels.length > 0;
 
   const panelBottoms: number[] = [];
@@ -204,9 +449,9 @@ export function buildOption(
   }
   const mainBottom = hasSubPanels ? panelBottoms[panelBottoms.length - 1] + panelHeight + 20 : 50;
 
-  const grids: echarts.GridComponentOption[] = [{ left: 80, right: 80, top: 20, bottom: mainBottom }];
+  const grids: echarts.GridComponentOption[] = [{ left: 80, right: 80, top: 20, bottom: mainBottom, containLabel: false }];
   for (let i = 0; i < subPanels.length; i++) {
-    grids.push({ left: 80, right: 80, bottom: panelBottoms[i], height: panelHeight });
+    grids.push({ left: 80, right: 80, bottom: panelBottoms[i], height: panelHeight, containLabel: false });
   }
 
   const allXAxisIndices = Array.from({ length: 1 + subPanels.length }, (_, i) => i);
@@ -271,6 +516,7 @@ export function buildOption(
 
   const yAxes: echarts.YAXisComponentOption[] = [
     {
+      id: 'y-axis-price',
       type: logScale ? 'log' : 'value',
       scale: true,
       gridIndex: 0,
@@ -286,6 +532,7 @@ export function buildOption(
       },
     },
     {
+      id: 'y-axis-volume',
       gridIndex: 0,
       position: 'left',
       min: 0,
@@ -316,6 +563,7 @@ export function buildOption(
 
     if (subPanels[i] === 'rsi') {
       yAxes.push({
+        id: 'y-axis-rsi',
         gridIndex: gridIdx,
         position: 'right',
         min: 0,
@@ -331,15 +579,41 @@ export function buildOption(
           label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
         },
       } as echarts.YAXisComponentOption);
-    } else if (subPanels[i] === 'macd' || subPanels[i] === 'obv') {
+    } else if (subPanels[i] === 'macd') {
       yAxes.push({
+        id: 'y-axis-macd',
         gridIndex: gridIdx,
         position: 'right',
         scale: true,
         splitNumber: 3,
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10 },
+        axisLabel: {
+          color: tc.text,
+          fontSize: 10,
+          formatter: (v: number) => formatIndicatorVal(v),
+        },
+        axisPointer: {
+          show: true,
+          type: 'line',
+          lineStyle: { color: tc.pointerLine, type: 'dashed' },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+        },
+      } as echarts.YAXisComponentOption);
+    } else if (subPanels[i] === 'obv') {
+      yAxes.push({
+        id: 'y-axis-obv',
+        gridIndex: gridIdx,
+        position: 'right',
+        scale: true,
+        splitNumber: 3,
+        splitLine: { lineStyle: { color: tc.border } },
+        axisLine: { lineStyle: { color: tc.border } },
+        axisLabel: {
+          color: tc.text,
+          fontSize: 10,
+          formatter: (v: number) => formatVolume(v),
+        },
         axisPointer: {
           show: true,
           type: 'line',
@@ -349,6 +623,7 @@ export function buildOption(
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'stochRsi') {
       yAxes.push({
+        id: 'y-axis-stochRsi',
         gridIndex: gridIdx,
         position: 'right',
         min: 0,
@@ -357,6 +632,45 @@ export function buildOption(
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
         axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${v}` },
+        axisPointer: {
+          show: true,
+          type: 'line',
+          lineStyle: { color: tc.pointerLine, type: 'dashed' },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+        },
+      } as echarts.YAXisComponentOption);
+    } else if (subPanels[i] === 'williams_pasa') {
+      yAxes.push({
+        id: 'y-axis-williams_pasa',
+        gridIndex: gridIdx,
+        position: 'right',
+        min: 0,
+        max: 100,
+        splitNumber: 2,
+        splitLine: { lineStyle: { color: tc.border } },
+        axisLine: { lineStyle: { color: tc.border } },
+        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${v}` },
+        axisPointer: {
+          show: true,
+          type: 'line',
+          lineStyle: { color: tc.pointerLine, type: 'dashed' },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+        },
+      } as echarts.YAXisComponentOption);
+    } else if (subPanels[i] === 'nizami_cedid') {
+      yAxes.push({
+        id: 'y-axis-nizami_cedid',
+        gridIndex: gridIdx,
+        position: 'right',
+        scale: true,
+        splitNumber: 3,
+        splitLine: { lineStyle: { color: tc.border } },
+        axisLine: { lineStyle: { color: tc.border } },
+        axisLabel: {
+          color: tc.text,
+          fontSize: 10,
+          formatter: (v: number) => formatIndicatorVal(v),
+        },
         axisPointer: {
           show: true,
           type: 'line',
@@ -371,6 +685,347 @@ export function buildOption(
   const subSeries: echarts.SeriesOption[] = [];
   const pad = getPaddingCount(filtered.length, intradayMode);
   const padNull = new Array(pad).fill(null);
+
+  // ── New Indicators Calculations ──
+  const emaSeries: echarts.SeriesOption[] = [];
+  if (showEMAOverlay && filtered.length > 5) {
+    const closes = filtered.map((d) => d.close);
+    const periods = [8, 13, 21, 34, 55, 89, 144, 233, 377, 610];
+    const colors = [
+      '#8A8E96', // EMA 8 (gray)
+      '#af35a3', // EMA 13 (purple)
+      '#FF9800', // EMA 21 (orange)
+      '#00BCD4', // EMA 34 (cyan)
+      '#2196F3', // EMA 55 (blue)
+      '#E91E63', // EMA 89 (pink)
+      '#00E676', // EMA 144 (lime)
+      '#4CAF50', // EMA 233 (green)
+      '#00C853', // EMA 377 (darker green)
+      '#1B5E20', // EMA 610 (forest green)
+    ];
+    const widths = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
+
+    periods.forEach((period, idx) => {
+      if (closes.length >= period) {
+        const emaVals = ema(closes, period);
+        const emaPadded = [...padNull, ...emaVals, ...padNull];
+        emaSeries.push({
+          name: `EMA ${period}`,
+          type: 'line',
+          data: emaPadded,
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          showSymbol: false,
+          lineStyle: { color: colors[idx], width: widths[idx] },
+          silent: true,
+          z: 4,
+          connectNulls: false,
+          tooltip: { show: false },
+        });
+      }
+    });
+  }
+
+  const pearsonSeries: echarts.SeriesOption[] = [];
+  const pearsonResults: any[] = [];
+  if (showPearsonChannels && filtered.length > 21) {
+    const closes = filtered.map((d) => d.close);
+    const results = computeAllPearsonChannels(closes, DEFAULT_PEARSON_CONFIGS);
+    results.forEach((res) => {
+      pearsonResults.push(res);
+      const cfg = DEFAULT_PEARSON_CONFIGS.find((c) => c.id === res.id);
+      if (!cfg) return;
+
+      const upData = new Array(total).fill(null);
+      const dnData = new Array(total).fill(null);
+
+      const startIdx = pad + res.startIndex;
+      const endIdx = pad + res.endIndex;
+
+      if (startIdx >= 0 && endIdx < total) {
+        upData[startIdx] = res.A + res.rmse;
+        upData[endIdx] = res.B + res.rmse;
+
+        dnData[startIdx] = res.A - res.rmse;
+        dnData[endIdx] = res.B - res.rmse;
+
+        pearsonSeries.push({
+          name: `${res.label} Üst`,
+          type: 'line',
+          data: upData,
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          showSymbol: false,
+          lineStyle: { color: cfg.color, width: cfg.width },
+          connectNulls: true,
+          silent: true,
+          z: 5,
+          label: {
+            show: true,
+            formatter: `${res.p}`,
+            fontSize: 9,
+            color: cfg.color,
+            position: 'left',
+          },
+          tooltip: { show: false },
+        });
+
+        pearsonSeries.push({
+          name: `${res.label} Alt`,
+          type: 'line',
+          data: dnData,
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          showSymbol: false,
+          lineStyle: { color: cfg.color, width: cfg.width },
+          connectNulls: true,
+          silent: true,
+          z: 5,
+          tooltip: { show: false },
+        });
+
+        if (cfg.centerColor) {
+          const midData = new Array(total).fill(null);
+          midData[startIdx] = res.A;
+          midData[endIdx] = res.B;
+          pearsonSeries.push({
+            name: `${res.label} Orta`,
+            type: 'line',
+            data: midData,
+            xAxisIndex: 0,
+            yAxisIndex: 0,
+            showSymbol: false,
+            lineStyle: { color: cfg.centerColor, width: 1, type: 'dashed' },
+            connectNulls: true,
+            silent: true,
+            z: 5,
+            tooltip: { show: false },
+          });
+        }
+      }
+    });
+  }
+
+  const matlrnsSeries: echarts.SeriesOption[] = [];
+  if (showMATLRNS && filtered.length > 21) {
+    const closes = filtered.map((d) => d.close);
+    const highs = filtered.map((d) => d.high);
+    const lows = filtered.map((d) => d.low);
+    const volumes = filtered.map((d) => d.volume);
+
+    const res = computeMATLRNS(closes, highs, lows, volumes, interval ?? '1d');
+    const fastPadded = [...padNull, ...res.fastMA, ...padNull];
+    const slowPadded = [...padNull, ...res.slowMA, ...padNull];
+
+    const bullishFastData = new Array(total).fill(null);
+    const bearishFastData = new Array(total).fill(null);
+    const neutralFastData = new Array(total).fill(null);
+
+    for (let i = 0; i < total; i++) {
+      const val = fastPadded[i];
+      if (val === null) continue;
+      const origIdx = i - pad;
+      if (origIdx < 0 || origIdx >= res.direction.length) continue;
+
+      const d = res.direction[origIdx];
+      if (d > 0) {
+        bullishFastData[i] = val;
+        if (i > 0 && bullishFastData[i - 1] === null) {
+          bullishFastData[i - 1] = fastPadded[i - 1];
+        }
+      } else if (d < 0) {
+        bearishFastData[i] = val;
+        if (i > 0 && bearishFastData[i - 1] === null) {
+          bearishFastData[i - 1] = fastPadded[i - 1];
+        }
+      } else {
+        neutralFastData[i] = val;
+        if (i > 0 && neutralFastData[i - 1] === null) {
+          neutralFastData[i - 1] = fastPadded[i - 1];
+        }
+      }
+    }
+
+    matlrnsSeries.push(
+      {
+        name: 'MATLRNS Hızlı (Yükseliş)',
+        type: 'line',
+        data: bullishFastData,
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { color: UP_COLOR, width: 2 },
+        connectNulls: false,
+        z: 6,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Hızlı (Düşüş)',
+        type: 'line',
+        data: bearishFastData,
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { color: DOWN_COLOR, width: 2 },
+        connectNulls: false,
+        z: 6,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Hızlı (Nötr)',
+        type: 'line',
+        data: neutralFastData,
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { color: '#787B86', width: 2 },
+        connectNulls: false,
+        z: 6,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Yavaş',
+        type: 'line',
+        data: slowPadded,
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { color: 'rgba(120, 123, 134, 0.5)', width: 1.5, type: 'dashed' },
+        connectNulls: false,
+        z: 5,
+        tooltip: { show: false },
+      }
+    );
+
+    const bullishDiff = new Array(total).fill(null);
+    const bearishDiff = new Array(total).fill(null);
+    const neutralDiff = new Array(total).fill(null);
+    const bullishBase = new Array(total).fill(null);
+    const bearishBase = new Array(total).fill(null);
+    const neutralBase = new Array(total).fill(null);
+
+    for (let i = 0; i < total; i++) {
+      const f = fastPadded[i];
+      const s = slowPadded[i];
+      if (f === null || s === null) continue;
+      const origIdx = i - pad;
+      const d = res.direction[origIdx];
+
+      const minVal = Math.min(f, s);
+      const diffVal = Math.abs(f - s);
+
+      if (d > 0) {
+        bullishBase[i] = minVal;
+        bullishDiff[i] = diffVal;
+        if (i > 0 && bullishBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
+          bullishBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
+          bullishDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
+        }
+      } else if (d < 0) {
+        bearishBase[i] = minVal;
+        bearishDiff[i] = diffVal;
+        if (i > 0 && bearishBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
+          bearishBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
+          bearishDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
+        }
+      } else {
+        neutralBase[i] = minVal;
+        neutralDiff[i] = diffVal;
+        if (i > 0 && neutralBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
+          neutralBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
+          neutralDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
+        }
+      }
+    }
+
+    matlrnsSeries.push(
+      {
+        name: 'MATLRNS Slow Base',
+        type: 'line',
+        data: bullishBase,
+        stack: 'matlrns-bull',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'transparent' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Bullish Band',
+        type: 'line',
+        data: bullishDiff,
+        stack: 'matlrns-bull',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'rgba(38, 166, 154, 0.08)' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Slow Base Bear',
+        type: 'line',
+        data: bearishBase,
+        stack: 'matlrns-bear',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'transparent' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Bearish Band',
+        type: 'line',
+        data: bearishDiff,
+        stack: 'matlrns-bear',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'rgba(239, 83, 80, 0.08)' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Slow Base Neut',
+        type: 'line',
+        data: neutralBase,
+        stack: 'matlrns-neut',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'transparent' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      },
+      {
+        name: 'MATLRNS Neutral Band',
+        type: 'line',
+        data: neutralDiff,
+        stack: 'matlrns-neut',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: { color: 'rgba(120, 123, 134, 0.08)' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      }
+    );
+  }
+
 
   // RSI sub panel
   if (showRSI && filtered.length > 15) {
@@ -601,6 +1256,167 @@ export function buildOption(
     );
   }
 
+  // Williams Paşa sub panel
+  if (showWilliamsPasa && filtered.length > 260) {
+    const wpGridIdx = subPanels.indexOf('williams_pasa') + 1;
+    const wpYIdx = panelYAxisIdx['williams_pasa'];
+    const highs = filtered.map((d) => d.high);
+    const lows = filtered.map((d) => d.low);
+    const closes = filtered.map((d) => d.close);
+    const length = sigConfig?.williamsPasa?.length ?? 260;
+    const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;
+    const wpResult = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+
+    const rPadded = [...padNull, ...wpResult.percentR, ...padNull];
+    const emaPadded = [...padNull, ...wpResult.emaWil, ...padNull];
+
+    subSeries.push(
+      {
+        name: 'Williams Paşa %R',
+        type: 'line',
+        data: rPadded,
+        xAxisIndex: wpGridIdx,
+        yAxisIndex: wpYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#7E57C2', width: 2 },
+        z: 5,
+        tooltip: { show: false },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [
+            {
+              yAxis: 98,
+              lineStyle: { color: 'rgba(239,83,80,0.6)', type: 'dashed' as const, width: 1 },
+              label: { show: true, position: 'insideEndTop' as const, formatter: '98', fontSize: 9, color: '#ef5350' },
+            },
+            {
+              yAxis: 5,
+              lineStyle: { color: 'rgba(38,166,154,0.6)', type: 'dashed' as const, width: 1 },
+              label: { show: true, position: 'insideEndBottom' as const, formatter: '5', fontSize: 9, color: '#26a69a' },
+            },
+            { yAxis: 50, lineStyle: { color: 'rgba(255,193,7,0.4)', type: 'dotted' as const, width: 1 } },
+          ],
+        },
+        markArea: {
+          silent: true,
+          data: [
+            [{ yAxis: 5, itemStyle: { color: 'rgba(126, 87, 194, 0.08)' } }, { yAxis: 98 }],
+          ] as unknown as echarts.MarkAreaComponentOption['data'],
+        },
+      },
+      {
+        name: 'EMA %R',
+        type: 'line',
+        data: emaPadded,
+        xAxisIndex: wpGridIdx,
+        yAxisIndex: wpYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#FF9800', width: 1.5, type: 'dashed' },
+        z: 5,
+        tooltip: { show: false },
+      }
+    );
+  }
+
+  // Nizami Cedid sub panel
+  if (showNizamiCedid && filtered.length > 260) {
+    const ncGridIdx = subPanels.indexOf('nizami_cedid') + 1;
+    const ncYIdx = panelYAxisIdx['nizami_cedid'];
+    const closes = filtered.map((d) => d.close);
+    const vols = filtered.map((d) => d.volume);
+    const fast = sigConfig?.nizamiCedid?.fast ?? 120;
+    const slow = sigConfig?.nizamiCedid?.slow ?? 260;
+    const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
+    const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
+    const ncResult = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
+    console.log('Nizami Cedid debug:', {
+      filteredLength: filtered.length,
+      closesLength: closes.length,
+      macdLength: ncResult.macd.length,
+      lastCloses: closes.slice(-10),
+      lastMacd: ncResult.macd.slice(-10),
+      lastEmacd: ncResult.emacd.slice(-10),
+      lastDelta: ncResult.delta.slice(-10),
+    });
+
+    const macdPadded = [...padNull, ...ncResult.macd, ...padNull];
+    const signalPadded = [...padNull, ...ncResult.signal, ...padNull];
+    const emacdPadded = [...padNull, ...ncResult.emacd, ...padNull];
+    const deltaPadded = [...padNull, ...ncResult.delta, ...padNull];
+
+    // Colored delta histogram
+    const deltaColored = deltaPadded.map((val: number | null, idx: number) => {
+      if (val === null) return { value: null };
+      const prev = idx > 0 ? deltaPadded[idx - 1] : null;
+      let color: string;
+      if (val >= 0) {
+        color = prev !== null && prev < val ? '#26A69A' : '#B2DFDB';
+      } else {
+        color = prev !== null && prev < val ? '#FFCDD2' : '#FF5252';
+      }
+      return { value: val, itemStyle: { color } };
+    });
+
+    subSeries.push(
+      {
+        name: 'Nizami Cedid Delta',
+        type: 'bar',
+        data: deltaColored,
+        xAxisIndex: ncGridIdx,
+        yAxisIndex: ncYIdx,
+        barWidth: '60%',
+        z: 1,
+        tooltip: { show: false },
+      },
+      {
+        name: 'NC MACD',
+        type: 'line',
+        data: macdPadded,
+        xAxisIndex: ncGridIdx,
+        yAxisIndex: ncYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#2196F3', width: 2 },
+        z: 5,
+        tooltip: { show: false },
+      },
+      {
+        name: 'NC Sinyal',
+        type: 'line',
+        data: signalPadded,
+        xAxisIndex: ncGridIdx,
+        yAxisIndex: ncYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#FF6D00', width: 2 },
+        z: 5,
+        tooltip: { show: false },
+      },
+      {
+        name: 'NC eMACD',
+        type: 'line',
+        data: emacdPadded,
+        xAxisIndex: ncGridIdx,
+        yAxisIndex: ncYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#4CAF50', width: 4.5 },
+        z: 5,
+        tooltip: { show: false },
+      },
+      {
+        name: 'NC Zero',
+        type: 'line',
+        data: new Array(total).fill(0),
+        xAxisIndex: ncGridIdx,
+        yAxisIndex: ncYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#787B86', width: 1, type: 'dashed' },
+        z: 2,
+        silent: true,
+        tooltip: { show: false },
+      }
+    );
+  }
+
   return {
     animation: false,
     backgroundColor: tc.bg,
@@ -640,6 +1456,7 @@ export function buildOption(
       link: [{ xAxisIndex: allXAxisIndices }],
       label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
     },
+    graphic: showPearsonChannels && pearsonResults.length > 0 ? [buildPearsonTable(pearsonResults, tc, mainBottom + 10)] : undefined,
     series: [
       { ...mainSeries, xAxisIndex: 0, yAxisIndex: 0 },
       {
@@ -951,6 +1768,9 @@ export function buildOption(
             return series;
           })()
         : []),
+      ...emaSeries,
+      ...pearsonSeries,
+      ...matlrnsSeries,
       ...subSeries,
     ],
   };

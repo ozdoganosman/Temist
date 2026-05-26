@@ -4,9 +4,9 @@ const DATA_CACHE = 'borsa-data-v1';
 
 // Static assets — cache-first
 const STATIC_ASSETS = [
-  '/borsa/',
-  '/borsa/index.html',
-  '/borsa/favicon.svg',
+  '/Temist/',
+  '/Temist/index.html',
+  '/Temist/favicon.svg',
 ];
 
 self.addEventListener('install', (event) => {
@@ -30,6 +30,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (!event.request.url.startsWith('http')) return;
   const url = new URL(event.request.url);
 
   // Data JSON files: network-first, fallback to cache

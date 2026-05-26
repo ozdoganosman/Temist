@@ -54,6 +54,11 @@ function AppContent() {
     showSuperTrend,
     showIchimoku,
     showOBV,
+    showWilliamsPasa,
+    showNizamiCedid,
+    showEMAOverlay,
+    showPearsonChannels,
+    showMATLRNS,
     showFinancials,
     showSignals,
     logScale,
@@ -142,6 +147,11 @@ function AppContent() {
                       showSuperTrend={showSuperTrend}
                       showIchimoku={showIchimoku}
                       showOBV={showOBV}
+                      showWilliamsPasa={showWilliamsPasa}
+                      showNizamiCedid={showNizamiCedid}
+                      showEMAOverlay={showEMAOverlay}
+                      showPearsonChannels={showPearsonChannels}
+                      showMATLRNS={showMATLRNS}
                       logScale={logScale}
                       showSignals={showSignals}
                       signalConfig={signalConfig}

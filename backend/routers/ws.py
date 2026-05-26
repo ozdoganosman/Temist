@@ -101,7 +101,8 @@ async def websocket_stream(websocket: WebSocket, symbol: str):
         # Send initial quote data
         try:
             t = bp.Ticker(symbol)
-            h = t.history(period="1d", interval="1m")
+            loop = asyncio.get_running_loop()
+            h = await loop.run_in_executor(None, lambda: t.history(period="1d", interval="1m"))
             if h is not None and not h.empty:
                 last = h.iloc[-1]
                 first = h.iloc[0]

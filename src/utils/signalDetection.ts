@@ -14,6 +14,8 @@ import {
   computeSuperTrend,
   computeIchimoku,
   computeOBV,
+  computeWilliamsPasa,
+  computeNizamiCedid,
 } from './indicators';
 
 export const HOLDING_PERIODS = [5, 10, 20, 60] as const;
@@ -126,6 +128,26 @@ export interface OBVSignalConfig {
   };
 }
 
+export interface WilliamsPasaSignalConfig {
+  enabled: boolean;
+  length: number;
+  emaLen: number;
+  conditions: {
+    threshold: boolean; // %R < 5 (bull) / > 98 (bear)
+  };
+}
+
+export interface NizamiCedidSignalConfig {
+  enabled: boolean;
+  fast: number;
+  slow: number;
+  signalLen: number;
+  vwmaLen: number;
+  conditions: {
+    deltaCross: boolean; // delta > 0 (bull) / < 0 (bear)
+  };
+}
+
 export interface SignalConfig {
   rsi: RSISignalConfig;
   macd: MACDSignalConfig;
@@ -135,6 +157,8 @@ export interface SignalConfig {
   supertrend: SuperTrendSignalConfig;
   ichimoku: IchimokuSignalConfig;
   obv: OBVSignalConfig;
+  williamsPasa: WilliamsPasaSignalConfig;
+  nizamiCedid: NizamiCedidSignalConfig;
   mode: 'AND' | 'OR';
   positionMode: PositionMode;
 }
@@ -191,6 +215,20 @@ export const DEFAULT_SIGNAL_CONFIG: SignalConfig = {
     enabled: true,
     emaPeriod: 20,
     conditions: { obvVsEma: true },
+  },
+  williamsPasa: {
+    enabled: true,
+    length: 260,
+    emaLen: 260,
+    conditions: { threshold: true },
+  },
+  nizamiCedid: {
+    enabled: true,
+    fast: 120,
+    slow: 260,
+    signalLen: 50,
+    vwmaLen: 185,
+    conditions: { deltaCross: true },
   },
   mode: 'OR',
   positionMode: 'long-only',
@@ -545,6 +583,59 @@ export function obvSignals(closes: number[], volumes: number[], cfg?: Partial<OB
   return sig;
 }
 
+export function williamsPasaSignals(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  cfg?: Partial<WilliamsPasaSignalConfig>
+): number[] {
+  const c: WilliamsPasaSignalConfig = {
+    enabled: true,
+    length: 260,
+    emaLen: 260,
+    ...cfg,
+    conditions: { threshold: true, ...cfg?.conditions },
+  };
+  const n = closes.length;
+  const { percentR } = computeWilliamsPasa(highs, lows, closes, c.length, c.emaLen);
+  const sig = new Array<number>(n).fill(0);
+  if (!c.conditions.threshold) return sig;
+  for (let i = 0; i < n; i++) {
+    const r = percentR[i];
+    if (r === null) continue;
+    if (r < 5) sig[i] = 1;
+    else if (r > 98) sig[i] = -1;
+  }
+  return sig;
+}
+
+export function nizamiCedidSignals(
+  closes: number[],
+  volumes: number[],
+  cfg?: Partial<NizamiCedidSignalConfig>
+): number[] {
+  const c: NizamiCedidSignalConfig = {
+    enabled: true,
+    fast: 120,
+    slow: 260,
+    signalLen: 50,
+    vwmaLen: 185,
+    ...cfg,
+    conditions: { deltaCross: true, ...cfg?.conditions },
+  };
+  const n = closes.length;
+  const { delta } = computeNizamiCedid(closes, volumes, c.fast, c.slow, c.signalLen, c.vwmaLen);
+  const sig = new Array<number>(n).fill(0);
+  if (!c.conditions.deltaCross) return sig;
+  for (let i = 0; i < n; i++) {
+    const d = delta[i];
+    if (d === null) continue;
+    if (d > 0) sig[i] = 1;
+    else if (d < 0) sig[i] = -1;
+  }
+  return sig;
+}
+
 // ── Transition detection ────────────────────────
 
 function extractSignalEvents(signals: number[], dates: string[], closes: number[]): SignalEvent[] {
@@ -595,6 +686,16 @@ export function computeAllSignals(data: OHLCVData[]): SymbolSignalResult {
         events: extractSignalEvents(ichimokuSignals(highs, lows, closes), dates, closes),
       },
       { key: 'obv', label: 'OBV', events: extractSignalEvents(obvSignals(closes, volumes), dates, closes) },
+      {
+        key: 'williams_pasa',
+        label: 'Williams Pasa',
+        events: extractSignalEvents(williamsPasaSignals(highs, lows, closes), dates, closes),
+      },
+      {
+        key: 'nizami_cedid',
+        label: 'Nizami Cedid',
+        events: extractSignalEvents(nizamiCedidSignals(closes, volumes), dates, closes),
+      },
     ],
   };
 }
@@ -617,6 +718,8 @@ export function computeCombinedSignals(data: OHLCVData[], config: SignalConfig):
   if (config.supertrend.enabled) active.push(supertrendSignals(highs, lows, closes, config.supertrend));
   if (config.ichimoku.enabled) active.push(ichimokuSignals(highs, lows, closes, config.ichimoku));
   if (config.obv.enabled) active.push(obvSignals(closes, volumes, config.obv));
+  if (config.williamsPasa?.enabled) active.push(williamsPasaSignals(highs, lows, closes, config.williamsPasa));
+  if (config.nizamiCedid?.enabled) active.push(nizamiCedidSignals(closes, volumes, config.nizamiCedid));
 
   if (active.length === 0) return new Array(n).fill(0);
 
