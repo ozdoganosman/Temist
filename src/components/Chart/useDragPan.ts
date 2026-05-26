@@ -63,7 +63,7 @@ export function useDragPan(
     };
 
     const getYExtent = (): [number, number] | null => {
-      const yAxisModel = chart.getModel()?.getComponent('yAxis', 0) as unknown as
+      const yAxisModel = (chart as any).getModel()?.getComponent('yAxis', 0) as unknown as
         | { axis?: { scale?: { getExtent?: () => [number, number] } } }
         | undefined;
       return yAxisModel?.axis?.scale?.getExtent?.() ?? null;

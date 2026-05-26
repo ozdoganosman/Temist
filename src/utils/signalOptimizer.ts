@@ -72,6 +72,16 @@ export function base(): SignalConfig {
       conditions: { ...DEFAULT_SIGNAL_CONFIG.ichimoku.conditions },
     },
     obv: { ...DEFAULT_SIGNAL_CONFIG.obv, enabled: false, conditions: { ...DEFAULT_SIGNAL_CONFIG.obv.conditions } },
+    williamsPasa: {
+      ...DEFAULT_SIGNAL_CONFIG.williamsPasa,
+      enabled: false,
+      conditions: { ...DEFAULT_SIGNAL_CONFIG.williamsPasa.conditions },
+    },
+    nizamiCedid: {
+      ...DEFAULT_SIGNAL_CONFIG.nizamiCedid,
+      enabled: false,
+      conditions: { ...DEFAULT_SIGNAL_CONFIG.nizamiCedid.conditions },
+    },
     mode: 'OR',
     positionMode: 'long-only',
   };
@@ -433,6 +443,8 @@ export function crossover(a: SignalConfig, b: SignalConfig): SignalConfig {
     supertrend: Math.random() < 0.5 ? deepClone(a.supertrend) : deepClone(b.supertrend),
     ichimoku: Math.random() < 0.5 ? deepClone(a.ichimoku) : deepClone(b.ichimoku),
     obv: Math.random() < 0.5 ? deepClone(a.obv) : deepClone(b.obv),
+    williamsPasa: Math.random() < 0.5 ? deepClone(a.williamsPasa) : deepClone(b.williamsPasa),
+    nizamiCedid: Math.random() < 0.5 ? deepClone(a.nizamiCedid) : deepClone(b.nizamiCedid),
     mode: Math.random() < 0.5 ? a.mode : b.mode,
     positionMode: Math.random() < 0.5 ? a.positionMode : b.positionMode,
   };
@@ -440,8 +452,30 @@ export function crossover(a: SignalConfig, b: SignalConfig): SignalConfig {
 
 // ── Phase 3: Multi-indicator combinations ─────
 
-export type IndKey = 'rsi' | 'macd' | 'bollinger' | 'stochRsi' | 'adx' | 'supertrend' | 'ichimoku' | 'obv';
-export const IND_KEYS: IndKey[] = ['rsi', 'macd', 'bollinger', 'stochRsi', 'adx', 'supertrend', 'ichimoku', 'obv'];
+export type IndKey =
+  | 'rsi'
+  | 'macd'
+  | 'bollinger'
+  | 'stochRsi'
+  | 'adx'
+  | 'supertrend'
+  | 'ichimoku'
+  | 'obv'
+  | 'williamsPasa'
+  | 'nizamiCedid';
+
+export const IND_KEYS: IndKey[] = [
+  'rsi',
+  'macd',
+  'bollinger',
+  'stochRsi',
+  'adx',
+  'supertrend',
+  'ichimoku',
+  'obv',
+  'williamsPasa',
+  'nizamiCedid',
+];
 
 export function mergeConfigs(configs: SignalConfig[], mode: 'AND' | 'OR'): SignalConfig {
   const b = base();

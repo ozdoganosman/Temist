@@ -227,7 +227,7 @@ export default function ChartContainer({
           }
         }
 
-        const yAxisModel = chart.getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
+        const yAxisModel = (chart as any).getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
         const extent = yAxisModel?.axis?.scale?.getExtent?.();
         if (extent) {
           priceAxisDragStartY = e.clientY;
@@ -264,11 +264,11 @@ export default function ChartContainer({
         activeYAxisIdx = foundIdx;
         activeYAxisId = yAxes[foundIdx].id || 'y-axis-price';
       }
-      const yAxisModel = chart.getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
-      const extent = yAxisModel?.axis?.scale?.getExtent?.();
-      if (extent) {
-        startYMin = extent[0];
-        startYMax = extent[1];
+      const yAxisModel2 = (chart as any).getModel()?.getComponent('yAxis', activeYAxisIdx) as any;
+      const extent2 = yAxisModel2?.axis?.scale?.getExtent?.();
+      if (extent2) {
+        startYMin = extent2[0];
+        startYMax = extent2[1];
       }
       e.preventDefault();
     };

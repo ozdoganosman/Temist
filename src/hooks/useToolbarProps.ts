@@ -71,8 +71,8 @@ export function useToolbarProps() {
   const [legendData, setLegendData] = useState<LegendData | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>(initial.view ?? 'chart');
   const [dataTimestamp, setDataTimestamp] = useState<number | null>(null);
-  const [finHeight, setFinHeight] = useState(300);
-  const [sigHeight, setSigHeight] = useState(300);
+  const [finHeight, setFinHeight] = useState(() => (window.innerWidth < 768 ? 180 : 300));
+  const [sigHeight, setSigHeight] = useState(() => (window.innerWidth < 768 ? 200 : 300));
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [alarmsOpen, setAlarmsOpen] = useState(false);
   const splitterRef = useRef<HTMLDivElement>(null);
@@ -136,26 +136,56 @@ export function useToolbarProps() {
   useEffect(() => {
     if (!showFinancials) return;
 
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      const startY = e.clientY;
+    const onStart = (startY: number) => {
       const startH = finHeightRef.current;
 
-      const onMove = (ev: MouseEvent) => {
-        const diff = startY - ev.clientY;
+      const onMove = (currentY: number) => {
+        const diff = startY - currentY;
         setFinHeight(Math.max(120, Math.min(window.innerHeight - 200, startH + diff)));
       };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+
+      const onMouseMove = (ev: MouseEvent) => {
+        onMove(ev.clientY);
       };
-      document.addEventListener('mousemove', onMove);
+
+      const onTouchMove = (ev: TouchEvent) => {
+        if (ev.touches.length > 0) {
+          onMove(ev.touches[0].clientY);
+        }
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onTouchMove, { passive: true });
+      document.addEventListener('touchend', onUp);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      onStart(e.clientY);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        onStart(e.touches[0].clientY);
+      }
     };
 
     const splitter = splitterRef.current;
     splitter?.addEventListener('mousedown', onMouseDown);
-    return () => splitter?.removeEventListener('mousedown', onMouseDown);
+    splitter?.addEventListener('touchstart', onTouchStart, { passive: true });
+
+    return () => {
+      splitter?.removeEventListener('mousedown', onMouseDown);
+      splitter?.removeEventListener('touchstart', onTouchStart);
+    };
   }, [showFinancials]);
 
   // Signal splitter drag
@@ -165,26 +195,56 @@ export function useToolbarProps() {
   useEffect(() => {
     if (!showSignals) return;
 
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      const startY = e.clientY;
+    const onStart = (startY: number) => {
       const startH = sigHeightRef.current;
 
-      const onMove = (ev: MouseEvent) => {
-        const diff = startY - ev.clientY;
+      const onMove = (currentY: number) => {
+        const diff = startY - currentY;
         setSigHeight(Math.max(120, Math.min(window.innerHeight - 200, startH + diff)));
       };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+
+      const onMouseMove = (ev: MouseEvent) => {
+        onMove(ev.clientY);
       };
-      document.addEventListener('mousemove', onMove);
+
+      const onTouchMove = (ev: TouchEvent) => {
+        if (ev.touches.length > 0) {
+          onMove(ev.touches[0].clientY);
+        }
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onTouchMove, { passive: true });
+      document.addEventListener('touchend', onUp);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      onStart(e.clientY);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        onStart(e.touches[0].clientY);
+      }
     };
 
     const splitter = sigSplitterRef.current;
     splitter?.addEventListener('mousedown', onMouseDown);
-    return () => splitter?.removeEventListener('mousedown', onMouseDown);
+    splitter?.addEventListener('touchstart', onTouchStart, { passive: true });
+
+    return () => {
+      splitter?.removeEventListener('mousedown', onMouseDown);
+      splitter?.removeEventListener('touchstart', onTouchStart);
+    };
   }, [showSignals]);
 
   // ── Computed ──

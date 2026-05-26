@@ -65,14 +65,31 @@ body {
 }
 
 .splitter {
-  height: 5px;
-  background: var(--border-primary);
+  height: 10px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-primary);
   cursor: ns-resize;
   flex-shrink: 0;
+  position: relative;
+  touch-action: none;
+}
+
+.splitter::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 3px;
+  background: var(--border-secondary);
+  border-radius: 1.5px;
   transition: background 0.15s;
 }
 
-.splitter:hover {
+.splitter:hover::after,
+.splitter:active::after {
   background: var(--accent);
 }
 
@@ -104,35 +121,35 @@ body {
   }
 
   .chart-wrapper {
-    min-height: 300px;
+    min-height: 250px;
   }
 
   .financials-panel {
-    height: auto !important;
-    max-height: 250px;
+    max-height: 35vh;
   }
 
   .signal-panel-wrapper {
-    height: auto !important;
-    max-height: 280px;
+    max-height: 40vh;
   }
 
   .splitter {
-    height: 4px;
+    height: 12px; /* slightly taller touch hit area on mobile */
   }
 }
 
 /* Small phone breakpoint */
 @media (max-width: 480px) {
   .chart-wrapper {
-    min-height: 250px;
+    min-height: 220px;
+  }
+  .financials-panel {
+    max-height: 30vh;
   }
   .signal-panel-wrapper {
-    height: auto !important;
-    max-height: 200px;
+    max-height: 35vh;
   }
   .splitter {
-    height: 8px; /* bigger touch target */
+    height: 14px;
   }
 }
 

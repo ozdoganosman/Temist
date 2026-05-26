@@ -1456,7 +1456,10 @@ export function buildOption(
       link: [{ xAxisIndex: allXAxisIndices }],
       label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
     },
-    graphic: showPearsonChannels && pearsonResults.length > 0 ? [buildPearsonTable(pearsonResults, tc, mainBottom + 10)] : undefined,
+    graphic:
+      showPearsonChannels && pearsonResults.length > 0 && window.innerWidth >= 768
+        ? [buildPearsonTable(pearsonResults, tc, mainBottom + 10)]
+        : undefined,
     series: [
       { ...mainSeries, xAxisIndex: 0, yAxisIndex: 0 },
       {

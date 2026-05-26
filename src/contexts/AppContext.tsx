@@ -78,7 +78,7 @@ const initialState: IndicatorState = {
 };
 
 /** Sync overlay toggles from signal config */
-function syncOverlaysFromConfig(state: IndicatorState, config: SignalConfig): Partial<IndicatorState> {
+function syncOverlaysFromConfig(_state: IndicatorState, config: SignalConfig): Partial<IndicatorState> {
   return {
     showBollinger: config.bollinger.enabled,
     showRSI: config.rsi.enabled,
