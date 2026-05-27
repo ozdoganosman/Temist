@@ -48,10 +48,8 @@ interface MobileToolbarProps {
   onToggleAlarms: () => void;
   alarmCount: number;
   dataTimestamp: number | null;
-  onToggleSignals: () => void;
-  showSignals: boolean;
-  activeMobileTab?: 'chart' | 'watchlist' | 'financials' | 'signals' | 'alarms';
-  onMobileTabChange?: (tab: 'chart' | 'watchlist' | 'financials' | 'signals' | 'alarms') => void;
+  activeMobileTab?: 'chart' | 'watchlist' | 'financials' | 'alarms';
+  onMobileTabChange?: (tab: 'chart' | 'watchlist' | 'financials' | 'alarms') => void;
 }
 
 // INTERVALS definition moved to App.tsx
@@ -257,16 +255,6 @@ export default function MobileToolbar({
                 aria-label="Finansal Analiz"
               >
                 Finansal Analiz
-              </button>
-              <button
-                className={`mm-item ${activeView === 'kripto' ? 'active' : ''}`}
-                onClick={() => {
-                  onViewChange('kripto');
-                  setMenuOpen(false);
-                }}
-                aria-label="Kripto"
-              >
-                Kripto
               </button>
             </div>
           </div>

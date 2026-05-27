@@ -16,7 +16,7 @@ import type { SymbolInfo } from '../api/borsaApi';
 
 // --- Hash routing helpers ---
 
-const VIEW_ROUTES: ActiveView[] = ['analysis', 'multichart', 'backtest', 'finansal', 'kripto'];
+const VIEW_ROUTES: ActiveView[] = ['analysis', 'multichart', 'backtest', 'finansal'];
 
 function parseHash(): { symbol?: string; view?: ActiveView } {
   const hash = window.location.hash.replace(/^#\/?/, '');
@@ -52,13 +52,8 @@ export function useToolbarProps() {
     showPearsonChannels,
     showMATLRNS,
     showFinancials,
-    showSignals,
     logScale,
-    signalConfig,
-    signalDateRange,
     toggle,
-    setSignalConfig,
-    setSignalDateRange,
   } = useAppContext();
 
   const { toast } = useToast();
@@ -72,11 +67,9 @@ export function useToolbarProps() {
   const [activeView, setActiveView] = useState<ActiveView>(initial.view ?? 'chart');
   const [dataTimestamp, setDataTimestamp] = useState<number | null>(null);
   const [finHeight, setFinHeight] = useState(() => (window.innerWidth < 768 ? 180 : 300));
-  const [sigHeight, setSigHeight] = useState(() => (window.innerWidth < 768 ? 200 : 300));
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [alarmsOpen, setAlarmsOpen] = useState(false);
   const splitterRef = useRef<HTMLDivElement>(null);
-  const sigSplitterRef = useRef<HTMLDivElement>(null);
 
   // ── Sub-hooks ──
   const { watchlist, toggleSymbol, removeSymbol, isWatched } = useWatchlist();
@@ -188,64 +181,7 @@ export function useToolbarProps() {
     };
   }, [showFinancials]);
 
-  // Signal splitter drag
-  const sigHeightRef = useRef(sigHeight);
-  sigHeightRef.current = sigHeight;
 
-  useEffect(() => {
-    if (!showSignals) return;
-
-    const onStart = (startY: number) => {
-      const startH = sigHeightRef.current;
-
-      const onMove = (currentY: number) => {
-        const diff = startY - currentY;
-        setSigHeight(Math.max(120, Math.min(window.innerHeight - 200, startH + diff)));
-      };
-
-      const onMouseMove = (ev: MouseEvent) => {
-        onMove(ev.clientY);
-      };
-
-      const onTouchMove = (ev: TouchEvent) => {
-        if (ev.touches.length > 0) {
-          onMove(ev.touches[0].clientY);
-        }
-      };
-
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onUp);
-        document.removeEventListener('touchmove', onTouchMove);
-        document.removeEventListener('touchend', onUp);
-      };
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchmove', onTouchMove, { passive: true });
-      document.addEventListener('touchend', onUp);
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      onStart(e.clientY);
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        onStart(e.touches[0].clientY);
-      }
-    };
-
-    const splitter = sigSplitterRef.current;
-    splitter?.addEventListener('mousedown', onMouseDown);
-    splitter?.addEventListener('touchstart', onTouchStart, { passive: true });
-
-    return () => {
-      splitter?.removeEventListener('mousedown', onMouseDown);
-      splitter?.removeEventListener('touchstart', onTouchStart);
-    };
-  }, [showSignals]);
 
   // ── Computed ──
   const lastBar = data.length > 0 ? data[data.length - 1] : null;
@@ -306,8 +242,6 @@ export function useToolbarProps() {
     onToggleAlarms: () => setAlarmsOpen((v: boolean) => !v),
     alarmCount: alarms.filter((a) => a.enabled && !a.triggered).length,
     dataTimestamp,
-    onToggleSignals: () => toggle('showSignals'),
-    showSignals,
   };
 
   // ── Return everything AppContent needs ──
@@ -347,18 +281,11 @@ export function useToolbarProps() {
     showPearsonChannels,
     showMATLRNS,
     showFinancials,
-    showSignals,
     logScale,
-    signalConfig,
-    setSignalConfig,
-    signalDateRange,
-    setSignalDateRange,
 
     // panels
     finHeight,
-    sigHeight,
     splitterRef,
-    sigSplitterRef,
 
     // watchlist
     watchlist,

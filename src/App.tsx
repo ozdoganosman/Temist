@@ -22,7 +22,6 @@ import Legend from './components/Legend/Legend';
 import Financials from './components/Financials/Financials';
 import Watchlist from './components/Watchlist/Watchlist';
 import AlarmPanel from './components/Alarms/AlarmPanel';
-import SignalPanel from './components/SignalPanel/SignalPanel';
 import StockSummary from './components/StockSummary/StockSummary';
 import ExportMenu from './components/Chart/ExportMenu';
 import Disclaimer from './components/Disclaimer/Disclaimer';
@@ -33,7 +32,6 @@ const MarketAnalysis = lazy(() => import('./components/Analysis/MarketAnalysis')
 const MultiChartView = lazy(() => import('./components/MultiChart/MultiChartView'));
 const BacktestView = lazy(() => import('./components/Backtest/BacktestView'));
 const FinancialAnalysisView = lazy(() => import('./components/FinancialAnalysis/FinancialAnalysisView'));
-const CryptoPage = lazy(() => import('./components/Crypto/CryptoPage'));
 
 function ViewFallback() {
   const { t } = useTranslation();
@@ -72,16 +70,9 @@ function AppContent() {
     showPearsonChannels,
     showMATLRNS,
     showFinancials,
-    showSignals,
     logScale,
-    signalConfig,
-    setSignalConfig,
-    signalDateRange,
-    setSignalDateRange,
     finHeight,
-    sigHeight,
     splitterRef,
-    sigSplitterRef,
     watchlist,
     watchlistOpen,
     setWatchlistOpen,
@@ -96,7 +87,7 @@ function AppContent() {
     uniqueActiveSymbols,
   } = useToolbarProps();
 
-  const [mobileTab, setMobileTab] = useState<'chart' | 'watchlist' | 'financials' | 'signals' | 'alarms'>('chart');
+  const [mobileTab, setMobileTab] = useState<'chart' | 'watchlist' | 'financials' | 'alarms'>('chart');
 
   // Sync state between mobileTab and watchlistOpen/alarmsOpen
   useEffect(() => {
@@ -109,19 +100,7 @@ function AppContent() {
     }
   }, [watchlistOpen, alarmsOpen, isMobile]);
 
-  // Kripto mode renders its own full-page layout
-  if (activeView === 'kripto') {
-    return (
-      <div className="app">
-        <ErrorBoundary>
-          <Suspense fallback={<ViewFallback />}>
-            <CryptoPage onViewChange={setActiveView} />
-          </Suspense>
-        </ErrorBoundary>
-        <Disclaimer />
-      </div>
-    );
-  }
+
 
   // --- Mobile Layout ---
   if (isMobile) {
@@ -274,8 +253,6 @@ function AppContent() {
                             showPearsonChannels={showPearsonChannels}
                             showMATLRNS={showMATLRNS}
                             logScale={logScale}
-                            showSignals={showSignals}
-                            signalConfig={signalConfig}
                           />
                         </ErrorBoundary>
                       )}
@@ -313,20 +290,7 @@ function AppContent() {
                   </div>
                 )}
 
-                {mobileTab === 'signals' && (
-                  <div className="mobile-tab-panel signals-tab-active">
-                    <ErrorBoundary>
-                      <SignalPanel
-                        data={data}
-                        symbol={symbol}
-                        config={signalConfig}
-                        onConfigChange={setSignalConfig}
-                        dateRange={signalDateRange}
-                        onDateRangeChange={setSignalDateRange}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                )}
+
 
                 {mobileTab === 'alarms' && (
                   <div className="mobile-tab-panel alarms-tab-active">
@@ -406,20 +370,7 @@ function AppContent() {
             <span>Finansal</span>
           </button>
 
-          <button
-            className={`mb-nav-item ${activeView === 'chart' && mobileTab === 'signals' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveView('chart');
-              setMobileTab('signals');
-              setWatchlistOpen(false);
-              setAlarmsOpen(false);
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            <span>Sinyal</span>
-          </button>
+
 
           <button
             className={`mb-nav-item ${activeView === 'chart' && mobileTab === 'alarms' ? 'active' : ''}`}
@@ -497,8 +448,6 @@ function AppContent() {
                       showPearsonChannels={showPearsonChannels}
                       showMATLRNS={showMATLRNS}
                       logScale={logScale}
-                      showSignals={showSignals}
-                      signalConfig={signalConfig}
                     />
                   </ErrorBoundary>
                 )}
@@ -513,23 +462,7 @@ function AppContent() {
                   </div>
                 </>
               )}
-              {showSignals && (
-                <>
-                  <div ref={sigSplitterRef} className="splitter" />
-                  <div className="signal-panel-wrapper" style={{ height: sigHeight }}>
-                    <ErrorBoundary>
-                      <SignalPanel
-                        data={data}
-                        symbol={symbol}
-                        config={signalConfig}
-                        onConfigChange={setSignalConfig}
-                        dateRange={signalDateRange}
-                        onDateRangeChange={setSignalDateRange}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                </>
-              )}
+
             </>
           )}
           {activeView === 'analysis' && (

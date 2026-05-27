@@ -50,9 +50,6 @@ interface ToolbarProps {
   onToggleAlarms: () => void;
   alarmCount: number;
   dataTimestamp: number | null;
-  // Signals
-  onToggleSignals: () => void;
-  showSignals: boolean;
 }
 
 function formatTurkishDate(ts: number): string {
@@ -116,8 +113,6 @@ export default function Toolbar({
   onToggleAlarms,
   alarmCount,
   dataTimestamp,
-  onToggleSignals: _onToggleSignals,
-  showSignals: _showSignals,
 }: ToolbarProps) {
   const isChart = activeView === 'chart' || activeView === 'multichart';
   const { theme, toggleTheme } = useTheme();
