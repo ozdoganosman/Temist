@@ -327,6 +327,14 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
   };
 }
 
+export function getGridMargins() {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  return {
+    left: isMobile ? 40 : 80,
+    right: isMobile ? 40 : 80,
+  };
+}
+
 export function buildOption(
   filtered: OHLCVData[],
   symbol: string,
@@ -449,9 +457,10 @@ export function buildOption(
   }
   const mainBottom = hasSubPanels ? panelBottoms[panelBottoms.length - 1] + panelHeight + 20 : 50;
 
-  const grids: echarts.GridComponentOption[] = [{ left: 80, right: 80, top: 20, bottom: mainBottom, containLabel: false }];
+  const margins = getGridMargins();
+  const grids: echarts.GridComponentOption[] = [{ left: margins.left, right: margins.right, top: 20, bottom: mainBottom, containLabel: false }];
   for (let i = 0; i < subPanels.length; i++) {
-    grids.push({ left: 80, right: 80, bottom: panelBottoms[i], height: panelHeight, containLabel: false });
+    grids.push({ left: margins.left, right: margins.right, bottom: panelBottoms[i], height: panelHeight, containLabel: false });
   }
 
   const allXAxisIndices = Array.from({ length: 1 + subPanels.length }, (_, i) => i);

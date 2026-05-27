@@ -12,7 +12,7 @@ import {
 } from '../../utils/signalDetection';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
-import { buildOption, getThemeColors, getPaddingCount } from './chartBuilder';
+import { buildOption, getThemeColors, getPaddingCount, getGridMargins } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import './ChartContainer.css';
 
@@ -154,8 +154,9 @@ export default function ChartContainer({
     const onHoverMove = (e: MouseEvent) => {
       if (!containerRef.current || dragging || dragOnPriceAxis) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const gridRight = rect.right - 80;
-      const gridLeft = rect.left + 80;
+      const margins = getGridMargins();
+      const gridRight = rect.right - margins.right;
+      const gridLeft = rect.left + margins.left;
       const distFromBottom = rect.bottom - e.clientY;
       const clickY = e.clientY - rect.top;
 
@@ -183,9 +184,9 @@ export default function ChartContainer({
     const handleDragStart = (clientX: number, clientY: number, preventDefault: () => void) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-
-      const gridLeft = rect.left + 80;
-      const gridRight = rect.right - 80;
+      const margins = getGridMargins();
+      const gridLeft = rect.left + margins.left;
+      const gridRight = rect.right - margins.right;
       const distFromBottom = rect.bottom - clientY;
       const clickY = clientY - rect.top;
 
@@ -395,8 +396,9 @@ export default function ChartContainer({
     const onDblClick = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const gridLeft = rect.left + 80;
-      const gridRight = rect.right - 80;
+      const margins = getGridMargins();
+      const gridLeft = rect.left + margins.left;
+      const gridRight = rect.right - margins.right;
       const distFromBottom = rect.bottom - e.clientY;
       const clickY = e.clientY - rect.top;
 

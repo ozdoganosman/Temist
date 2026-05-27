@@ -9,16 +9,22 @@ export function formatPrice(price: number): string {
 }
 
 export function formatVolume(volume: number): string {
-  if (volume >= 1_000_000_000) {
-    return (volume / 1_000_000_000).toFixed(2) + 'B';
+  if (volume === null || volume === undefined || isNaN(volume)) return '0';
+  const isNegative = volume < 0;
+  const absVolume = Math.abs(volume);
+  
+  let formatted = '';
+  if (absVolume >= 1_000_000_000) {
+    formatted = (absVolume / 1_000_000_000).toFixed(2) + 'B';
+  } else if (absVolume >= 1_000_000) {
+    formatted = (absVolume / 1_000_000).toFixed(2) + 'M';
+  } else if (absVolume >= 1_000) {
+    formatted = (absVolume / 1_000).toFixed(1) + 'K';
+  } else {
+    formatted = Number.isInteger(absVolume) ? absVolume.toString() : absVolume.toFixed(2);
   }
-  if (volume >= 1_000_000) {
-    return (volume / 1_000_000).toFixed(2) + 'M';
-  }
-  if (volume >= 1_000) {
-    return (volume / 1_000).toFixed(1) + 'K';
-  }
-  return volume.toString();
+  
+  return isNegative ? '-' + formatted : formatted;
 }
 
 export function formatChange(current: number, previous: number): { value: string; percent: string; positive: boolean } {
