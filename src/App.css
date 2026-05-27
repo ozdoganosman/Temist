@@ -125,6 +125,7 @@ body {
 
   .chart-wrapper {
     min-height: 250px;
+    flex: 1;
   }
 
   .financials-panel {
@@ -136,7 +137,97 @@ body {
   }
 
   .splitter {
-    height: 12px; /* slightly taller touch hit area on mobile */
+    height: 12px;
+  }
+
+  /* --- New Tab UI Classes --- */
+  .mobile-app {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .mobile-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 52px; /* bottom bar spacing */
+  }
+
+  .mobile-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mobile-tab-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart-tab-active {
+    overflow: hidden !important;
+  }
+
+  /* Component overrides in mobile tabs */
+  .mobile-tab-panel .watchlist-panel {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    box-shadow: none !important;
+    left: auto !important;
+    top: auto !important;
+    border-right: none !important;
+    flex: 1 !important;
+  }
+
+  .mobile-tab-panel .alarm-panel {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    box-shadow: none !important;
+    right: auto !important;
+    top: auto !important;
+    border-left: none !important;
+    flex: 1 !important;
+  }
+
+  .mobile-tab-panel .signal-panel-wrapper {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    flex: 1 !important;
+  }
+
+  .mobile-tab-panel .signal-panel {
+    width: 100% !important;
+    height: 100% !important;
+    border-left: none !important;
+  }
+
+  .mobile-tab-panel .financials {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 10px;
+  }
+
+  .mobile-tab-panel .fin-table-wrap {
+    flex: 1;
+    overflow: auto !important;
   }
 }
 

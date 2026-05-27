@@ -50,18 +50,11 @@ interface MobileToolbarProps {
   dataTimestamp: number | null;
   onToggleSignals: () => void;
   showSignals: boolean;
+  activeMobileTab?: 'chart' | 'watchlist' | 'financials' | 'signals' | 'alarms';
+  onMobileTabChange?: (tab: 'chart' | 'watchlist' | 'financials' | 'signals' | 'alarms') => void;
 }
 
-const INTERVALS: { value: Interval; label: string }[] = [
-  { value: '1m', label: '1dk' },
-  { value: '5m', label: '5dk' },
-  { value: '15m', label: '15dk' },
-  { value: '30m', label: '30dk' },
-  { value: '1h', label: '1S' },
-  { value: '1d', label: '1G' },
-  { value: '1wk', label: '1H' },
-  { value: '1mo', label: '1A' },
-];
+// INTERVALS definition moved to App.tsx
 
 function MobileSymbolSearch({
   symbol,
@@ -153,54 +146,19 @@ function MobileSymbolSearch({
 export default function MobileToolbar({
   symbol,
   symbols,
-  interval,
   onSymbolChange,
-  onIntervalChange,
-  onToggleFinancials,
-  showFinancials,
-  onToggleBollinger: _onToggleBollinger,
-  showBollinger: _showBollinger,
-  onToggleRSI: _onToggleRSI,
-  showRSI: _showRSI,
-  onToggleMACD: _onToggleMACD,
-  showMACD: _showMACD,
-  onToggleStochRSI: _onToggleStochRSI,
-  showStochRSI: _showStochRSI,
-  onToggleSuperTrend: _onToggleSuperTrend,
-  showSuperTrend: _showSuperTrend,
-  onToggleIchimoku: _onToggleIchimoku,
-  showIchimoku: _showIchimoku,
-  onToggleOBV: _onToggleOBV,
-  showOBV: _showOBV,
-  onToggleWilliamsPasa,
-  showWilliamsPasa,
-  onToggleNizamiCedid,
-  showNizamiCedid,
-  onToggleEMAOverlay,
-  showEMAOverlay,
-  onTogglePearsonChannels,
-  showPearsonChannels,
-  onToggleMATLRNS,
-  showMATLRNS,
-  logScale,
-  onToggleLogScale,
   activeView,
   onViewChange,
-  watchlistOpen,
-  onToggleWatchlist,
   isCurrentSymbolWatched,
   onToggleCurrentSymbolWatch,
-  alarmsOpen,
-  onToggleAlarms,
   alarmCount,
   dataTimestamp,
-  onToggleSignals: _onToggleSignals,
-  showSignals: _showSignals,
+  activeMobileTab,
+  onMobileTabChange,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  const isChart = activeView === 'chart' || activeView === 'multichart';
 
   const currentSymbol = symbols.find((s) => s.name === symbol);
 
@@ -240,7 +198,11 @@ export default function MobileToolbar({
 
         {/* Right: quick actions */}
         <div className="mt-right">
-          <button className={`mt-btn ${alarmsOpen ? 'active' : ''}`} onClick={onToggleAlarms} aria-label="Alarmlar">
+          <button
+            className={`mt-btn ${activeMobileTab === 'alarms' ? 'active' : ''}`}
+            onClick={() => onMobileTabChange?.('alarms')}
+            aria-label="Alarmlar"
+          >
             <svg
               width="14"
               height="14"
@@ -269,114 +231,17 @@ export default function MobileToolbar({
         </div>
       </div>
 
-      {/* Second bar: view tabs + intervals (when in chart view) */}
-      <div className="mobile-interval-bar">
-        <div className="mib-views">
-          <button className={`mib-btn ${activeView === 'chart' ? 'active' : ''}`} onClick={() => onViewChange('chart')}>
-            Grafik
-          </button>
-          <button
-            className={`mib-btn mib-finansal ${activeView === 'finansal' ? 'active' : ''}`}
-            onClick={() => onViewChange('finansal')}
-          >
-            Finansal
-          </button>
-        </div>
-
-        {isChart && (
-          <div className="mib-intervals">
-            {INTERVALS.map((iv) => (
-              <button
-                key={iv.value}
-                className={`mib-btn ${interval === iv.value ? 'active' : ''}`}
-                onClick={() => onIntervalChange(iv.value)}
-              >
-                {iv.label}
-              </button>
-            ))}
-            <button className={`mib-btn ${logScale ? 'active' : ''}`} onClick={onToggleLogScale}>
-              Log
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* Hamburger menu */}
       {menuOpen && (
         <div className="mobile-menu-overlay" role="dialog" onClick={() => setMenuOpen(false)}>
           <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
             <div className="mm-section">
-              <div className="mm-section-title">Gorunum</div>
-              <button
-                className={`mm-item ${watchlistOpen ? 'active' : ''}`}
-                onClick={() => {
-                  onToggleWatchlist();
-                  setMenuOpen(false);
-                }}
-                aria-label="Takip Listesi"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-                Takip Listesi
-              </button>
-              <button
-                className={`mm-item ${alarmsOpen ? 'active' : ''}`}
-                onClick={() => {
-                  onToggleAlarms();
-                  setMenuOpen(false);
-                }}
-                aria-label="Alarmlar"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                Alarmlar
-                {alarmCount > 0 && <span className="mt-badge">{alarmCount}</span>}
-              </button>
-            </div>
-
-            {isChart && (
-              <div className="mm-section">
-                <div className="mm-section-title">Indikatorler</div>
-                <button className={`mm-item ${showWilliamsPasa ? 'active' : ''}`} onClick={() => onToggleWilliamsPasa()}>
-                  Williams Paşa
-                </button>
-                <button className={`mm-item ${showNizamiCedid ? 'active' : ''}`} onClick={() => onToggleNizamiCedid()}>
-                  Nizami Cedid
-                </button>
-                <button className={`mm-item ${showEMAOverlay ? 'active' : ''}`} onClick={() => onToggleEMAOverlay()}>
-                  EMA
-                </button>
-                <button className={`mm-item ${showPearsonChannels ? 'active' : ''}`} onClick={() => onTogglePearsonChannels()}>
-                  3ChanPers
-                </button>
-                <button className={`mm-item ${showMATLRNS ? 'active' : ''}`} onClick={() => onToggleMATLRNS()}>
-                  MATLRNS
-                </button>
-
-                <button
-                  className={`mm-item ${showFinancials ? 'active' : ''}`}
-                  onClick={() => onToggleFinancials()}
-                  aria-label="Finansal veriler"
-                >
-                  Finansallar
-                </button>
-              </div>
-            )}
-
-            <div className="mm-section">
-              <div className="mm-section-title">Sayfa</div>
+              <div className="mm-section-title">Sayfalar</div>
               <button
                 className={`mm-item ${activeView === 'chart' ? 'active' : ''}`}
                 onClick={() => {
                   onViewChange('chart');
+                  onMobileTabChange?.('chart');
                   setMenuOpen(false);
                 }}
                 aria-label="Grafik gorunumu"
@@ -392,6 +257,16 @@ export default function MobileToolbar({
                 aria-label="Finansal Analiz"
               >
                 Finansal Analiz
+              </button>
+              <button
+                className={`mm-item ${activeView === 'kripto' ? 'active' : ''}`}
+                onClick={() => {
+                  onViewChange('kripto');
+                  setMenuOpen(false);
+                }}
+                aria-label="Kripto"
+              >
+                Kripto
               </button>
             </div>
           </div>

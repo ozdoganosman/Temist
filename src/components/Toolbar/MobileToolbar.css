@@ -115,75 +115,110 @@
   white-space: nowrap;
 }
 
-/* Interval bar */
-.mobile-interval-bar {
+/* Quick Indicator & Interval scroll bar */
+.mobile-quick-toggle-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px;
+  gap: 8px;
+  padding: 6px 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
-  gap: 6px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-}
-
-.mobile-interval-bar::-webkit-scrollbar {
-  display: none;
-}
-
-.mib-intervals,
-.mib-views {
-  display: flex;
-  gap: 2px;
+  scrollbar-width: none; /* Firefox */
   flex-shrink: 0;
 }
 
-.mib-btn {
-  background: transparent;
+.mobile-quick-toggle-bar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.mqt-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mqt-group:not(:last-child) {
+  border-right: 1px solid var(--border-primary);
+  padding-right: 8px;
+}
+
+.mqt-btn {
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 4px 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 4px 10px;
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
+  transition: all 0.15s ease;
 }
 
-.mib-btn:active {
+.mqt-btn:active {
   background: var(--border-primary);
 }
 
-.mib-btn.active {
+.mqt-btn.active {
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.mib-multi.active {
-  background: #7c4dff;
-  border-color: #7c4dff;
+/* Mobile Sticky Bottom Nav Bar */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0); /* Support iOS notch/bar */
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.mib-analysis.active {
-  background: var(--up-color);
-  border-color: var(--up-color);
+.mb-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  gap: 2px;
+  flex: 1;
+  height: 100%;
+  transition: color 0.15s ease;
 }
 
-.mib-backtest.active {
-  background: #ff6d00;
-  border-color: #ff6d00;
+.mb-nav-item svg {
+  stroke: var(--text-muted);
+  transition: stroke 0.15s ease;
 }
 
-.mib-finansal.active {
-  background: #00897b;
-  border-color: #00897b;
+.mb-nav-item:active {
+  background: var(--highlight-bg);
 }
 
-.mib-signal.active {
-  background: #d81b60;
-  border-color: #d81b60;
+.mb-nav-item.active {
+  color: var(--accent);
+}
+
+.mb-nav-item.active svg {
+  stroke: var(--accent);
 }
 
 /* Mobile menu overlay */
