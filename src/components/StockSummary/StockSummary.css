@@ -57,14 +57,6 @@
 
 @media (max-width: 768px) {
   .stock-summary {
-    padding: 4px 8px;
-  }
-
-  .ss-grid {
-    gap: 10px;
-  }
-
-  .ss-value {
-    font-size: 11px;
+    display: none;
   }
 }
