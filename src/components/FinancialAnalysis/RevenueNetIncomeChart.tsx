@@ -35,12 +35,7 @@ export default function RevenueNetIncomeChart({ data }: Props) {
     const t = getChartTheme();
     inst.current.setOption(
       {
-        title: {
-          text: 'HASILAT & NET KÂR',
-          left: 12,
-          top: 8,
-          textStyle: { color: t.titleColor, fontSize: 12, fontWeight: 600 },
-        },
+        title: { show: false },
         tooltip: {
           trigger: 'axis',
           backgroundColor: t.tooltipBg,
@@ -51,8 +46,8 @@ export default function RevenueNetIncomeChart({ data }: Props) {
             return `<b>${params[0].axisValue}</b><br/>${items.join('<br/>')}`;
           },
         },
-        legend: { top: 8, right: 12, textStyle: { color: t.titleColor, fontSize: 10 }, itemWidth: 12, itemHeight: 10 },
-        grid: { left: 60, right: 15, top: 40, bottom: 24 },
+        legend: { type: 'scroll', top: 4, right: 12, textStyle: { color: t.titleColor, fontSize: 10 }, itemWidth: 12, itemHeight: 10 },
+        grid: { left: 60, right: 15, top: 25, bottom: 24 },
         xAxis: {
           type: 'category',
           data: data.map((d) => d.label),

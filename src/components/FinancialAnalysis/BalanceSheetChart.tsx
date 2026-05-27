@@ -36,12 +36,7 @@ export default function BalanceSheetChart({ data }: Props) {
 
     inst.current.setOption(
       {
-        title: {
-          text: 'BİLANÇO YAPISI',
-          left: 12,
-          top: 8,
-          textStyle: { color: t.titleColor, fontSize: 12, fontWeight: 600 },
-        },
+        title: { show: false },
         tooltip: {
           trigger: 'axis',
           backgroundColor: t.tooltipBg,
@@ -58,8 +53,8 @@ export default function BalanceSheetChart({ data }: Props) {
             return `<b>${params[0].axisValue}</b><br/>${items.join('<br/>')}`;
           },
         },
-        legend: { top: 8, right: 12, textStyle: { color: t.titleColor, fontSize: 9 }, itemWidth: 10, itemHeight: 10 },
-        grid: { left: 60, right: 15, top: 44, bottom: 24 },
+        legend: { type: 'scroll', top: 4, right: 12, textStyle: { color: t.titleColor, fontSize: 9 }, itemWidth: 10, itemHeight: 10 },
+        grid: { left: 60, right: 15, top: 25, bottom: 24 },
         xAxis: {
           type: 'category',
           data: data.map((d) => d.label),

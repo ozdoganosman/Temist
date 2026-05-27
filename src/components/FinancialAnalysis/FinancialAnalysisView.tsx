@@ -188,16 +188,28 @@ export default function FinancialAnalysisView({ symbol, symbols, data, onSymbolC
           {/* Chart Grid */}
           <div className="fa-chart-grid">
             <div className="fa-chart-card">
-              <RevenueNetIncomeChart data={revenueProfitData} />
+              <div className="fa-chart-header">Hasılat & Net Kâr</div>
+              <div className="fa-chart-body">
+                <RevenueNetIncomeChart data={revenueProfitData} />
+              </div>
             </div>
             <div className="fa-chart-card">
-              <ProfitabilityMarginsChart data={marginsData} />
+              <div className="fa-chart-header">Karlılık Marjları</div>
+              <div className="fa-chart-body">
+                <ProfitabilityMarginsChart data={marginsData} />
+              </div>
             </div>
             <div className="fa-chart-card">
-              <BalanceSheetChart data={balanceSheetData} />
+              <div className="fa-chart-header">Bilanço Yapısı</div>
+              <div className="fa-chart-body">
+                <BalanceSheetChart data={balanceSheetData} />
+              </div>
             </div>
             <div className="fa-chart-card">
-              <CashFlowChart data={cashFlowData} />
+              <div className="fa-chart-header">Nakit Akışları</div>
+              <div className="fa-chart-body">
+                <CashFlowChart data={cashFlowData} />
+              </div>
             </div>
           </div>
 
