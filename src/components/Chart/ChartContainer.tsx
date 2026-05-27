@@ -362,45 +362,14 @@ export default function ChartContainer({
       handleDragEnd();
     };
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        handleDragStart(touch.clientX, touch.clientY, () => {
-          if (e.cancelable) e.preventDefault();
-        });
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        handleDragMove(touch.clientX, touch.clientY, () => {
-          if (e.cancelable) e.preventDefault();
-        });
-      }
-    };
-
-    const onTouchEnd = () => {
-      handleDragEnd();
-    };
-
-    const el = containerRef.current;
-    el.addEventListener('mousedown', onMouseDown);
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('mousemove', onHoverMove);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('mouseup', onMouseUp);
-    document.addEventListener('touchend', onTouchEnd);
-
-    const onDblClick = (e: MouseEvent) => {
+    const handleDblClickLike = (clientX: number, clientY: number) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
       const gridLeft = rect.left + margins.left;
       const gridRight = rect.right - margins.right;
-      const distFromBottom = rect.bottom - e.clientY;
-      const clickY = e.clientY - rect.top;
+      const distFromBottom = rect.bottom - clientY;
+      const clickY = clientY - rect.top;
 
       // Let ECharts handle slider zone natively
       if (distFromBottom <= SLIDER_ZONE_HEIGHT) {
@@ -414,7 +383,7 @@ export default function ChartContainer({
       const maxVol = filtered.reduce((m, d) => Math.max(m, d.volume), 0);
       const volAxisMax = maxVol > 0 ? maxVol * 10 : 100;
 
-      if (e.clientX < gridLeft || e.clientX > gridRight) {
+      if (clientX < gridLeft || clientX > gridRight) {
         const grids = opt.grid || [];
         const testX = rect.width / 2;
 
@@ -427,7 +396,7 @@ export default function ChartContainer({
         }
 
         let targetYAxisId = 'y-axis-price';
-        if (e.clientX < gridLeft) {
+        if (clientX < gridLeft) {
           const foundIdx = yAxes.findIndex((y: any) => y.id === 'y-axis-volume');
           if (foundIdx !== -1) {
             targetYAxisId = 'y-axis-volume';
@@ -479,6 +448,53 @@ export default function ChartContainer({
           yAxis: newYAxisOpt,
         });
       }
+    };
+
+    let lastTapTime = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const now = Date.now();
+        const tapDelay = now - lastTapTime;
+        const touch = e.touches[0];
+
+        if (tapDelay < 300) {
+          handleDblClickLike(touch.clientX, touch.clientY);
+          lastTapTime = 0;
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+        lastTapTime = now;
+
+        handleDragStart(touch.clientX, touch.clientY, () => {
+          if (e.cancelable) e.preventDefault();
+        });
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        handleDragMove(touch.clientX, touch.clientY, () => {
+          if (e.cancelable) e.preventDefault();
+        });
+      }
+    };
+
+    const onTouchEnd = () => {
+      handleDragEnd();
+    };
+
+    const el = containerRef.current;
+    el.addEventListener('mousedown', onMouseDown);
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('mousemove', onHoverMove);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('touchend', onTouchEnd);
+
+    const onDblClick = (e: MouseEvent) => {
+      handleDblClickLike(e.clientX, e.clientY);
     };
     el.addEventListener('dblclick', onDblClick);
 
