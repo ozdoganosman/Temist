@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Interval } from './components/Chart/types';
 
@@ -21,7 +21,7 @@ import ChartContainer from './components/Chart/ChartContainer';
 import Legend from './components/Legend/Legend';
 import Financials from './components/Financials/Financials';
 import Watchlist from './components/Watchlist/Watchlist';
-import AlarmPanel from './components/Alarms/AlarmPanel';
+
 import StockSummary from './components/StockSummary/StockSummary';
 import ExportMenu from './components/Chart/ExportMenu';
 import Disclaimer from './components/Disclaimer/Disclaimer';
@@ -77,26 +77,9 @@ function AppContent() {
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
-    alarms,
-    alarmsOpen,
-    setAlarmsOpen,
-    addAlarm,
-    removeAlarm,
-    updateAlarm,
-    resetTriggered,
-    uniqueActiveSymbols,
   } = useToolbarProps();
 
-  const [mobileTab, setMobileTab] = useState<'chart' | 'financials' | 'alarms'>('chart');
-
-  // Sync state between mobileTab and alarmsOpen
-  useEffect(() => {
-    if (isMobile) {
-      if (alarmsOpen) {
-        setMobileTab('alarms');
-      }
-    }
-  }, [alarmsOpen, isMobile]);
+  const [mobileTab, setMobileTab] = useState<'chart' | 'financials'>('chart');
 
 
 
@@ -124,14 +107,7 @@ function AppContent() {
           watchlist={watchlist}
           onRemoveSymbol={removeSymbol}
           activeMobileTab={mobileTab}
-          onMobileTabChange={(tab) => {
-            setMobileTab(tab);
-            if (tab === 'alarms') {
-              setAlarmsOpen(true);
-            } else {
-              setAlarmsOpen(false);
-            }
-          }}
+          onMobileTabChange={(tab) => setMobileTab(tab)}
         />
 
         <div className="app-body mobile-body">
@@ -274,25 +250,7 @@ function AppContent() {
 
 
 
-                {mobileTab === 'alarms' && (
-                  <div className="mobile-tab-panel alarms-tab-active">
-                    <ErrorBoundary>
-                      <AlarmPanel
-                        alarms={alarms}
-                        currentSymbol={symbol}
-                        uniqueActiveSymbols={uniqueActiveSymbols}
-                        onAdd={addAlarm}
-                        onRemove={removeAlarm}
-                        onUpdate={updateAlarm}
-                        onResetTriggered={resetTriggered}
-                        onClose={() => {
-                          setMobileTab('chart');
-                          setAlarmsOpen(false);
-                        }}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                )}
+
               </>
             )}
           </div>
@@ -306,7 +264,6 @@ function AppContent() {
               setActiveView('chart');
               setMobileTab('chart');
               setWatchlistOpen(false);
-              setAlarmsOpen(false);
             }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -324,7 +281,6 @@ function AppContent() {
               setActiveView('chart');
               setMobileTab('financials');
               setWatchlistOpen(false);
-              setAlarmsOpen(false);
             }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -332,24 +288,6 @@ function AppContent() {
               <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
             <span>Finansal</span>
-          </button>
-
-
-
-          <button
-            className={`mb-nav-item ${activeView === 'chart' && mobileTab === 'alarms' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveView('chart');
-              setMobileTab('alarms');
-              setWatchlistOpen(false);
-              setAlarmsOpen(true);
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-            <span>Alarm</span>
           </button>
         </div>
       </div>
@@ -476,18 +414,7 @@ function AppContent() {
           )}
         </div>
 
-        {alarmsOpen && (
-          <AlarmPanel
-            alarms={alarms}
-            currentSymbol={symbol}
-            uniqueActiveSymbols={uniqueActiveSymbols}
-            onAdd={addAlarm}
-            onRemove={removeAlarm}
-            onUpdate={updateAlarm}
-            onResetTriggered={resetTriggered}
-            onClose={() => setAlarmsOpen(false)}
-          />
-        )}
+
       </div>
       <Disclaimer />
     </div>

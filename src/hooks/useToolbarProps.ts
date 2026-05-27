@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppContext } from '../contexts/AppContext';
 import { useToast } from '../components/Toast/Toast';
 import { useWatchlist } from './useWatchlist';
-import { useAlarms } from './useAlarms';
+
 import { useIsMobile } from './useMediaQuery';
 import { useHistoryData } from './useHistoryData';
 import type { Interval, LegendData, ActiveView } from '../components/Chart/types';
@@ -68,13 +68,10 @@ export function useToolbarProps() {
   const [dataTimestamp, setDataTimestamp] = useState<number | null>(null);
   const [finHeight, setFinHeight] = useState(() => (window.innerWidth < 768 ? 180 : 300));
   const [watchlistOpen, setWatchlistOpen] = useState(false);
-  const [alarmsOpen, setAlarmsOpen] = useState(false);
   const splitterRef = useRef<HTMLDivElement>(null);
 
   // ── Sub-hooks ──
   const { watchlist, toggleSymbol, removeSymbol, isWatched } = useWatchlist();
-  const { alarms, addAlarm, removeAlarm, updateAlarm, resetTriggered, uniqueActiveSymbols } =
-    useAlarms();
   const isMobile = useIsMobile();
   const { data, loading } = useHistoryData(symbol, interval);
 
@@ -238,9 +235,6 @@ export function useToolbarProps() {
     onToggleWatchlist: () => setWatchlistOpen((v: boolean) => !v),
     isCurrentSymbolWatched: isWatched(symbol),
     onToggleCurrentSymbolWatch: () => toggleSymbol(symbol),
-    alarmsOpen,
-    onToggleAlarms: () => setAlarmsOpen((v: boolean) => !v),
-    alarmCount: alarms.filter((a) => a.enabled && !a.triggered).length,
     dataTimestamp,
   };
 
@@ -292,15 +286,5 @@ export function useToolbarProps() {
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
-
-    // alarms
-    alarms,
-    alarmsOpen,
-    setAlarmsOpen,
-    addAlarm,
-    removeAlarm,
-    updateAlarm,
-    resetTriggered,
-    uniqueActiveSymbols,
   };
 }
