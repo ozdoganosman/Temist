@@ -285,7 +285,14 @@ function AppContent() {
                 {mobileTab === 'financials' && (
                   <div className="mobile-tab-panel financials-tab-active">
                     <ErrorBoundary>
-                      <Financials symbol={symbol} />
+                      <Suspense fallback={<ViewFallback />}>
+                        <FinancialAnalysisView
+                          symbol={symbol}
+                          symbols={symbols}
+                          data={data}
+                          onSymbolChange={setSymbol}
+                        />
+                      </Suspense>
                     </ErrorBoundary>
                   </div>
                 )}

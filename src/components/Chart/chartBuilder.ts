@@ -244,9 +244,18 @@ function computeEMARegimeAreas(
 }
 
 function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any {
-  const rowHeight = 32;
-  const tableWidth = 280;
-  const tableHeight = 40 + results.length * rowHeight;
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const rowHeight = isMobile ? 26 : 32;
+  const tableWidth = isMobile ? 220 : 280;
+  const tableHeight = (isMobile ? 32 : 40) + results.length * rowHeight;
+  const rightOffset = isMobile ? 45 : 90;
+  
+  const titleFontSize = isMobile ? '12px' : '14px';
+  const rowFontSize = isMobile ? '11px' : '13px';
+  const leftColX = isMobile ? 12 : 20;
+  const rightColX = isMobile ? 150 : 200;
+  const headerLineY = isMobile ? 28 : 34;
+  const firstRowY = isMobile ? 35 : 42;
 
   const children: any[] = [
     {
@@ -263,33 +272,33 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     // Header Row
     {
       type: 'text',
-      left: 20,
-      top: 10,
+      left: leftColX,
+      top: isMobile ? 8 : 10,
       style: {
         text: 'Kanal (Pearson)',
         fill: tc.text,
-        font: 'bold 14px sans-serif',
+        font: `bold ${titleFontSize} sans-serif`,
       },
     },
     {
       type: 'text',
-      left: 200,
-      top: 10,
+      left: rightColX,
+      top: isMobile ? 8 : 10,
       style: {
         text: 'Pearson R',
         fill: tc.text,
-        font: 'bold 14px sans-serif',
+        font: `bold ${titleFontSize} sans-serif`,
       },
     },
     {
       type: 'line',
-      shape: { x1: 0, y1: 34, x2: tableWidth, y2: 34 },
+      shape: { x1: 0, y1: headerLineY, x2: tableWidth, y2: headerLineY },
       style: { stroke: tc.border, lineWidth: 2 },
     },
   ];
 
   results.forEach((res, i) => {
-    const y = 42 + i * rowHeight;
+    const y = firstRowY + i * rowHeight;
     const rVal = res.r;
     const rStr = rVal.toFixed(2);
     const rColor = rVal >= 0.5 ? '#26a69a' : rVal <= -0.5 ? '#ef5350' : tc.text;
@@ -297,22 +306,22 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     children.push(
       {
         type: 'text',
-        left: 20,
+        left: leftColX,
         top: y,
         style: {
           text: `${res.label} (${res.p})`,
           fill: tc.text,
-          font: '13px sans-serif',
+          font: `${rowFontSize} sans-serif`,
         },
       },
       {
         type: 'text',
-        left: 200,
+        left: rightColX,
         top: y,
         style: {
           text: rStr,
           fill: rColor,
-          font: 'bold 13px sans-serif',
+          font: `bold ${rowFontSize} sans-serif`,
         },
       }
     );
@@ -320,7 +329,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 
   return {
     type: 'group',
-    right: 90,
+    right: rightOffset,
     bottom: bottom,
     z: 100,
     children,
@@ -1469,7 +1478,7 @@ export function buildOption(
       label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
     },
     graphic:
-      showPearsonChannels && pearsonResults.length > 0 && window.innerWidth >= 768
+      showPearsonChannels && pearsonResults.length > 0
         ? [buildPearsonTable(pearsonResults, tc, mainBottom + 10)]
         : undefined,
     series: [

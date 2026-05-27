@@ -177,7 +177,8 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
-  .chart-tab-active {
+  .chart-tab-active,
+  .financials-tab-active {
     overflow: hidden !important;
   }
 
