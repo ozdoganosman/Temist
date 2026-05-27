@@ -87,18 +87,16 @@ function AppContent() {
     uniqueActiveSymbols,
   } = useToolbarProps();
 
-  const [mobileTab, setMobileTab] = useState<'chart' | 'watchlist' | 'financials' | 'alarms'>('chart');
+  const [mobileTab, setMobileTab] = useState<'chart' | 'financials' | 'alarms'>('chart');
 
-  // Sync state between mobileTab and watchlistOpen/alarmsOpen
+  // Sync state between mobileTab and alarmsOpen
   useEffect(() => {
     if (isMobile) {
-      if (watchlistOpen) {
-        setMobileTab('watchlist');
-      } else if (alarmsOpen) {
+      if (alarmsOpen) {
         setMobileTab('alarms');
       }
     }
-  }, [watchlistOpen, alarmsOpen, isMobile]);
+  }, [alarmsOpen, isMobile]);
 
 
 
@@ -123,17 +121,14 @@ function AppContent() {
       <div className="app mobile-app">
         <MobileToolbar
           {...toolbarProps}
+          watchlist={watchlist}
+          onRemoveSymbol={removeSymbol}
           activeMobileTab={mobileTab}
           onMobileTabChange={(tab) => {
             setMobileTab(tab);
-            if (tab === 'watchlist') {
-              setWatchlistOpen(true);
-              setAlarmsOpen(false);
-            } else if (tab === 'alarms') {
-              setWatchlistOpen(false);
+            if (tab === 'alarms') {
               setAlarmsOpen(true);
             } else {
-              setWatchlistOpen(false);
               setAlarmsOpen(false);
             }
           }}
@@ -260,27 +255,7 @@ function AppContent() {
                   </div>
                 )}
 
-                {mobileTab === 'watchlist' && (
-                  <div className="mobile-tab-panel watchlist-tab-active">
-                    <ErrorBoundary>
-                      <Watchlist
-                        watchlist={watchlist}
-                        symbols={symbols}
-                        currentSymbol={symbol}
-                        onSymbolClick={(sym) => {
-                          handleSymbolClick(sym);
-                          setMobileTab('chart');
-                          setWatchlistOpen(false);
-                        }}
-                        onRemove={removeSymbol}
-                        onClose={() => {
-                          setMobileTab('chart');
-                          setWatchlistOpen(false);
-                        }}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                )}
+
 
                 {mobileTab === 'financials' && (
                   <div className="mobile-tab-panel financials-tab-active">
@@ -341,25 +316,7 @@ function AppContent() {
             <span>Grafik</span>
           </button>
 
-          <button
-            className={`mb-nav-item ${activeView === 'chart' && mobileTab === 'watchlist' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveView('chart');
-              setMobileTab('watchlist');
-              setWatchlistOpen(true);
-              setAlarmsOpen(false);
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            <span>İzle</span>
-          </button>
+
 
           <button
             className={`mb-nav-item ${activeView === 'chart' && mobileTab === 'financials' ? 'active' : ''}`}
@@ -402,7 +359,7 @@ function AppContent() {
   // --- Desktop Layout ---
   return (
     <div className="app">
-      {isMobile ? <MobileToolbar {...toolbarProps} /> : <Toolbar {...toolbarProps} />}
+      <Toolbar {...toolbarProps} />
 
       <div className="app-body">
         {watchlistOpen && (

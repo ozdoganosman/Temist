@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Interval, ActiveView } from '../Chart/types';
 import type { SymbolInfo } from '../../api/borsaApi';
 import { useTheme } from '../../contexts/ThemeContext';
+import Watchlist from '../Watchlist/Watchlist';
 import './MobileToolbar.css';
 
 interface MobileToolbarProps {
@@ -48,8 +49,10 @@ interface MobileToolbarProps {
   onToggleAlarms: () => void;
   alarmCount: number;
   dataTimestamp: number | null;
-  activeMobileTab?: 'chart' | 'watchlist' | 'financials' | 'alarms';
-  onMobileTabChange?: (tab: 'chart' | 'watchlist' | 'financials' | 'alarms') => void;
+  watchlist: string[];
+  onRemoveSymbol: (symbol: string) => void;
+  activeMobileTab?: 'chart' | 'financials' | 'alarms';
+  onMobileTabChange?: (tab: 'chart' | 'financials' | 'alarms') => void;
 }
 
 // INTERVALS definition moved to App.tsx
@@ -153,6 +156,8 @@ export default function MobileToolbar({
   dataTimestamp,
   activeMobileTab,
   onMobileTabChange,
+  watchlist,
+  onRemoveSymbol,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -256,6 +261,22 @@ export default function MobileToolbar({
               >
                 Finansal Analiz
               </button>
+            </div>
+
+            <div className="mm-section mm-watchlist-section">
+              <Watchlist
+                watchlist={watchlist}
+                symbols={symbols}
+                currentSymbol={symbol}
+                onSymbolClick={(sym) => {
+                  onSymbolChange(sym);
+                  onViewChange('chart');
+                  onMobileTabChange?.('chart');
+                  setMenuOpen(false);
+                }}
+                onRemove={onRemoveSymbol}
+                onClose={() => setMenuOpen(false)}
+              />
             </div>
           </div>
         </div>
