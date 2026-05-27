@@ -330,7 +330,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 export function getGridMargins() {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   return {
-    left: isMobile ? 40 : 80,
+    left: isMobile ? 10 : 15,
     right: isMobile ? 40 : 80,
   };
 }
@@ -544,7 +544,7 @@ export function buildOption(
     {
       id: 'y-axis-volume',
       gridIndex: 0,
-      position: 'left',
+      position: 'right',
       min: 0,
       max: volAxisMax,
       splitNumber: 3,
@@ -552,6 +552,8 @@ export function buildOption(
       splitLine: { show: false },
       axisLine: { show: false },
       axisLabel: {
+        show: true,
+        inside: true,
         color: tc.text,
         fontSize: 10,
         formatter: (v: number) => {
