@@ -1,7 +1,7 @@
 .export-menu-wrapper {
   position: absolute;
   top: 8px;
-  right: 90px;
+  right: 65px;
   z-index: 15;
 }
 
@@ -64,8 +64,8 @@
   margin-top: 2px;
 }
 
-/* Mobile */
-@media (max-width: 768px) {
+/* Mobile and touch devices (landscape mobile) */
+@media (max-width: 768px), (pointer: coarse) {
   .export-menu-wrapper {
     right: 8px;
     top: 4px;

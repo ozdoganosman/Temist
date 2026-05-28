@@ -50,6 +50,7 @@ interface MobileToolbarProps {
   onRemoveSymbol: (symbol: string) => void;
   activeMobileTab?: 'chart' | 'financials';
   onMobileTabChange?: (tab: 'chart' | 'financials') => void;
+  isLandscape?: boolean;
 }
 
 // INTERVALS definition moved to App.tsx
@@ -141,6 +142,12 @@ function MobileSymbolSearch({
   );
 }
 
+const INTERVALS: { value: Interval; label: string }[] = [
+  { value: '1d', label: '1G' },
+  { value: '1wk', label: '1H' },
+  { value: '1mo', label: '1A' },
+];
+
 export default function MobileToolbar({
   symbol,
   symbols,
@@ -153,6 +160,21 @@ export default function MobileToolbar({
   onMobileTabChange,
   watchlist,
   onRemoveSymbol,
+  interval,
+  onIntervalChange,
+  logScale,
+  onToggleLogScale,
+  showWilliamsPasa,
+  onToggleWilliamsPasa,
+  showNizamiCedid,
+  onToggleNizamiCedid,
+  showEMAOverlay,
+  onToggleEMAOverlay,
+  showPearsonChannels,
+  onTogglePearsonChannels,
+  showMATLRNS,
+  onToggleMATLRNS,
+  isLandscape = false,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -194,10 +216,46 @@ export default function MobileToolbar({
           </button>
         </div>
 
+        {/* Middle: Scrollable intervals and indicators (Only shown in Landscape mode) */}
+        {isLandscape && (
+          <div className="mt-scroll-wrapper">
+            <div className="mt-scroll-group">
+              {INTERVALS.map((iv) => (
+                <button
+                  key={iv.value}
+                  className={`mt-scroll-btn ${interval === iv.value ? 'active' : ''}`}
+                  onClick={() => onIntervalChange(iv.value)}
+                >
+                  {iv.label}
+                </button>
+              ))}
+              <button className={`mt-scroll-btn ${logScale ? 'active' : ''}`} onClick={onToggleLogScale}>
+                Log
+              </button>
+            </div>
+            <div className="mt-scroll-divider" />
+            <div className="mt-scroll-group">
+              <button className={`mt-scroll-btn ${showWilliamsPasa ? 'active' : ''}`} onClick={onToggleWilliamsPasa}>
+                W.Paşa
+              </button>
+              <button className={`mt-scroll-btn ${showNizamiCedid ? 'active' : ''}`} onClick={onToggleNizamiCedid}>
+                N.Cedid
+              </button>
+              <button className={`mt-scroll-btn ${showEMAOverlay ? 'active' : ''}`} onClick={onToggleEMAOverlay}>
+                EMA
+              </button>
+              <button className={`mt-scroll-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
+                3ChanPers
+              </button>
+              <button className={`mt-scroll-btn ${showMATLRNS ? 'active' : ''}`} onClick={onToggleMATLRNS}>
+                MATLRNS
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Right: quick actions */}
         <div className="mt-right">
-
-
           <button className="mt-btn" onClick={toggleTheme} aria-label="Tema degistir">
             {theme === 'dark' ? '\u2600' : '\u263D'}
           </button>

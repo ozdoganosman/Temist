@@ -244,11 +244,13 @@ function computeEMARegimeAreas(
 }
 
 function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any {
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isMobile =
+    typeof window !== 'undefined' &&
+    (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
   const rowHeight = isMobile ? 26 : 32;
   const tableWidth = isMobile ? 220 : 280;
   const tableHeight = (isMobile ? 32 : 40) + results.length * rowHeight;
-  const rightOffset = isMobile ? 45 : 90;
+  const rightOffset = isMobile ? 38 : 65;
   
   const titleFontSize = isMobile ? '12px' : '14px';
   const rowFontSize = isMobile ? '11px' : '13px';
@@ -337,10 +339,12 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 }
 
 export function getGridMargins() {
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isMobile =
+    typeof window !== 'undefined' &&
+    (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
   return {
     left: isMobile ? 10 : 15,
-    right: isMobile ? 40 : 80,
+    right: isMobile ? 32 : 55,
   };
 }
 
@@ -397,16 +401,7 @@ export function buildOption(
     lastClose !== null && lastOpen !== null ? (lastClose >= lastOpen ? UP_COLOR : DOWN_COLOR) : tc.text;
 
   let regimeAreas: any[] = [];
-  if (showNizamiCedid && filtered.length > 610) {
-    const closes = filtered.map((d) => d.close);
-    const vols = filtered.map((d) => d.volume);
-    const fast = sigConfig?.nizamiCedid?.fast ?? 120;
-    const slow = sigConfig?.nizamiCedid?.slow ?? 260;
-    const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
-    const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
-    const ncResult = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
-    regimeAreas = computeNizamiCedidRegimeAreas(ncResult.condition, rawDates);
-  } else if (showEMAOverlay && filtered.length > 21) {
+  if (showEMAOverlay && filtered.length > 21) {
     const closes = filtered.map((d) => d.close);
     regimeAreas = computeEMARegimeAreas(closes, rawDates, padded.offset, total);
   }
@@ -592,12 +587,12 @@ export function buildOption(
         splitNumber: 2,
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${v}` },
+        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${Math.round(v)}` },
         axisPointer: {
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => `${Math.round(p.value)}` },
         },
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'macd') {
@@ -618,7 +613,7 @@ export function buildOption(
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatIndicatorVal(Number(p.value)) },
         },
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'obv') {
@@ -639,7 +634,7 @@ export function buildOption(
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatVolume(Number(p.value)) },
         },
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'stochRsi') {
@@ -652,12 +647,12 @@ export function buildOption(
         splitNumber: 2,
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${v}` },
+        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${Math.round(v)}` },
         axisPointer: {
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => `${Math.round(Number(p.value))}` },
         },
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'williams_pasa') {
@@ -670,12 +665,12 @@ export function buildOption(
         splitNumber: 2,
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${v}` },
+        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${Math.round(v)}` },
         axisPointer: {
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => `${Math.round(Number(p.value))}` },
         },
       } as echarts.YAXisComponentOption);
     } else if (subPanels[i] === 'nizami_cedid') {
@@ -696,7 +691,7 @@ export function buildOption(
           show: true,
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatIndicatorVal(Number(p.value)) },
         },
       } as echarts.YAXisComponentOption);
     }

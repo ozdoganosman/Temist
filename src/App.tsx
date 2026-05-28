@@ -3,11 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type { Interval } from './components/Chart/types';
 
 const INTERVALS: { value: Interval; label: string }[] = [
-  { value: '1m', label: '1dk' },
-  { value: '5m', label: '5dk' },
-  { value: '15m', label: '15dk' },
-  { value: '30m', label: '30dk' },
-  { value: '1h', label: '1S' },
   { value: '1d', label: '1G' },
   { value: '1wk', label: '1H' },
   { value: '1mo', label: '1A' },
@@ -26,6 +21,7 @@ import StockSummary from './components/StockSummary/StockSummary';
 import ExportMenu from './components/Chart/ExportMenu';
 import Disclaimer from './components/Disclaimer/Disclaimer';
 import { useToolbarProps } from './hooks/useToolbarProps';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import './App.css';
 
 const MarketAnalysis = lazy(() => import('./components/Analysis/MarketAnalysis'));
@@ -84,6 +80,7 @@ function AppContent() {
 
 
   // --- Mobile Layout ---
+  const isLandscape = useMediaQuery('(orientation: landscape)');
   if (isMobile) {
     const {
       onToggleWilliamsPasa,
@@ -108,6 +105,7 @@ function AppContent() {
           onRemoveSymbol={removeSymbol}
           activeMobileTab={mobileTab}
           onMobileTabChange={(tab) => setMobileTab(tab)}
+          isLandscape={isLandscape}
         />
 
         <div className="app-body mobile-body">
@@ -137,61 +135,41 @@ function AppContent() {
               <>
                 {mobileTab === 'chart' && (
                   <div className="mobile-tab-panel chart-tab-active">
-                    <StockSummary
-                      symbol={symbol}
-                      displayName={symbols.find((s) => s.name === symbol)?.displayName ?? ''}
-                      data={data}
-                    />
-
-                    {/* Horizontally scrollable Indicator & Interval quick-toggle bar */}
-                    <div className="mobile-quick-toggle-bar">
-                      <div className="mqt-group">
-                        {INTERVALS.map((iv) => (
-                          <button
-                            key={iv.value}
-                            className={`mqt-btn ${interval === iv.value ? 'active' : ''}`}
-                            onClick={() => onIntervalChange(iv.value)}
-                          >
-                            {iv.label}
+                    {!isLandscape && (
+                      <div className="mobile-quick-toggle-bar">
+                        <div className="mqt-group">
+                          {INTERVALS.map((iv) => (
+                            <button
+                              key={iv.value}
+                              className={`mqt-btn ${interval === iv.value ? 'active' : ''}`}
+                              onClick={() => onIntervalChange(iv.value)}
+                            >
+                              {iv.label}
+                            </button>
+                          ))}
+                          <button className={`mqt-btn ${logScale ? 'active' : ''}`} onClick={onToggleLogScale}>
+                            Log
                           </button>
-                        ))}
-                        <button className={`mqt-btn ${logScale ? 'active' : ''}`} onClick={onToggleLogScale}>
-                          Log
-                        </button>
+                        </div>
+                        <div className="mqt-group indicators-group">
+                          <button className={`mqt-btn ${showWilliamsPasa ? 'active' : ''}`} onClick={onToggleWilliamsPasa}>
+                            W.Paşa
+                          </button>
+                          <button className={`mqt-btn ${showNizamiCedid ? 'active' : ''}`} onClick={onToggleNizamiCedid}>
+                            N.Cedid
+                          </button>
+                          <button className={`mqt-btn ${showEMAOverlay ? 'active' : ''}`} onClick={onToggleEMAOverlay}>
+                            EMA
+                          </button>
+                          <button className={`mqt-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
+                            3ChanPers
+                          </button>
+                          <button className={`mqt-btn ${showMATLRNS ? 'active' : ''}`} onClick={onToggleMATLRNS}>
+                            MATLRNS
+                          </button>
+                        </div>
                       </div>
-                      <div className="mqt-group indicators-group">
-                        <button className={`mqt-btn ${showWilliamsPasa ? 'active' : ''}`} onClick={onToggleWilliamsPasa}>
-                          W.Paşa
-                        </button>
-                        <button className={`mqt-btn ${showNizamiCedid ? 'active' : ''}`} onClick={onToggleNizamiCedid}>
-                          N.Cedid
-                        </button>
-                        <button className={`mqt-btn ${showEMAOverlay ? 'active' : ''}`} onClick={onToggleEMAOverlay}>
-                          EMA
-                        </button>
-                        <button className={`mqt-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
-                          3ChanPers
-                        </button>
-                        <button className={`mqt-btn ${showMATLRNS ? 'active' : ''}`} onClick={onToggleMATLRNS}>
-                          MATLRNS
-                        </button>
-                        <button className={`mqt-btn ${showBollinger ? 'active' : ''}`} onClick={onToggleBollinger}>
-                          BB
-                        </button>
-                        <button className={`mqt-btn ${showRSI ? 'active' : ''}`} onClick={onToggleRSI}>
-                          RSI
-                        </button>
-                        <button className={`mqt-btn ${showMACD ? 'active' : ''}`} onClick={onToggleMACD}>
-                          MACD
-                        </button>
-                        <button className={`mqt-btn ${showStochRSI ? 'active' : ''}`} onClick={onToggleStochRSI}>
-                          StochRSI
-                        </button>
-                        <button className={`mqt-btn ${showOBV ? 'active' : ''}`} onClick={onToggleOBV}>
-                          OBV
-                        </button>
-                      </div>
-                    </div>
+                    )}
 
                     <div className="chart-wrapper">
                       <Legend
@@ -289,6 +267,22 @@ function AppContent() {
             </svg>
             <span>Finansal</span>
           </button>
+
+          <button
+            className={`mb-nav-item ${activeView === 'analysis' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveView('analysis');
+              setWatchlistOpen(false);
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+            <span>Tarama</span>
+          </button>
         </div>
       </div>
     );
@@ -314,11 +308,6 @@ function AppContent() {
         <div className="app-main">
           {activeView === 'chart' && (
             <>
-              <StockSummary
-                symbol={symbol}
-                displayName={symbols.find((s) => s.name === symbol)?.displayName ?? ''}
-                data={data}
-              />
               <div className="chart-wrapper" style={showFinancials ? { flex: '1 1 0', minHeight: 200 } : undefined}>
                 <Legend
                   data={legendData}

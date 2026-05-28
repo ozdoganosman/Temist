@@ -18,6 +18,13 @@
   flex: 1;
 }
 
+/* Landscape touch mode overrides */
+@media (orientation: landscape) and (pointer: coarse) {
+  .mt-left {
+    flex: 0 0 auto;
+  }
+}
+
 .mt-right {
   display: flex;
   align-items: center;
@@ -115,7 +122,61 @@
   white-space: nowrap;
 }
 
-/* Quick Indicator & Interval scroll bar */
+/* Quick Indicator & Interval scroll bar in toolbar */
+.mt-scroll-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -webkit-overflow-scrolling: touch;
+  padding: 0 4px;
+}
+
+.mt-scroll-wrapper::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.mt-scroll-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mt-scroll-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.mt-scroll-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.mt-scroll-btn:active {
+  background: var(--border-primary);
+}
+
+.mt-scroll-btn.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Quick Indicator & Interval quick toggle bar for portrait mode */
 .mobile-quick-toggle-bar {
   display: flex;
   flex-direction: column;
@@ -128,7 +189,7 @@
 }
 
 .mobile-quick-toggle-bar::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
 }
 
 .mqt-group {
@@ -138,11 +199,11 @@
   flex-shrink: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
 }
 
 .mqt-group::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
 }
 
 .mqt-btn {
@@ -171,19 +232,19 @@
 
 /* Mobile Sticky Bottom Nav Bar */
 .mobile-bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
+  position: relative;
+  height: calc(52px + env(safe-area-inset-bottom, 0px));
+  min-height: calc(52px + env(safe-area-inset-bottom, 0px));
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-primary);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-around;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0); /* Support iOS notch/bar */
+  flex-shrink: 0;
+  padding-top: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
 }
 
 .mb-nav-item {
@@ -200,7 +261,7 @@
   font-family: inherit;
   gap: 2px;
   flex: 1;
-  height: 100%;
+  height: 52px;
   transition: color 0.15s ease;
 }
 

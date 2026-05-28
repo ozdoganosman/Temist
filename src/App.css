@@ -116,8 +116,8 @@ body {
   overflow: hidden;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+/* Mobile Responsive — hem dar ekran hem dokunmatik cihazlar (yatay mod dahil) */
+@media (max-width: 768px), (pointer: coarse) {
   .app-body {
     flex-direction: column;
     position: relative;
@@ -155,7 +155,6 @@ body {
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    padding-bottom: 52px; /* bottom bar spacing */
   }
 
   .mobile-main {
@@ -248,8 +247,8 @@ body {
   }
 }
 
-/* Tablet breakpoint */
-@media (min-width: 769px) and (max-width: 1024px) {
+/* Tablet breakpoint — sadece mouse (pointer:fine) cihazlar */
+@media (min-width: 769px) and (max-width: 1024px) and (pointer: fine) {
   .chart-wrapper {
     min-height: 350px;
   }

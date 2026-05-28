@@ -1,6 +1,6 @@
 .legend {
   position: absolute;
-  top: 56px;
+  top: 8px;
   left: 16px;
   z-index: 10;
   display: flex;
@@ -57,8 +57,8 @@
   color: var(--down-color);
 }
 
-/* Mobile */
-@media (max-width: 768px) {
+/* Mobile and touch devices (landscape mobile) */
+@media (max-width: 768px), (pointer: coarse) {
   .legend {
     top: 8px;
     left: 8px;

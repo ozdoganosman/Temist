@@ -157,6 +157,13 @@ export default function Toolbar({
           >
             Finansal
           </button>
+          <button
+            className={`toolbar-btn ${activeView === 'analysis' ? 'active' : ''}`}
+            onClick={() => onViewChange('analysis')}
+            aria-label="Hisse Tarama"
+          >
+            Tarama
+          </button>
         </div>
 
         <div className="toolbar-divider" />
