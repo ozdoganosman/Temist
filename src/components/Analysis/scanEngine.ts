@@ -245,6 +245,24 @@ export async function runClientScan(
     return [];
   }
 
+  // Check localStorage cache first to avoid heavy network operations on deployed page
+  const savedCache = localStorage.getItem('temist_scanner_scan_results_cache');
+  const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp');
+  const serverTimestamp = String(scanData.timestamp || 0);
+
+  if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
+    try {
+      const parsed = JSON.parse(savedCache);
+      if (parsed && parsed.length > 0) {
+        cachedResults = parsed;
+        cachedTimestamp = Date.now();
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse cached scan results from localStorage:', e);
+    }
+  }
+
   const results: ScannedStock[] = [];
   const BATCH_SIZE = 8;
   const total = rawSymbols.length;
@@ -271,6 +289,13 @@ export async function runClientScan(
 
   cachedResults = results;
   cachedTimestamp = Date.now();
+
+  try {
+    localStorage.setItem('temist_scanner_scan_results_cache', JSON.stringify(results));
+    localStorage.setItem('temist_scanner_scan_results_timestamp', serverTimestamp);
+  } catch (e) {
+    console.error('Failed to save scan results cache to localStorage:', e);
+  }
 
   return results;
 }
