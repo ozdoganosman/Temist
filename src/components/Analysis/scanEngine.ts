@@ -2,13 +2,18 @@ import { fetchHistory, fetchScanResults, type OHLCVData } from '../../api/borsaA
 import { computeWilliamsPasa, computeNizamiCedid, ema } from '../../utils/indicators';
 import { computePearsonChannel, DEFAULT_PEARSON_CONFIGS, type PearsonConfig } from '../../utils/pearsonChannels';
 import { computeMATLRNS } from '../../utils/matlrns';
+import { getCacheItem, setCacheItem } from '../../utils/indexedDbCache';
+import { computeKPIs } from '../../utils/computeFinancialMetrics';
 
 export interface ScannedStock {
   symbol: string;
   close: number;
   changePercent: number;
   volume: number;
-  overallScore: number; // 0-100
+  overallScore: number; // 0-100 (Technical Score)
+  fundamentalScore: number; // 0-10
+  piotroskiScore: number; // 0-9
+  combinedScore: number; // 0-100 (60% Tech + 40% Fund)
   indicators: {
     williamsPasa: {
       value: number;
@@ -101,7 +106,7 @@ function calculateEMARibbonLast(closes: number[]): { spread: number; score: numb
 
 /** Calculate Pearson 3-channel score client side */
 function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number; score: number; signal: 'bullish' | 'bearish' | 'neutral' } {
-  const configs: PearsonConfig[] = DEFAULT_PEARSON_CONFIGS.filter(c => c.id !== 'extra_short'); // Kısa, Uzun, En Uzun (3 Channels)
+  const configs: PearsonConfig[] = DEFAULT_PEARSON_CONFIGS.filter(c => c.id !== 'extra_short');
   let sumScore = 0;
   let sumR = 0;
   let sumPos = 0;
@@ -118,13 +123,10 @@ function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number;
       sumR += r;
       sumPos += pos;
 
-      // Score logic: 0.5 + 0.3 * r + position factor
       let chanScore = 0.5 + 0.3 * r;
       if (r > 0) {
-        // In rising channel, buying at bottom (pos around -0.5) is great, breakout (pos > 1) is bullish
         chanScore += pos < -0.3 ? 0.2 * (1.3 + pos) : pos > 0.8 ? 0.2 : 0.2 * (1 - pos);
       } else {
-        // In falling channel, breakouts above are bullish, otherwise bearish
         chanScore += pos > 0.5 ? 0.2 : 0.0;
       }
 
@@ -157,10 +159,161 @@ function calculateSMA(data: number[], period: number): number | null {
   return sum / period;
 }
 
-/** Compute the combined score and indicators for a single symbol */
-export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | null> {
+/** Fetch historical price data with IndexedDB caching support */
+async function fetchHistoryWithCache(symbol: string, forceRefresh: boolean): Promise<OHLCVData[] | null> {
+  if (!forceRefresh) {
+    const cached = await getCacheItem<OHLCVData[]>('history', symbol);
+    if (cached && cached.length > 0) return cached;
+  }
+  const history = await fetchHistory(symbol);
+  if (history && history.length > 0) {
+    await setCacheItem('history', symbol, history);
+  }
+  return history;
+}
+
+/** Fetch stock financials JSON with IndexedDB caching support */
+async function fetchFinancialsWithCache(symbol: string, forceRefresh: boolean): Promise<any | null> {
+  if (!forceRefresh) {
+    const cached = await getCacheItem<any>('financials', symbol);
+    if (cached) return cached;
+  }
   try {
-    const history = await fetchHistory(symbol);
+    const res = await fetch(`${import.meta.env.BASE_URL}data/financials/${symbol}.json`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    await setCacheItem('financials', symbol, json);
+    return json;
+  } catch (e) {
+    console.warn(`Failed to fetch financials for ${symbol}:`, e);
+    return null;
+  }
+}
+
+/**
+ * Calculates dynamic fundamental score (0-10) and Piotroski F-Score (0-9)
+ */
+function calculateFundamentalScores(allFin: any, ohlcv: OHLCVData[]): { fundamentalScore: number; piotroskiScore: number } {
+  const periods = (allFin.income_stmt?.periods || []).filter((p: string) => p.endsWith('/12'));
+  if (periods.length === 0) {
+    return { fundamentalScore: 5, piotroskiScore: 5 }; // defaults
+  }
+
+  const p1 = periods[periods.length - 1];
+  const p2 = periods.length > 1 ? periods[periods.length - 2] : null;
+
+  const kpis = computeKPIs(allFin, ohlcv);
+
+  // 1. Calculate Fundamental Health Score (0-10)
+  let fundScore = 0;
+
+  // F/K (P/E) points (max 2)
+  if (kpis.fk !== null && kpis.fk > 0 && kpis.fk < 15) fundScore += 2;
+  else if (kpis.fk !== null && kpis.fk > 0 && kpis.fk < 25) fundScore += 1;
+
+  // PD/DD (P/B) points (max 2)
+  if (kpis.pddd !== null && kpis.pddd > 0 && kpis.pddd < 2.0) fundScore += 2;
+  else if (kpis.pddd !== null && kpis.pddd > 0 && kpis.pddd < 4.0) fundScore += 1;
+
+  // ROE points (max 2)
+  if (kpis.roe !== null && kpis.roe > 20) fundScore += 2;
+  else if (kpis.roe !== null && kpis.roe > 10) fundScore += 1;
+
+  // Margin points (max 1)
+  if (kpis.netKarMarji !== null && kpis.netKarMarji > 15) fundScore += 1;
+  else if (kpis.netKarMarji !== null && kpis.netKarMarji > 5) fundScore += 0.5;
+
+  // Revenue Growth points (max 1.5)
+  const revRow = allFin.income_stmt.data.find((r: any) => r.item === 'Satış Gelirleri');
+  const rev1 = revRow && p1 ? revRow[p1] : null;
+  const rev2 = revRow && p2 ? revRow[p2] : null;
+  let revGrowth = null;
+  if (rev1 !== null && rev2 !== null && rev2 !== 0) {
+    revGrowth = ((rev1 - rev2) / rev2) * 100;
+  }
+  if (revGrowth !== null && revGrowth > 20) fundScore += 1.5;
+  else if (revGrowth !== null && revGrowth > 5) fundScore += 0.5;
+
+  // Debt/Equity points (max 1.5)
+  if (kpis.borcOzkaynak !== null && kpis.borcOzkaynak < 1.0 && kpis.borcOzkaynak >= 0) fundScore += 1.5;
+  else if (kpis.borcOzkaynak !== null && kpis.borcOzkaynak < 2.0 && kpis.borcOzkaynak >= 0) fundScore += 0.5;
+
+  // 2. Calculate Piotroski F-Score (0-9)
+  let fScore = 0;
+
+  const netIncomeRow = allFin.income_stmt.data.find((r: any) => r.item === 'Ana Ortaklık Payları' || r.item === 'DÖNEM KARI (ZARARI)');
+  const netIncome1 = netIncomeRow && p1 ? netIncomeRow[p1] : null;
+  const netIncome2 = netIncomeRow && p2 ? netIncomeRow[p2] : null;
+
+  const grossProfitRow = allFin.income_stmt.data.find((r: any) => r.item === 'BRÜT KAR (ZARAR)');
+  const grossProfit1 = grossProfitRow && p1 ? grossProfitRow[p1] : null;
+  const grossProfit2 = grossProfitRow && p2 ? grossProfitRow[p2] : null;
+
+  const caRow = allFin.balance_sheet.data.find((r: any) => r.item === 'Dönen Varlıklar');
+  const ncaRow = allFin.balance_sheet.data.find((r: any) => r.item === 'Duran Varlıklar');
+  const assets1 = (caRow && p1 ? caRow[p1] || 0 : 0) + (ncaRow && p1 ? ncaRow[p1] || 0 : 0) || null;
+  const assets2 = (caRow && p2 ? caRow[p2] || 0 : 0) + (ncaRow && p2 ? ncaRow[p2] || 0 : 0) || null;
+
+  const ltDebtRow = allFin.balance_sheet.data.find((r: any) => r.item === 'Uzun Yükümlülükler' || r.item === 'Uzun Vadeli Yükümlülükler');
+  const ltDebt1 = ltDebtRow && p1 ? ltDebtRow[p1] : null;
+  const ltDebt2 = ltDebtRow && p2 ? ltDebtRow[p2] : null;
+
+  const stLiabRow = allFin.balance_sheet.data.find((r: any) => r.item === 'Kısa Vadeli Yükümlülükler');
+
+  const picRow = allFin.balance_sheet.data.find((r: any) => r.item === 'Ödenmiş Sermaye');
+  const pic1 = picRow && p1 ? picRow[p1] : null;
+  const pic2 = picRow && p2 ? picRow[p2] : null;
+
+  const cfoRow = allFin.cashflow?.data.find((r: any) => r.item === 'İşletme Faaliyetlerinden Kaynaklanan Net Nakit' || r.item === 'Net Nakit Girişi');
+  const cfo1 = cfoRow && p1 ? cfoRow[p1] : null;
+
+  // F1: ROA > 0 (Profitability)
+  const roa1 = netIncome1 !== null && assets1 ? netIncome1 / assets1 : null;
+  const roa2 = netIncome2 !== null && assets2 ? netIncome2 / assets2 : null;
+  if (roa1 !== null && roa1 > 0) fScore += 1;
+
+  // F2: Operating Cash Flow > 0 (Profitability)
+  if (cfo1 !== null && cfo1 > 0) fScore += 1;
+
+  // F3: Change in ROA (Profitability)
+  if (roa1 !== null && roa2 !== null && roa1 > roa2) fScore += 1;
+
+  // F4: Accruals: CFO > Net Income (Profitability)
+  if (cfo1 !== null && netIncome1 !== null && cfo1 > netIncome1) fScore += 1;
+
+  // F5: Change in Leverage (Total Debt / Assets decreased)
+  const lev1 = ltDebt1 !== null && assets1 ? ltDebt1 / assets1 : 0;
+  const lev2 = ltDebt2 !== null && assets2 ? ltDebt2 / assets2 : 0;
+  if (lev1 < lev2) fScore += 1;
+
+  // F6: Change in Liquidity (Current ratio increased)
+  const cr1 = caRow && stLiabRow && p1 && stLiabRow[p1] ? caRow[p1] / stLiabRow[p1] : 0;
+  const cr2 = caRow && stLiabRow && p2 && stLiabRow[p2] ? caRow[p2] / stLiabRow[p2] : 0;
+  if (cr1 > cr2) fScore += 1;
+
+  // F7: No Dilution (Shares outstanding did not increase)
+  if (pic1 !== null && pic2 !== null && pic1 <= pic2) fScore += 1;
+
+  // F8: Change in Gross Margin (Gross Margin increased)
+  const gm1 = grossProfit1 !== null && rev1 ? grossProfit1 / rev1 : 0;
+  const gm2 = grossProfit2 !== null && rev2 ? grossProfit2 / rev2 : 0;
+  if (gm1 > gm2) fScore += 1;
+
+  // F9: Change in Asset Turnover (Asset Turnover increased)
+  const at1 = rev1 !== null && assets1 ? rev1 / assets1 : 0;
+  const at2 = rev2 !== null && assets2 ? rev2 / assets2 : 0;
+  if (at1 > at2) fScore += 1;
+
+  return {
+    fundamentalScore: Math.round(clamp(fundScore, 0, 10)),
+    piotroskiScore: fScore
+  };
+}
+
+/** Compute the combined score and indicators for a single symbol */
+export async function scanSingleSymbol(symbol: string, forceRefresh = false): Promise<ScannedStock | null> {
+  try {
+    const history = await fetchHistoryWithCache(symbol, forceRefresh);
     if (!history || history.length < 50) return null;
 
     const closes = history.map(h => h.close);
@@ -174,7 +327,7 @@ export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | n
     const lastVolume = volumes[n - 1];
     const changePercent = prevClose > 0 ? ((lastClose - prevClose) / prevClose) * 100 : 0;
 
-    // 1. Williams Pasa (%R)
+    // 1. Williams Paşa (%R)
     const wp = computeWilliamsPasa(highs, lows, closes);
     const wpR = wp.percentR[n - 1] ?? 50;
     const wpEma = wp.emaWil[n - 1] ?? 50;
@@ -228,12 +381,30 @@ export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | n
     const avgVolume10 = calculateSMA(volumes, 10);
     const volumeRatio = avgVolume10 && avgVolume10 !== 0 ? lastVolume / avgVolume10 : 1;
 
+    // 7. Dynamic Financial KPIs & Scores (Piotroski & Fundamental Health)
+    let fundamentalScore = 5;
+    let piotroskiScore = 5;
+
+    const financials = await fetchFinancialsWithCache(symbol, forceRefresh);
+    if (financials) {
+      const scores = calculateFundamentalScores(financials, history);
+      fundamentalScore = scores.fundamentalScore;
+      piotroskiScore = scores.piotroskiScore;
+    }
+
+    const techScoreClamped = clamp(overallScore, 0, 100);
+    // Combined score: 60% Technical + 40% Fundamental (Fundamental score is scaled to 100)
+    const combinedScore = Math.round(techScoreClamped * 0.6 + fundamentalScore * 10 * 0.4);
+
     return {
       symbol,
       close: lastClose,
       changePercent,
       volume: lastVolume,
-      overallScore: clamp(overallScore, 0, 100),
+      overallScore: techScoreClamped,
+      fundamentalScore,
+      piotroskiScore,
+      combinedScore,
       indicators: {
         williamsPasa: { value: wpR, ema: wpEma, signal: wpSignal, score: Math.round(wpScore) },
         nizamiCedid: { 
@@ -293,7 +464,7 @@ export async function runClientScan(
   if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
     try {
       const parsed = JSON.parse(savedCache);
-      if (parsed && parsed.length > 0 && parsed[0].indicators.extra) {
+      if (parsed && parsed.length > 0 && parsed[0].indicators.extra && parsed[0].combinedScore !== undefined) {
         cachedResults = parsed;
         cachedTimestamp = Date.now();
         return parsed;
@@ -311,7 +482,7 @@ export async function runClientScan(
     const batch = rawSymbols.slice(i, i + BATCH_SIZE);
     
     // Process batch in parallel
-    const batchPromises = batch.map(sym => scanSingleSymbol(sym));
+    const batchPromises = batch.map(sym => scanSingleSymbol(sym, forceRefresh));
     const batchResults = await Promise.all(batchPromises);
 
     for (let j = 0; j < batch.length; j++) {
@@ -324,8 +495,8 @@ export async function runClientScan(
     onProgress(Math.min(i + BATCH_SIZE, total), total, batch[batch.length - 1]);
   }
 
-  // Sort by overall score descending
-  results.sort((a, b) => b.overallScore - a.overallScore);
+  // Sort by combined score descending (putting high-quality tech + fund stocks at the top)
+  results.sort((a, b) => b.combinedScore - a.combinedScore);
 
   cachedResults = results;
   cachedTimestamp = Date.now();

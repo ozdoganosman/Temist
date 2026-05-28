@@ -1,14 +1,18 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { runClientScan, clearScanCache, getCachedScanResults, type ScannedStock } from './scanEngine';
 import { computeKPIs } from '../../utils/computeFinancialMetrics';
+import { fetchHistory, type OHLCVData } from '../../api/borsaApi';
+import { getCacheItem } from '../../utils/indexedDbCache';
 import IndicatorRadarChart from './IndicatorRadarChart';
+import MiniSparklineChart from './MiniSparklineChart';
+import ScanHeatmap, { type HeatmapItem } from './ScanHeatmap';
 import './MarketAnalysis.css';
 
 interface Props {
   onSymbolClick?: (symbol: string) => void;
 }
 
-type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson' | 'matlrns';
+type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'combinedScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson' | 'matlrns';
 
 export interface StockFinancialData {
   netProfit: number | null;
@@ -54,6 +58,7 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'pc_pos', module: 'pc', field: 'pos', label: 'Pearson: Kanal Konumu', type: 'number' },
   { key: 'ml_value', module: 'ml', field: 'value', label: 'MATLRNS: Yön (-2 ile +2)', type: 'number' },
   // Extra technical metrics
+  { key: 'extra_changePercent', module: 'extra', field: 'changePercent', label: 'Teknik: Günlük Değişim (%)', type: 'number' },
   { key: 'extra_sma50', module: 'extra', field: 'sma50', label: 'Teknik: SMA 50', type: 'number' },
   { key: 'extra_sma200', module: 'extra', field: 'sma200', label: 'Teknik: SMA 200', type: 'number' },
   { key: 'extra_ema21', module: 'extra', field: 'ema21', label: 'Teknik: EMA 21', type: 'number' },
@@ -72,6 +77,9 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'kpis_brutKarMarji', module: 'kpis', field: 'brutKarMarji', label: 'Rasyolar: Brüt Kar Marjı (%)', type: 'number' },
   { key: 'kpis_borcOzkaynak', module: 'kpis', field: 'borcOzkaynak', label: 'Rasyolar: Borç / Özkaynak Oranı', type: 'number' },
   { key: 'kpis_piyasaDegeri', module: 'kpis', field: 'piyasaDegeri', label: 'Rasyolar: Piyasa Değeri', type: 'number' },
+  { key: 'kpis_fundamentalScore', module: 'kpis', field: 'fundamentalScore', label: 'Rasyolar: Temel Analiz Puanı (0-10)', type: 'number' },
+  { key: 'kpis_piotroskiScore', module: 'kpis', field: 'piotroskiScore', label: 'Rasyolar: Piotroski F-Skor (0-9)', type: 'number' },
+  { key: 'kpis_combinedScore', module: 'kpis', field: 'combinedScore', label: 'Rasyolar: Birleşik Puan (0-100)', type: 'number' },
 ];
 
 export const getRightFields = (leftFieldKey: string): FieldDef[] => {
@@ -91,11 +99,18 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
     if (!indicatorData) return true;
     leftVal = (indicatorData as any)[leftDef.field];
   } else if (modId === 'extra') {
-    leftVal = (stock.indicators.extra as any)[leftDef.field];
+    leftVal = leftDef.field === 'changePercent' ? stock.changePercent : (stock.indicators.extra as any)[leftDef.field];
   } else {
-    // Both 'netProfit', 'revGrowth', 'equity' AND 'kpis' fields are stored in finData (StockFinancialData)
-    if (!finData) return false; // If financials are not loaded yet, exclude it from matching if rule is active
-    leftVal = finData[leftDef.field];
+    if (leftDef.field === 'fundamentalScore') {
+      leftVal = stock.fundamentalScore;
+    } else if (leftDef.field === 'piotroskiScore') {
+      leftVal = stock.piotroskiScore;
+    } else if (leftDef.field === 'combinedScore') {
+      leftVal = stock.combinedScore;
+    } else {
+      if (!finData) return false; // If financials are not loaded yet, exclude it from matching if rule is active
+      leftVal = finData[leftDef.field];
+    }
   }
 
   if (leftVal === null || leftVal === undefined) return false;
@@ -116,9 +131,17 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
       const indicatorData = stock.indicators[rightModId === 'wp' ? 'williamsPasa' : rightModId === 'nc' ? 'nizamiCedid' : rightModId === 'er' ? 'emaRibbon' : rightModId === 'pc' ? 'pearson' : 'matlrns'];
       rightVal = indicatorData ? (indicatorData as any)[rightDef.field] : null;
     } else if (rightModId === 'extra') {
-      rightVal = (stock.indicators.extra as any)[rightDef.field];
+      rightVal = rightDef.field === 'changePercent' ? stock.changePercent : (stock.indicators.extra as any)[rightDef.field];
     } else {
-      rightVal = finData ? finData[rightDef.field] : null;
+      if (rightDef.field === 'fundamentalScore') {
+        rightVal = stock.fundamentalScore;
+      } else if (rightDef.field === 'piotroskiScore') {
+        rightVal = stock.piotroskiScore;
+      } else if (rightDef.field === 'combinedScore') {
+        rightVal = stock.combinedScore;
+      } else {
+        rightVal = finData ? finData[rightDef.field] : null;
+      }
     }
   }
 
@@ -139,6 +162,53 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
     case '==': return scaledLeft === scaledRight;
     case '!=': return scaledLeft !== scaledRight;
     default: return true;
+  }
+};
+
+export interface PresetConfig {
+  name: string;
+  rules: RuleConfig[];
+  columns: Record<string, boolean>;
+}
+
+export const PRESETS: Record<string, PresetConfig> = {
+  goldenCross: {
+    name: 'Golden Cross (50/200)',
+    rules: [
+      { id: 'gc_1', leftFieldKey: 'extra_sma50', operator: '>', rightType: 'field', rightValue: 'extra_sma200' },
+      { id: 'gc_2', leftFieldKey: 'extra_volumeRatio', operator: '>', rightType: 'number', rightValue: '1.5' }
+    ],
+    columns: { wp: false, nc: false, er: false, pc: false, ml: false, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
+  },
+  oversold: {
+    name: 'Aşırı Satım Tepki',
+    rules: [
+      { id: 'os_1', leftFieldKey: 'wp_value', operator: '<', rightType: 'number', rightValue: '-80' },
+      { id: 'os_2', leftFieldKey: 'pc_pos', operator: '>', rightType: 'number', rightValue: '-1.8' },
+      { id: 'os_3', leftFieldKey: 'pc_pos', operator: '<', rightType: 'number', rightValue: '-0.5' }
+    ],
+    columns: { wp: true, nc: false, er: false, pc: true, ml: false, extra: false, netProfit: false, revGrowth: false, equity: false, kpis: false }
+  },
+  momentum: {
+    name: 'Hacimli Momentum Kırılımı',
+    rules: [
+      { id: 'mo_1', leftFieldKey: 'extra_changePercent', operator: '>', rightType: 'number', rightValue: '0' },
+      { id: 'mo_2', leftFieldKey: 'ml_value', operator: '>=', rightType: 'number', rightValue: '1' },
+      { id: 'mo_3', leftFieldKey: 'extra_volumeRatio', operator: '>', rightType: 'number', rightValue: '2.0' }
+    ],
+    columns: { wp: false, nc: false, er: false, pc: false, ml: true, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
+  },
+  valueGrowth: {
+    name: 'Değer & Büyüme (Temel)',
+    rules: [
+      { id: 'vg_1', leftFieldKey: 'kpis_fk', operator: '<', rightType: 'number', rightValue: '15' },
+      { id: 'vg_2', leftFieldKey: 'kpis_fk', operator: '>', rightType: 'number', rightValue: '0' },
+      { id: 'vg_3', leftFieldKey: 'kpis_pddd', operator: '<', rightType: 'number', rightValue: '2.5' },
+      { id: 'vg_4', leftFieldKey: 'kpis_pddd', operator: '>', rightType: 'number', rightValue: '0' },
+      { id: 'vg_5', leftFieldKey: 'revGrowth_revenueGrowth', operator: '>', rightType: 'number', rightValue: '20' },
+      { id: 'vg_6', leftFieldKey: 'kpis_roe', operator: '>', rightType: 'number', rightValue: '20' }
+    ],
+    columns: { wp: false, nc: false, er: false, pc: false, ml: false, extra: false, netProfit: false, revGrowth: true, equity: false, kpis: true }
   }
 };
 
@@ -315,6 +385,13 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const [filterBullishML, setFilterBullishML] = useState(() => localStorage.getItem('temist_scanner_f_ml') === 'true');
   const [filterHighScore, setFilterHighScore] = useState(() => localStorage.getItem('temist_scanner_f_high') === 'true');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'heatmap'>(() => (localStorage.getItem('temist_scanner_view_mode') as 'table' | 'heatmap') || 'table');
+  const [heatmapColorBy, setHeatmapColorBy] = useState<'change' | 'score'>('change');
+  const [selectedStockHistory, setSelectedStockHistory] = useState<OHLCVData[] | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('temist_scanner_view_mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => { localStorage.setItem('temist_scanner_f_wp', String(filterBullishWP)); }, [filterBullishWP]);
   useEffect(() => { localStorage.setItem('temist_scanner_f_nc', String(filterBullishNC)); }, [filterBullishNC]);
@@ -355,10 +432,64 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     localStorage.setItem('temist_scanner_drawer_open', String(drawerOpen));
   }, [drawerOpen]);
 
+  useEffect(() => {
+    if (!selectedStock) {
+      setSelectedStockHistory(null);
+      return;
+    }
+    let active = true;
+    const loadHistory = async () => {
+      const cached = await getCacheItem<OHLCVData[]>('history', selectedStock.symbol);
+      if (cached && active) {
+        setSelectedStockHistory(cached);
+        return;
+      }
+      try {
+        const history = await fetchHistory(selectedStock.symbol);
+        if (history && active) {
+          setSelectedStockHistory(history);
+        }
+      } catch (e) {
+        console.error('Failed to load history for sparkline:', e);
+      }
+    };
+    loadHistory();
+    return () => {
+      active = false;
+    };
+  }, [selectedStock]);
+
+  // Fetch financials for selectedStock when drawer is opened
+  useEffect(() => {
+    if (!selectedStock) return;
+    if (financialsData[selectedStock.symbol] !== undefined) return;
+    
+    let active = true;
+    const loadSelectedFin = async () => {
+      const metrics = await fetchStockFinancialData(selectedStock.symbol, selectedStock.close);
+      if (active) {
+        setFinancialsData(prev => {
+          const next = { ...prev, [selectedStock.symbol]: metrics };
+          cachedFinancials = next;
+          try {
+            localStorage.setItem('temist_scanner_financials', JSON.stringify(next));
+          } catch (e) {
+            console.error('Failed to save financials to localStorage:', e);
+          }
+          return next;
+        });
+      }
+    };
+    loadSelectedFin();
+    return () => {
+      active = false;
+    };
+  }, [selectedStock, financialsData]);
+
   // Sorting for Smart Scanner
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     const saved = localStorage.getItem('temist_scanner_sort_key');
-    return saved ? (saved as SortKey) : 'overallScore';
+    return saved ? (saved as SortKey) : 'combinedScore';
   });
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
     const saved = localStorage.getItem('temist_scanner_sort_dir');
@@ -414,6 +545,26 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     clearScanCache();
     doScan(true);
   }, [doScan]);
+
+  const handleApplyPreset = (p: PresetConfig) => {
+    setRules(p.rules);
+    setVisibleColumns(p.columns);
+    setRuleMatchingMode('and');
+  };
+
+  const heatmapData = useMemo(() => {
+    const list = activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
+    return list.map(s => {
+      const fin = financialsData[s.symbol];
+      return {
+        symbol: s.symbol,
+        close: s.close,
+        changePercent: s.changePercent,
+        combinedScore: s.combinedScore,
+        marketCap: fin ? fin.piyasaDegeri || 0 : 0
+      } as HeatmapItem;
+    });
+  }, [activeTab, filteredAndSorted, indicatorFilteredAndSorted, financialsData]);
 
   // Toggle visible columns
   const handleToggleColumn = (mod: string) => {
@@ -933,6 +1084,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     } else if (modId === 'extra') {
       return (stock.indicators.extra as any)[fieldDef.field];
     } else {
+      if (fieldDef.field === 'fundamentalScore') return stock.fundamentalScore;
+      if (fieldDef.field === 'piotroskiScore') return stock.piotroskiScore;
+      if (fieldDef.field === 'combinedScore') return stock.combinedScore;
       const fin = financialsData[stock.symbol];
       if (!fin) return null;
       return fin[fieldDef.field];
@@ -1266,85 +1420,134 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
               </div>
             </div>
 
-            {/* Smart Table */}
+            {/* Smart Table / Heatmap */}
             <div className="scanner-table-section">
-              <div className="scanner-table-info">
-                Gösterilen: <strong>{filteredAndSorted.length}</strong> / {results.length} hisse
-              </div>
-              <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
-                <table className="scanner-table">
-                  <thead>
-                    <tr>
-                      <th onClick={() => handleSort('symbol')} className="sortable">
-                        Hisse {sortKey === 'symbol' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('close')} className="sortable text-right">
-                        Kapanış {sortKey === 'close' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('changePercent')} className="sortable text-right">
-                        Günlük Değ. {sortKey === 'changePercent' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('overallScore')} className="sortable score-th">
-                        Genel Puan {sortKey === 'overallScore' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('williamsPasa')} className="sortable text-center">
-                        WP {sortKey === 'williamsPasa' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('nizamiCedid')} className="sortable text-center">
-                        NC {sortKey === 'nizamiCedid' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('emaRibbon')} className="sortable text-center">
-                        ER {sortKey === 'emaRibbon' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('pearson')} className="sortable text-center">
-                        PC {sortKey === 'pearson' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                      <th onClick={() => handleSort('matlrns')} className="sortable text-center">
-                        ML {sortKey === 'matlrns' && (sortDirection === 'asc' ? '▲' : '▼')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAndSorted.map(stock => (
-                      <tr
-                        key={stock.symbol}
-                        onClick={() => handleRowClick(stock)}
-                        className={`stock-row ${selectedStock?.symbol === stock.symbol ? 'selected' : ''}`}
+              <div className="scanner-table-info-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                <div className="scanner-table-info">
+                  Gösterilen: <strong>{filteredAndSorted.length}</strong> / {results.length} hisse
+                </div>
+                <div className="view-mode-controls" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                      onClick={() => setViewMode('table')}
+                    >
+                      📋 Liste Görünümü
+                    </button>
+                    <button
+                      className={`view-mode-btn ${viewMode === 'heatmap' ? 'active' : ''}`}
+                      onClick={() => setViewMode('heatmap')}
+                    >
+                      🗺️ Isı Haritası
+                    </button>
+                  </div>
+                  {viewMode === 'heatmap' && (
+                    <div className="heatmap-color-select" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Renk:</span>
+                      <select
+                        value={heatmapColorBy}
+                        onChange={e => setHeatmapColorBy(e.target.value as 'change' | 'score')}
+                        className="heatmap-color-dropdown"
                       >
-                        <td className="stock-sym">
-                          <button
-                            className="chart-link-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSymbolClick?.(stock.symbol);
-                            }}
-                            title="Grafiğini Aç"
-                          >
-                            📈
-                          </button>
-                          <span>{stock.symbol}</span>
-                          {stock.overallScore >= 80 && (
-                            <span className="neon-pulse-dot" title="Yüksek Skor (Boğa İvmesi)" />
-                          )}
-                        </td>
-                        <td className="text-right font-mono">{stock.close.toFixed(2)}</td>
-                        <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                          {stock.changePercent > 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
-                        </td>
-                        <td className="score-td">
-                          <div className="overall-score-bar-wrap">
-                            <span className="score-number-label">{stock.overallScore}</span>
-                            <div className="score-bar-bg">
-                              <div
-                                className="score-bar-fill"
-                                style={{
-                                  width: `${stock.overallScore}%`,
-                                  backgroundColor: getScoreColor(stock.overallScore),
-                                }}
-                              />
+                        <option value="change">Günlük Değişim (%)</option>
+                        <option value="score">Birleşik Puan</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {viewMode === 'heatmap' ? (
+                <div className="heatmap-container-wrap" style={{ height: '500px', width: '100%', marginBottom: '16px' }}>
+                  <ScanHeatmap
+                    data={heatmapData}
+                    colorBy={heatmapColorBy}
+                    onNodeClick={(symbol) => {
+                      const found = results.find(r => r.symbol === symbol);
+                      if (found) {
+                        handleRowClick(found);
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
+                  <table className="scanner-table">
+                    <thead>
+                      <tr>
+                        <th onClick={() => handleSort('symbol')} className="sortable">
+                          Hisse {sortKey === 'symbol' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('close')} className="sortable text-right">
+                          Kapanış {sortKey === 'close' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('changePercent')} className="sortable text-right">
+                          Günlük Değ. {sortKey === 'changePercent' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('combinedScore')} className="sortable score-th">
+                          Birleşik Puan {sortKey === 'combinedScore' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('williamsPasa')} className="sortable text-center">
+                          WP {sortKey === 'williamsPasa' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('nizamiCedid')} className="sortable text-center">
+                          NC {sortKey === 'nizamiCedid' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('emaRibbon')} className="sortable text-center">
+                          ER {sortKey === 'emaRibbon' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('pearson')} className="sortable text-center">
+                          PC {sortKey === 'pearson' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('matlrns')} className="sortable text-center">
+                          ML {sortKey === 'matlrns' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAndSorted.map(stock => (
+                        <tr
+                          key={stock.symbol}
+                          onClick={() => handleRowClick(stock)}
+                          className={`stock-row ${selectedStock?.symbol === stock.symbol ? 'selected' : ''}`}
+                        >
+                          <td className="stock-sym">
+                            <button
+                              className="chart-link-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSymbolClick?.(stock.symbol);
+                              }}
+                              title="Grafiğini Aç"
+                            >
+                              📈
+                            </button>
+                            <span>{stock.symbol}</span>
+                            {stock.combinedScore >= 80 && (
+                              <span className="neon-pulse-dot" title="Yüksek Skor (Birleşik Güç)" />
+                            )}
+                          </td>
+                          <td className="text-right font-mono">{stock.close.toFixed(2)}</td>
+                          <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
+                            {stock.changePercent > 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+                          </td>
+                          <td className="score-td">
+                            <div className="overall-score-bar-wrap">
+                              <span className="score-number-label">{stock.combinedScore}</span>
+                              <div className="score-bar-bg">
+                                <div
+                                  className="score-bar-fill"
+                                  style={{
+                                    width: `${stock.combinedScore}%`,
+                                    backgroundColor: getScoreColor(stock.combinedScore),
+                                  }}
+                                />
+                              </div>
+                              <span className="score-breakdown" style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                                (T: {stock.overallScore} | F: {stock.fundamentalScore}/10)
+                              </span>
                             </div>
-                          </div>
-                        </td>
+                          </td>
                         {/* 5 Indicator status columns */}
                         <td className="text-center">
                           <span
@@ -1388,7 +1591,8 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
+          </div>
           </>
         )}
 
@@ -1517,6 +1721,27 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
               </div>
             </div>
 
+            {/* Presets Library Panel */}
+            <div className="presets-library-panel">
+              <div className="presets-header">
+                <span className="section-title-sm">📚 Hazır Strateji Kütüphanesi</span>
+                <span className="presets-subtitle" style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '10px' }}>
+                  Popüler tarama kurallarını tek tıkla uygulayın
+                </span>
+              </div>
+              <div className="presets-list">
+                {Object.entries(PRESETS).map(([key, preset]) => (
+                  <button
+                    key={key}
+                    className="preset-btn"
+                    onClick={() => handleApplyPreset(preset)}
+                  >
+                    🚀 {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Manual Rules Builder Panel */}
             <div className="scanner-filters manual-rules-panel">
               <div className="filter-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
@@ -1639,16 +1864,61 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
 
             {/* Custom dynamic table layout */}
             <div className="scanner-table-section">
-              <div className="scanner-table-info-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div className="scanner-table-info-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
                 <div className="scanner-table-info">
                   Gösterilen: <strong>{indicatorFilteredAndSorted.length}</strong> / {results.length} hisse
                 </div>
-                <button className="export-csv-btn" onClick={handleExportCSV} title="Sonuçları Excel (CSV) olarak indir">
-                  📊 Excel'e Aktar (CSV)
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div className="view-mode-controls" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                        onClick={() => setViewMode('table')}
+                      >
+                        📋 Liste Görünümü
+                      </button>
+                      <button
+                        className={`view-mode-btn ${viewMode === 'heatmap' ? 'active' : ''}`}
+                        onClick={() => setViewMode('heatmap')}
+                      >
+                        🗺️ Isı Haritası
+                      </button>
+                    </div>
+                    {viewMode === 'heatmap' && (
+                      <div className="heatmap-color-select" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Renk:</span>
+                        <select
+                          value={heatmapColorBy}
+                          onChange={e => setHeatmapColorBy(e.target.value as 'change' | 'score')}
+                          className="heatmap-color-dropdown"
+                        >
+                          <option value="change">Günlük Değişim (%)</option>
+                          <option value="score">Birleşik Puan</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <button className="export-csv-btn" onClick={handleExportCSV} title="Sonuçları Excel (CSV) olarak indir">
+                    📊 Excel'e Aktar (CSV)
+                  </button>
+                </div>
               </div>
-              <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
-                <table className="scanner-table indicator-table">
+              {viewMode === 'heatmap' ? (
+                <div className="heatmap-container-wrap" style={{ height: '500px', width: '100%', marginBottom: '16px' }}>
+                  <ScanHeatmap
+                    data={heatmapData}
+                    colorBy={heatmapColorBy}
+                    onNodeClick={(symbol) => {
+                      const found = results.find(r => r.symbol === symbol);
+                      if (found) {
+                        handleRowClick(found);
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
+                  <table className="scanner-table indicator-table">
                   <thead>
                     <tr>
                       <th onClick={() => handleIndSort('symbol')} className="sortable">
@@ -1769,6 +2039,15 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                           </th>
                           <th onClick={() => handleIndSort('kpis_piyasaDegeri')} className="sortable text-right">
                             Piyasa Değeri {indSortKey === 'kpis_piyasaDegeri' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_fundamentalScore')} className="sortable text-right">
+                            Temel Puan {indSortKey === 'kpis_fundamentalScore' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_piotroskiScore')} className="sortable text-right">
+                            Piotroski {indSortKey === 'kpis_piotroskiScore' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_combinedScore')} className="sortable text-right">
+                            Birleşik Puan {indSortKey === 'kpis_combinedScore' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
                         </>
                       )}
@@ -1922,6 +2201,15 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                               <td className="text-right font-mono">
                                 {fin && fin.piyasaDegeri !== null ? formatLargeMoney(fin.piyasaDegeri) : <span className="cell-loading">-</span>}
                               </td>
+                              <td className="text-right font-mono font-semibold">
+                                {stock.fundamentalScore}/10
+                              </td>
+                              <td className="text-right font-mono font-semibold">
+                                {stock.piotroskiScore}/9
+                              </td>
+                              <td className="text-right font-mono font-semibold">
+                                {stock.combinedScore}
+                              </td>
                             </>
                           )}
                         </tr>
@@ -1929,7 +2217,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.ml ? 1 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 7 : 0)} className="no-results-cell">
+                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.ml ? 1 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>
@@ -1937,7 +2225,8 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
+          </div>
           </>
         )}
 
@@ -2009,6 +2298,75 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     matlrns: selectedStock.indicators.matlrns.score,
                   }}
                 />
+              </div>
+
+              {/* Sparkline chart */}
+              <div className="drawer-sparkline-card">
+                <h4 className="card-title-sm" style={{ marginBottom: '10px', color: 'var(--text-bright)', fontSize: '14px', fontWeight: 'semibold' }}>Son 30 Günlük Fiyat & Hacim Trendi</h4>
+                <MiniSparklineChart historyData={selectedStockHistory} />
+              </div>
+
+              {/* Fundamental Analysis Summary */}
+              <div className="drawer-fundamental-card">
+                <h4 className="card-title-sm" style={{ marginBottom: '10px', color: 'var(--text-bright)', fontSize: '14px', fontWeight: 'semibold' }}>Temel Analiz & Rasyolar</h4>
+                <div className="fundamental-scores-row" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' }}>
+                  <div className="fun-score-item" style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                    <span className="fun-score-val" style={{ display: 'block', fontSize: '16px', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>
+                      {selectedStock.fundamentalScore} <span className="fun-score-max" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>/10</span>
+                    </span>
+                    <span className="fun-score-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Temel Sağlık</span>
+                  </div>
+                  <div className="fun-score-item" style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                    <span className="fun-score-val" style={{ display: 'block', fontSize: '16px', fontWeight: 'bold', color: 'var(--accent-orange)' }}>
+                      {selectedStock.piotroskiScore} <span className="fun-score-max" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>/9</span>
+                    </span>
+                    <span className="fun-score-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Piotroski F-Skor</span>
+                  </div>
+                  <div className="fun-score-item" style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                    <span className="fun-score-val" style={{ display: 'block', fontSize: '16px', fontWeight: 'bold', color: getScoreColor(selectedStock.combinedScore) }}>
+                      {selectedStock.combinedScore} <span className="fun-score-max" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>/100</span>
+                    </span>
+                    <span className="fun-score-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Birleşik Puan</span>
+                  </div>
+                </div>
+                
+                {financialsData[selectedStock.symbol] ? (
+                  (() => {
+                    const fin = financialsData[selectedStock.symbol]!;
+                    return (
+                      <div className="drawer-kpis-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', background: 'rgba(255, 255, 255, 0.02)', padding: '8px', borderRadius: '4px' }}>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>F/K Oranı</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.fk !== null ? fin.fk.toFixed(2) : '-'}</span>
+                        </div>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>PD/DD Oranı</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.pddd !== null ? fin.pddd.toFixed(2) : '-'}</span>
+                        </div>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Özkaynak Karlılığı</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: fin.roe && fin.roe > 20 ? 'var(--neon-green)' : 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.roe !== null ? fin.roe.toFixed(1) + '%' : '-'}</span>
+                        </div>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Net Kar Marjı</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: fin.netKarMarji && fin.netKarMarji > 15 ? 'var(--neon-green)' : 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.netKarMarji !== null ? fin.netKarMarji.toFixed(1) + '%' : '-'}</span>
+                        </div>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Borç / Özkaynak</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.borcOzkaynak !== null ? fin.borcOzkaynak.toFixed(2) : '-'}</span>
+                        </div>
+                        <div className="kpi-grid-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className="kpi-lbl" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Satış Büyümesi</span>
+                          <span className="kpi-val font-mono" style={{ fontSize: '12px', color: fin.revenueGrowth && fin.revenueGrowth > 20 ? 'var(--neon-green)' : 'var(--text-bright)', fontWeight: 'semibold' }}>{fin.revenueGrowth !== null ? fin.revenueGrowth.toFixed(1) + '%' : '-'}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
+                    Finansal rasyolar yükleniyor veya bulunamadı.
+                  </div>
+                )}
               </div>
 
               {/* 5 Indicators detailed sections */}
