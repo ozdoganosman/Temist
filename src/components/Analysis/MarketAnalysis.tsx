@@ -314,6 +314,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const [filterBullishPC, setFilterBullishPC] = useState(() => localStorage.getItem('temist_scanner_f_pc') === 'true');
   const [filterBullishML, setFilterBullishML] = useState(() => localStorage.getItem('temist_scanner_f_ml') === 'true');
   const [filterHighScore, setFilterHighScore] = useState(() => localStorage.getItem('temist_scanner_f_high') === 'true');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => { localStorage.setItem('temist_scanner_f_wp', String(filterBullishWP)); }, [filterBullishWP]);
   useEffect(() => { localStorage.setItem('temist_scanner_f_nc', String(filterBullishNC)); }, [filterBullishNC]);
@@ -651,6 +652,12 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const filteredAndSorted = useMemo(() => {
     let list = [...results];
 
+    // Search query filter
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(item => item.symbol.toLowerCase().includes(q));
+    }
+
     // Indicator switches
     if (filterBullishWP) {
       list = list.filter(item => item.indicators.williamsPasa.signal === 'bullish');
@@ -686,7 +693,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
 
     return list;
-  }, [results, filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterBullishML, filterHighScore, sortKey, sortDirection]);
+  }, [results, filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterBullishML, filterHighScore, sortKey, sortDirection, searchQuery]);
 
   // Market sentiment calculations
   const sentimentStats = useMemo(() => {
@@ -945,6 +952,12 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const indicatorFilteredAndSorted = useMemo(() => {
     let list = [...results];
 
+    // Search query filter
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(item => item.symbol.toLowerCase().includes(q));
+    }
+
     if (rules.length > 0) {
       list = list.filter(item => {
         const fin = financialsData[item.symbol];
@@ -972,7 +985,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
 
     return list;
-  }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection]);
+  }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection, searchQuery]);
 
   // Scroll position persistence
   const tableWrapRef = useRef<HTMLDivElement>(null);
@@ -1125,6 +1138,42 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
 
         {/* Error */}
         {error && <div className="scan-error">{error}</div>}
+
+        {/* Search Input Box */}
+        {results.length > 0 && (
+          <div className="search-box-wrap" style={{ margin: '4px 0 16px 0' }}>
+            <svg
+              className="search-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            <input
+              type="text"
+              className="scanner-search-input"
+              placeholder="Hisse senedi kodu arayın... (Örn: THYAO, EREGL)"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                className="search-clear-btn"
+                onClick={() => setSearchQuery('')}
+                title="Aramayı Temizle"
+              >
+                &times;
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── TAB 1: SMART SCANNER ────────────────── */}
         {activeTab === 'smart' && results.length > 0 && (
