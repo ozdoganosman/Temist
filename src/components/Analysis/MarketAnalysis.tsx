@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { runClientScan, clearScanCache, getCachedScanResults, type ScannedStock } from './scanEngine';
+import { computeKPIs } from '../../utils/computeFinancialMetrics';
+import IndicatorRadarChart from './IndicatorRadarChart';
 import './MarketAnalysis.css';
 
 interface Props {
@@ -8,12 +10,19 @@ interface Props {
 
 type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson' | 'matlrns';
 
-interface FinancialMetrics {
+export interface StockFinancialData {
   netProfit: number | null;
   revenueGrowth: number | null;
   equity: number | null;
   equityGrowth: number | null;
   latestPeriod: string;
+  fk: number | null;
+  pddd: number | null;
+  netKarMarji: number | null;
+  brutKarMarji: number | null;
+  roe: number | null;
+  borcOzkaynak: number | null;
+  piyasaDegeri: number | null;
 }
 
 export interface RuleConfig {
@@ -44,10 +53,25 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'pc_value', module: 'pc', field: 'value', label: 'Pearson: Korelasyon R', type: 'number' },
   { key: 'pc_pos', module: 'pc', field: 'pos', label: 'Pearson: Kanal Konumu', type: 'number' },
   { key: 'ml_value', module: 'ml', field: 'value', label: 'MATLRNS: Yön (-2 ile +2)', type: 'number' },
+  // Extra technical metrics
+  { key: 'extra_sma50', module: 'extra', field: 'sma50', label: 'Teknik: SMA 50', type: 'number' },
+  { key: 'extra_sma200', module: 'extra', field: 'sma200', label: 'Teknik: SMA 200', type: 'number' },
+  { key: 'extra_ema21', module: 'extra', field: 'ema21', label: 'Teknik: EMA 21', type: 'number' },
+  { key: 'extra_ema100', module: 'extra', field: 'ema100', label: 'Teknik: EMA 100', type: 'number' },
+  { key: 'extra_volumeRatio', module: 'extra', field: 'volumeRatio', label: 'Teknik: Hacim Oranı', type: 'number' },
+  // Financial Metrics
   { key: 'netProfit_netProfit', module: 'netProfit', field: 'netProfit', label: 'Finansal: Net Dönem Karı', type: 'number' },
   { key: 'revGrowth_revenueGrowth', module: 'revGrowth', field: 'revenueGrowth', label: 'Finansal: Satış Gelir Büyümesi (%)', type: 'number' },
   { key: 'equity_equity', module: 'equity', field: 'equity', label: 'Finansal: Özkaynaklar', type: 'number' },
   { key: 'equity_equityGrowth', module: 'equity', field: 'equityGrowth', label: 'Finansal: Özkaynak Büyümesi (%)', type: 'number' },
+  // Financial KPIs
+  { key: 'kpis_fk', module: 'kpis', field: 'fk', label: 'Rasyolar: F/K (Fiyat/Kazanç)', type: 'number' },
+  { key: 'kpis_pddd', module: 'kpis', field: 'pddd', label: 'Rasyolar: PD/DD', type: 'number' },
+  { key: 'kpis_roe', module: 'kpis', field: 'roe', label: 'Rasyolar: Özkaynak Karlılığı (ROE %)', type: 'number' },
+  { key: 'kpis_netKarMarji', module: 'kpis', field: 'netKarMarji', label: 'Rasyolar: Net Kar Marjı (%)', type: 'number' },
+  { key: 'kpis_brutKarMarji', module: 'kpis', field: 'brutKarMarji', label: 'Rasyolar: Brüt Kar Marjı (%)', type: 'number' },
+  { key: 'kpis_borcOzkaynak', module: 'kpis', field: 'borcOzkaynak', label: 'Rasyolar: Borç / Özkaynak Oranı', type: 'number' },
+  { key: 'kpis_piyasaDegeri', module: 'kpis', field: 'piyasaDegeri', label: 'Rasyolar: Piyasa Değeri', type: 'number' },
 ];
 
 export const getRightFields = (leftFieldKey: string): FieldDef[] => {
@@ -66,8 +90,11 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
     const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : modId === 'pc' ? 'pearson' : 'matlrns'];
     if (!indicatorData) return true;
     leftVal = (indicatorData as any)[leftDef.field];
+  } else if (modId === 'extra') {
+    leftVal = (stock.indicators.extra as any)[leftDef.field];
   } else {
-    if (!finData) return true;
+    // Both 'netProfit', 'revGrowth', 'equity' AND 'kpis' fields are stored in finData (StockFinancialData)
+    if (!finData) return false; // If financials are not loaded yet, exclude it from matching if rule is active
     leftVal = finData[leftDef.field];
   }
 
@@ -88,6 +115,8 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
     if (['wp', 'nc', 'er', 'pc', 'ml'].includes(rightModId)) {
       const indicatorData = stock.indicators[rightModId === 'wp' ? 'williamsPasa' : rightModId === 'nc' ? 'nizamiCedid' : rightModId === 'er' ? 'emaRibbon' : rightModId === 'pc' ? 'pearson' : 'matlrns'];
       rightVal = indicatorData ? (indicatorData as any)[rightDef.field] : null;
+    } else if (rightModId === 'extra') {
+      rightVal = (stock.indicators.extra as any)[rightDef.field];
     } else {
       rightVal = finData ? finData[rightDef.field] : null;
     }
@@ -114,11 +143,22 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
 };
 
 // Global module-level memory cache for financials to prevent refetching and temporary blank fields on navigation
-let cachedFinancials: Record<string, FinancialMetrics | null> = {};
+let cachedFinancials: Record<string, StockFinancialData | null> = {};
 try {
   const savedFin = localStorage.getItem('temist_scanner_financials');
   if (savedFin) {
-    cachedFinancials = JSON.parse(savedFin);
+    const parsed = JSON.parse(savedFin);
+    const keys = Object.keys(parsed);
+    if (keys.length > 0) {
+      const firstVal = parsed[keys[0]];
+      if (firstVal && 'fk' in firstVal) {
+        cachedFinancials = parsed;
+      } else {
+        localStorage.removeItem('temist_scanner_financials');
+      }
+    } else {
+      cachedFinancials = parsed;
+    }
   }
 } catch (e) {
   console.error('Failed to parse cached financials:', e);
@@ -147,10 +187,39 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
       er: false,
       pc: false,
       ml: false,
+      extra: false,
       netProfit: false,
       revGrowth: false,
       equity: false,
+      kpis: false,
     };
+  });
+
+  // Rule Matching Mode: VE (AND) or VEYA (OR)
+  const [ruleMatchingMode, setRuleMatchingMode] = useState<'and' | 'or'>(() => {
+    const saved = localStorage.getItem('temist_scanner_rule_matching_mode');
+    return (saved === 'and' || saved === 'or') ? saved : 'and';
+  });
+
+  interface FilterTemplate {
+    id: string;
+    name: string;
+    rules: RuleConfig[];
+    visibleColumns: Record<string, boolean>;
+    ruleMatchingMode: 'and' | 'or';
+  }
+
+  // Saved templates state
+  const [savedTemplates, setSavedTemplates] = useState<FilterTemplate[]>(() => {
+    const saved = localStorage.getItem('temist_scanner_templates');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return [];
   });
 
   // Manual Filter Rules List
@@ -179,6 +248,14 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   useEffect(() => {
     localStorage.setItem('temist_scanner_rules', JSON.stringify(rules));
   }, [rules]);
+
+  useEffect(() => {
+    localStorage.setItem('temist_scanner_rule_matching_mode', ruleMatchingMode);
+  }, [ruleMatchingMode]);
+
+  useEffect(() => {
+    localStorage.setItem('temist_scanner_templates', JSON.stringify(savedTemplates));
+  }, [savedTemplates]);
 
   const updateRule = (id: string, updates: Partial<RuleConfig>) => {
     setRules(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
@@ -246,7 +323,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   useEffect(() => { localStorage.setItem('temist_scanner_f_high', String(filterHighScore)); }, [filterHighScore]);
 
   // Financial data loading state
-  const [financialsData, setFinancialsData] = useState<Record<string, FinancialMetrics | null>>(() => cachedFinancials);
+  const [financialsData, setFinancialsData] = useState<Record<string, StockFinancialData | null>>(() => cachedFinancials);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
 
   // Drawer & Selection
@@ -343,6 +420,203 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
       ...prev,
       [mod]: !prev[mod]
     }));
+  };
+
+  const handleSaveTemplate = () => {
+    const name = prompt('Lütfen şablon için bir isim girin:');
+    if (!name || name.trim() === '') return;
+
+    const newTemplate: FilterTemplate = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: name.trim(),
+      rules,
+      visibleColumns,
+      ruleMatchingMode
+    };
+
+    setSavedTemplates(prev => [...prev, newTemplate]);
+  };
+
+  const handleLoadTemplate = (tmpl: FilterTemplate) => {
+    setRules(tmpl.rules);
+    setVisibleColumns(tmpl.visibleColumns);
+    setRuleMatchingMode(tmpl.ruleMatchingMode);
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    if (confirm('Bu şablonu silmek istediğinize emin misiniz?')) {
+      setSavedTemplates(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
+  const handleExportTemplates = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(savedTemplates, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "temist_scanner_templates.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleImportTemplates = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], "UTF-8");
+      fileReader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (Array.isArray(parsed)) {
+            const valid = parsed.every(t => t.name && Array.isArray(t.rules) && t.visibleColumns);
+            if (valid) {
+              setSavedTemplates(prev => {
+                const merged = [...prev];
+                for (const item of parsed) {
+                  if (!merged.some(m => m.name === item.name)) {
+                    merged.push(item);
+                  }
+                }
+                return merged;
+              });
+              alert('Şablonlar başarıyla içe aktarıldı!');
+            } else {
+              alert('Geçersiz şablon dosyası formatı!');
+            }
+          } else {
+            alert('Dosya formatı şablon listesi olmalıdır (Array).');
+          }
+        } catch {
+          alert('Dosya okunurken bir hata oluştu.');
+        }
+      };
+    }
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Hisse', 'Kapanış', 'Günlük Değişim (%)'];
+    const colKeys: { label: string; getValue: (stock: ScannedStock) => string }[] = [];
+
+    if (visibleColumns.wp) {
+      headers.push('Williams %R', '%R EMA');
+      colKeys.push(
+        { label: 'Williams %R', getValue: s => s.indicators.williamsPasa.value.toFixed(1) + '%' },
+        { label: '%R EMA', getValue: s => s.indicators.williamsPasa.ema.toFixed(1) + '%' }
+      );
+    }
+    if (visibleColumns.nc) {
+      headers.push('NC Delta', 'NC MACD', 'NC Signal', 'NC eMACD', 'NC Trend');
+      colKeys.push(
+        { label: 'NC Delta', getValue: s => (s.indicators.nizamiCedid.value * 100).toFixed(2) + '%' },
+        { label: 'NC MACD', getValue: s => (s.indicators.nizamiCedid.macd * 100).toFixed(2) + '%' },
+        { label: 'NC Signal', getValue: s => (s.indicators.nizamiCedid.macdSignal * 100).toFixed(2) + '%' },
+        { label: 'NC eMACD', getValue: s => (s.indicators.nizamiCedid.emacd * 100).toFixed(2) + '%' },
+        { label: 'NC Trend', getValue: s => s.indicators.nizamiCedid.condition ? 'EMA 377 > 610' : 'EMA 377 < 610' }
+      );
+    }
+    if (visibleColumns.er) {
+      headers.push('ER Spread');
+      colKeys.push({ label: 'ER Spread', getValue: s => s.indicators.emaRibbon.value.toFixed(3) });
+    }
+    if (visibleColumns.pc) {
+      headers.push('Pearson R', 'Kanal Konum');
+      colKeys.push(
+        { label: 'Pearson R', getValue: s => s.indicators.pearson.value.toFixed(2) },
+        { label: 'Kanal Konum', getValue: s => s.indicators.pearson.pos.toFixed(2) }
+      );
+    }
+    if (visibleColumns.ml) {
+      headers.push('MATLRNS Yön');
+      colKeys.push({ label: 'MATLRNS Yön', getValue: s => String(s.indicators.matlrns.value) });
+    }
+    if (visibleColumns.extra) {
+      headers.push('SMA 50', 'SMA 200', 'EMA 21', 'EMA 100', 'Hacim Oranı');
+      colKeys.push(
+        { label: 'SMA 50', getValue: s => s.indicators.extra.sma50?.toFixed(2) ?? '-' },
+        { label: 'SMA 200', getValue: s => s.indicators.extra.sma200?.toFixed(2) ?? '-' },
+        { label: 'EMA 21', getValue: s => s.indicators.extra.ema21?.toFixed(2) ?? '-' },
+        { label: 'EMA 100', getValue: s => s.indicators.extra.ema100?.toFixed(2) ?? '-' },
+        { label: 'Hacim Oranı', getValue: s => s.indicators.extra.volumeRatio?.toFixed(2) ?? '-' }
+      );
+    }
+    if (visibleColumns.netProfit) {
+      headers.push('Net Kar');
+      colKeys.push({ label: 'Net Kar', getValue: s => {
+        const fin = financialsData[s.symbol];
+        return fin && fin.netProfit !== null ? String(fin.netProfit) : '-';
+      }});
+    }
+    if (visibleColumns.revGrowth) {
+      headers.push('Satış Büyümesi');
+      colKeys.push({ label: 'Satış Büyümesi', getValue: s => {
+        const fin = financialsData[s.symbol];
+        return fin && fin.revenueGrowth !== null ? fin.revenueGrowth.toFixed(1) + '%' : '-';
+      }});
+    }
+    if (visibleColumns.equity) {
+      headers.push('Özkaynaklar');
+      colKeys.push({ label: 'Özkaynaklar', getValue: s => {
+        const fin = financialsData[s.symbol];
+        return fin && fin.equity !== null ? String(fin.equity) : '-';
+      }});
+    }
+    if (visibleColumns.kpis) {
+      headers.push('F/K', 'PD/DD', 'ROE (%)', 'Net Kar Marjı (%)', 'Brüt Kar Marjı (%)', 'Borç/Özkaynak', 'Piyasa Değeri');
+      colKeys.push(
+        { label: 'F/K', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.fk !== null ? fin.fk.toFixed(2) : '-';
+        }},
+        { label: 'PD/DD', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.pddd !== null ? fin.pddd.toFixed(2) : '-';
+        }},
+        { label: 'ROE (%)', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.roe !== null ? fin.roe.toFixed(2) + '%' : '-';
+        }},
+        { label: 'Net Kar Marjı (%)', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.netKarMarji !== null ? fin.netKarMarji.toFixed(2) + '%' : '-';
+        }},
+        { label: 'Brüt Kar Marjı (%)', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.brutKarMarji !== null ? fin.brutKarMarji.toFixed(2) + '%' : '-';
+        }},
+        { label: 'Borç/Özkaynak', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.borcOzkaynak !== null ? fin.borcOzkaynak.toFixed(2) : '-';
+        }},
+        { label: 'Piyasa Değeri', getValue: s => {
+          const fin = financialsData[s.symbol];
+          return fin && fin.piyasaDegeri !== null ? String(fin.piyasaDegeri) : '-';
+        }}
+      );
+    }
+
+    const csvRows = [headers.join(';')];
+    for (const stock of indicatorFilteredAndSorted) {
+      const rowData = [
+        stock.symbol,
+        stock.close.toFixed(2),
+        stock.changePercent.toFixed(2) + '%'
+      ];
+      for (const col of colKeys) {
+        rowData.push(col.getValue(stock));
+      }
+      csvRows.push(rowData.join(';'));
+    }
+
+    const BOM = "\uFEFF";
+    const csvContent = BOM + csvRows.join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `temist_tarama_sonuclari_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Handle row sorting for Smart Scanner
@@ -470,7 +744,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
 
   // ── Financial Data Batch Loader ─────────────────
 
-  const fetchFinancialMetrics = async (symbol: string): Promise<FinancialMetrics | null> => {
+  // ── Financial Data Batch Loader ─────────────────
+
+  const fetchStockFinancialData = async (symbol: string, close: number): Promise<StockFinancialData | null> => {
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}data/financials/${symbol}.json`);
       if (!res.ok) return null;
@@ -529,12 +805,23 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
         }
       }
 
+      // Compute KPIs
+      const dummyOhlcv = [{ close }] as any[];
+      const kpis = computeKPIs(json, dummyOhlcv);
+
       return {
         netProfit,
         revenueGrowth,
         equity: lastEquity,
         equityGrowth,
         latestPeriod: lastPeriod,
+        fk: kpis.fk,
+        pddd: kpis.pddd,
+        netKarMarji: kpis.netKarMarji,
+        brutKarMarji: kpis.brutKarMarji,
+        roe: kpis.roe,
+        borcOzkaynak: kpis.borcOzkaynak,
+        piyasaDegeri: kpis.piyasaDegeri,
       };
     } catch (e) {
       console.error(`Error loading financials for ${symbol}:`, e);
@@ -542,14 +829,14 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     }
   };
 
-  // Filter computed results technically based on OUR active indicator rules
+  // Filter computed results technically based on OUR active indicator rules (used for optimizing financial downloads in AND mode)
   const technicallyFiltered = useMemo(() => {
     let list = [...results];
 
     // Evaluate active technical rules
     const techRules = rules.filter(r => {
       const fieldDef = ALL_FIELDS.find(f => f.key === r.leftFieldKey);
-      return fieldDef && ['wp', 'nc', 'er', 'pc', 'ml'].includes(fieldDef.module);
+      return fieldDef && ['wp', 'nc', 'er', 'pc', 'ml', 'extra'].includes(fieldDef.module);
     });
 
     for (const rule of techRules) {
@@ -559,21 +846,25 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     return list;
   }, [results, rules]);
 
-  // Background financials loader triggered by technical filters
+  // Background financials loader triggered by technical filters / matching rules
   useEffect(() => {
     if (activeTab !== 'indicator') return;
 
     // Check if at least one active rule references financial modules, OR if financial columns are manually enabled
     const hasFinActive = rules.some(r => {
       const fieldDef = ALL_FIELDS.find(f => f.key === r.leftFieldKey);
-      return fieldDef && ['netProfit', 'revGrowth', 'equity'].includes(fieldDef.module);
-    }) || visibleColumns.netProfit || visibleColumns.revGrowth || visibleColumns.equity;
+      return fieldDef && ['netProfit', 'revGrowth', 'equity', 'kpis'].includes(fieldDef.module);
+    }) || visibleColumns.netProfit || visibleColumns.revGrowth || visibleColumns.equity || visibleColumns.kpis;
 
     if (!hasFinActive) return;
 
-    const needed = technicallyFiltered
-      .map(item => item.symbol)
-      .filter(sym => financialsData[sym] === undefined);
+    // In OR mode, any stock might match a financial rule, so we fetch financials for all results.
+    // In AND mode, only stocks passing technical filters can match, so we fetch only for those.
+    const targetList = ruleMatchingMode === 'or' ? results : technicallyFiltered;
+
+    const needed = targetList
+      .map(item => ({ symbol: item.symbol, close: item.close }))
+      .filter(x => financialsData[x.symbol] === undefined);
 
     if (needed.length === 0) return;
 
@@ -585,9 +876,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
       for (let i = 0; i < needed.length; i += BATCH) {
         if (!active) break;
         const batch = needed.slice(i, i + BATCH);
-        const promises = batch.map(async sym => {
-          const metrics = await fetchFinancialMetrics(sym);
-          return { sym, metrics };
+        const promises = batch.map(async x => {
+          const metrics = await fetchStockFinancialData(x.symbol, x.close);
+          return { sym: x.symbol, metrics };
         });
         const batchRes = await Promise.all(promises);
 
@@ -617,7 +908,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     return () => {
       active = false;
     };
-  }, [technicallyFiltered, activeTab, financialsData, rules, visibleColumns]);
+  }, [technicallyFiltered, results, activeTab, financialsData, rules, visibleColumns, ruleMatchingMode]);
 
   const getIndSortValue = (stock: ScannedStock, key: string): any => {
     if (key === 'symbol') return stock.symbol;
@@ -632,6 +923,8 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
       const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : modId === 'pc' ? 'pearson' : 'matlrns'];
       if (!indicatorData) return 0;
       return (indicatorData as any)[fieldDef.field];
+    } else if (modId === 'extra') {
+      return (stock.indicators.extra as any)[fieldDef.field];
     } else {
       const fin = financialsData[stock.symbol];
       if (!fin) return null;
@@ -648,20 +941,19 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     }
   };
 
-  // Apply financials filters and sort for indicator tab
+  // Apply financials filters and sort for indicator tab (unified AND/OR logic)
   const indicatorFilteredAndSorted = useMemo(() => {
-    let list = [...technicallyFiltered];
+    let list = [...results];
 
-    // Evaluate active financial rules
-    const finRules = rules.filter(r => {
-      const fieldDef = ALL_FIELDS.find(f => f.key === r.leftFieldKey);
-      return fieldDef && ['netProfit', 'revGrowth', 'equity'].includes(fieldDef.module);
-    });
-
-    for (const rule of finRules) {
+    if (rules.length > 0) {
       list = list.filter(item => {
         const fin = financialsData[item.symbol];
-        return evaluateRule(item, rule, fin);
+
+        if (ruleMatchingMode === 'or') {
+          return rules.some(rule => evaluateRule(item, rule, fin));
+        } else {
+          return rules.every(rule => evaluateRule(item, rule, fin));
+        }
       });
     }
 
@@ -680,7 +972,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
 
     return list;
-  }, [technicallyFiltered, financialsData, rules, indSortKey, indSortDirection]);
+  }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection]);
 
   // Scroll position persistence
   const tableWrapRef = useRef<HTMLDivElement>(null);
@@ -982,6 +1274,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                             📈
                           </button>
                           <span>{stock.symbol}</span>
+                          {stock.overallScore >= 80 && (
+                            <span className="neon-pulse-dot" title="Yüksek Skor (Boğa İvmesi)" />
+                          )}
                         </td>
                         <td className="text-right font-mono">{stock.close.toFixed(2)}</td>
                         <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
@@ -1098,6 +1393,14 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                 <label className="filter-pill">
                   <input
                     type="checkbox"
+                    checked={visibleColumns.extra}
+                    onChange={() => handleToggleColumn('extra')}
+                  />
+                  <span>Teknik Ortalamalar</span>
+                </label>
+                <label className="filter-pill">
+                  <input
+                    type="checkbox"
                     checked={visibleColumns.netProfit}
                     onChange={() => handleToggleColumn('netProfit')}
                   />
@@ -1119,16 +1422,76 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   />
                   <span>Özkaynaklar</span>
                 </label>
+                <label className="filter-pill">
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.kpis}
+                    onChange={() => handleToggleColumn('kpis')}
+                  />
+                  <span>Finansal Rasyolar (F/K, PD/DD, ROE)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Template Management Panel */}
+            <div className="template-management-panel">
+              <div className="template-header">
+                <span className="section-title-sm">Filtre Şablonları</span>
+                <div className="template-actions">
+                  <button className="template-action-btn save" onClick={handleSaveTemplate}>
+                    💾 Şablonu Kaydet
+                  </button>
+                  <button className="template-action-btn export" onClick={handleExportTemplates}>
+                    📤 Şablonları Dışa Aktar
+                  </button>
+                  <label className="template-action-btn import">
+                    📥 Şablonları İçe Aktar
+                    <input type="file" accept=".json" onChange={handleImportTemplates} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              </div>
+              <div className="template-list">
+                {savedTemplates.length === 0 ? (
+                  <span className="no-templates-text">Kayıtlı şablon bulunamadı. Mevcut filtrelerinizi şablon olarak kaydedebilirsiniz.</span>
+                ) : (
+                  savedTemplates.map(tmpl => (
+                    <div key={tmpl.id} className="template-pill">
+                      <span className="template-name" onClick={() => handleLoadTemplate(tmpl)}>
+                        📁 {tmpl.name}
+                      </span>
+                      <button className="template-delete-btn" onClick={() => handleDeleteTemplate(tmpl.id)} title="Şablonu Sil">
+                        &times;
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             {/* Manual Rules Builder Panel */}
             <div className="scanner-filters manual-rules-panel">
-              <div className="filter-top-bar">
+              <div className="filter-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <span className="section-title-sm">Tarama Filtre Kuralları (Tümüyle Manuel)</span>
-                <button className="add-rule-btn" onClick={addRule}>
-                  + Filtre Kuralı Ekle
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="filter-matching-mode" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="mode-label" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Filtre Mantığı:</span>
+                    <button
+                      className={`mode-btn ${ruleMatchingMode === 'and' ? 'active' : ''}`}
+                      onClick={() => setRuleMatchingMode('and')}
+                    >
+                      VE (Tüm Kurallar)
+                    </button>
+                    <button
+                      className={`mode-btn ${ruleMatchingMode === 'or' ? 'active' : ''}`}
+                      onClick={() => setRuleMatchingMode('or')}
+                    >
+                      VEYA (Herhangi Biri)
+                    </button>
+                  </div>
+                  <button className="add-rule-btn" onClick={addRule}>
+                    + Filtre Kuralı Ekle
+                  </button>
+                </div>
               </div>
 
               {rules.length === 0 ? (
@@ -1227,8 +1590,13 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
 
             {/* Custom dynamic table layout */}
             <div className="scanner-table-section">
-              <div className="scanner-table-info">
-                Gösterilen: <strong>{indicatorFilteredAndSorted.length}</strong> / {results.length} hisse
+              <div className="scanner-table-info-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div className="scanner-table-info">
+                  Gösterilen: <strong>{indicatorFilteredAndSorted.length}</strong> / {results.length} hisse
+                </div>
+                <button className="export-csv-btn" onClick={handleExportCSV} title="Sonuçları Excel (CSV) olarak indir">
+                  📊 Excel'e Aktar (CSV)
+                </button>
               </div>
               <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
                 <table className="scanner-table indicator-table">
@@ -1294,6 +1662,25 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                           MATLRNS Yön {indSortKey === 'ml_value' && (indSortDirection === 'asc' ? '▲' : '▼')}
                         </th>
                       )}
+                      {visibleColumns.extra && (
+                        <>
+                          <th onClick={() => handleIndSort('extra_sma50')} className="sortable text-right">
+                            SMA 50 {indSortKey === 'extra_sma50' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('extra_sma200')} className="sortable text-right">
+                            SMA 200 {indSortKey === 'extra_sma200' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('extra_ema21')} className="sortable text-right">
+                            EMA 21 {indSortKey === 'extra_ema21' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('extra_ema100')} className="sortable text-right">
+                            EMA 100 {indSortKey === 'extra_ema100' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('extra_volumeRatio')} className="sortable text-right">
+                            Hacim Oranı {indSortKey === 'extra_volumeRatio' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                        </>
+                      )}
                       
                       {/* Dynamic Financial Headers */}
                       {visibleColumns.netProfit && (
@@ -1310,6 +1697,31 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                         <th onClick={() => handleIndSort('equity_equity')} className="sortable text-right">
                           Özkaynaklar {indSortKey === 'equity_equity' && (indSortDirection === 'asc' ? '▲' : '▼')}
                         </th>
+                      )}
+                      {visibleColumns.kpis && (
+                        <>
+                          <th onClick={() => handleIndSort('kpis_fk')} className="sortable text-right">
+                            F/K {indSortKey === 'kpis_fk' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_pddd')} className="sortable text-right">
+                            PD/DD {indSortKey === 'kpis_pddd' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_roe')} className="sortable text-right">
+                            ROE (%) {indSortKey === 'kpis_roe' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_netKarMarji')} className="sortable text-right">
+                            Net Kar Marjı {indSortKey === 'kpis_netKarMarji' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_brutKarMarji')} className="sortable text-right">
+                            Brüt Kar Marjı {indSortKey === 'kpis_brutKarMarji' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_borcOzkaynak')} className="sortable text-right">
+                            Borç/Özk. {indSortKey === 'kpis_borcOzkaynak' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('kpis_piyasaDegeri')} className="sortable text-right">
+                            Piyasa Değeri {indSortKey === 'kpis_piyasaDegeri' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                        </>
                       )}
                     </tr>
                   </thead>
@@ -1341,6 +1753,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                               📈
                             </button>
                             <span>{stock.symbol}</span>
+                            {stock.overallScore >= 80 && (
+                              <span className="neon-pulse-dot" title="Yüksek Skor (Boğa İvmesi)" />
+                            )}
                           </td>
                           <td className="text-right font-mono">{stock.close.toFixed(2)}</td>
                           <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
@@ -1399,6 +1814,25 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                               {ml.value > 0 ? `+${ml.value}` : ml.value}
                             </td>
                           )}
+                          {visibleColumns.extra && (
+                            <>
+                              <td className="text-right font-mono">
+                                {stock.indicators.extra.sma50 ? stock.indicators.extra.sma50.toFixed(2) : '-'}
+                              </td>
+                              <td className="text-right font-mono">
+                                {stock.indicators.extra.sma200 ? stock.indicators.extra.sma200.toFixed(2) : '-'}
+                              </td>
+                              <td className="text-right font-mono">
+                                {stock.indicators.extra.ema21 ? stock.indicators.extra.ema21.toFixed(2) : '-'}
+                              </td>
+                              <td className="text-right font-mono">
+                                {stock.indicators.extra.ema100 ? stock.indicators.extra.ema100.toFixed(2) : '-'}
+                              </td>
+                              <td className={`text-right font-mono font-semibold ${stock.indicators.extra.volumeRatio && stock.indicators.extra.volumeRatio > 1.5 ? 'text-bullish' : ''}`}>
+                                {stock.indicators.extra.volumeRatio ? stock.indicators.extra.volumeRatio.toFixed(2) : '1.00'}
+                              </td>
+                            </>
+                          )}
 
                           {/* Dynamic Financial Cells */}
                           {visibleColumns.netProfit && (
@@ -1416,12 +1850,37 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                               {fin ? formatLargeMoney(fin.equity) : <span className="cell-loading">-</span>}
                             </td>
                           )}
+                          {visibleColumns.kpis && (
+                            <>
+                              <td className="text-right font-mono">
+                                {fin && fin.fk !== null ? fin.fk.toFixed(2) : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className="text-right font-mono">
+                                {fin && fin.pddd !== null ? fin.pddd.toFixed(2) : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className={`text-right font-mono font-semibold ${fin && fin.roe && fin.roe > 20 ? 'text-bullish' : fin && fin.roe && fin.roe < 0 ? 'text-bearish' : ''}`}>
+                                {fin && fin.roe !== null ? `${fin.roe.toFixed(1)}%` : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className={`text-right font-mono ${fin && fin.netKarMarji && fin.netKarMarji > 15 ? 'text-bullish' : fin && fin.netKarMarji && fin.netKarMarji < 0 ? 'text-bearish' : ''}`}>
+                                {fin && fin.netKarMarji !== null ? `${fin.netKarMarji.toFixed(1)}%` : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className={`text-right font-mono ${fin && fin.brutKarMarji && fin.brutKarMarji > 25 ? 'text-bullish' : fin && fin.brutKarMarji && fin.brutKarMarji < 0 ? 'text-bearish' : ''}`}>
+                                {fin && fin.brutKarMarji !== null ? `${fin.brutKarMarji.toFixed(1)}%` : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className={`text-right font-mono ${fin && fin.borcOzkaynak && fin.borcOzkaynak > 1.5 ? 'text-bearish' : fin && fin.borcOzkaynak && fin.borcOzkaynak < 0.5 ? 'text-bullish' : ''}`}>
+                                {fin && fin.borcOzkaynak !== null ? fin.borcOzkaynak.toFixed(2) : <span className="cell-loading">-</span>}
+                              </td>
+                              <td className="text-right font-mono">
+                                {fin && fin.piyasaDegeri !== null ? formatLargeMoney(fin.piyasaDegeri) : <span className="cell-loading">-</span>}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.ml ? 1 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0)} className="no-results-cell">
+                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.ml ? 1 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 7 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>
@@ -1488,6 +1947,19 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                 <div className="drawer-score-verdict">
                   Piyasa İndikatör Eğilimi: <strong>{getSentimentLabel(selectedStock.overallScore)}</strong>
                 </div>
+              </div>
+
+              {/* Spider chart representing the 5 indicator scores */}
+              <div className="drawer-radar-card">
+                <IndicatorRadarChart
+                  scores={{
+                    williamsPasa: selectedStock.indicators.williamsPasa.score,
+                    nizamiCedid: selectedStock.indicators.nizamiCedid.score,
+                    emaRibbon: selectedStock.indicators.emaRibbon.score,
+                    pearson: selectedStock.indicators.pearson.score,
+                    matlrns: selectedStock.indicators.matlrns.score,
+                  }}
+                />
               </div>
 
               {/* 5 Indicators detailed sections */}

@@ -41,6 +41,15 @@ export interface ScannedStock {
       signal: 'bullish' | 'bearish' | 'neutral';
       score: number; // 0-20
     };
+    extra: {
+      sma50: number | null;
+      sma200: number | null;
+      ema21: number | null;
+      ema100: number | null;
+      avgVolume5: number | null;
+      avgVolume10: number | null;
+      volumeRatio: number | null;
+    };
   };
 }
 
@@ -139,6 +148,15 @@ function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number;
   return { avgR, avgPos, score: Math.round(finalScore), signal };
 }
 
+function calculateSMA(data: number[], period: number): number | null {
+  if (data.length < period) return null;
+  let sum = 0;
+  for (let i = data.length - period; i < data.length; i++) {
+    sum += data[i];
+  }
+  return sum / period;
+}
+
 /** Compute the combined score and indicators for a single symbol */
 export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | null> {
   try {
@@ -197,6 +215,19 @@ export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | n
 
     const overallScore = Math.round(wpScore + ncScore + ribbon.score + pearson.score + matScore);
 
+    // 6. Advanced Technical Moving Averages & Volume metrics
+    const sma50 = calculateSMA(closes, 50);
+    const sma200 = calculateSMA(closes, 200);
+    const closesN = closes.map(c => c as number | null);
+    const ema21Arr = ema(closesN, 21);
+    const ema100Arr = ema(closesN, 100);
+    const ema21 = ema21Arr[n - 1] ?? null;
+    const ema100 = ema100Arr[n - 1] ?? null;
+
+    const avgVolume5 = calculateSMA(volumes, 5);
+    const avgVolume10 = calculateSMA(volumes, 10);
+    const volumeRatio = avgVolume10 && avgVolume10 !== 0 ? lastVolume / avgVolume10 : 1;
+
     return {
       symbol,
       close: lastClose,
@@ -217,6 +248,15 @@ export async function scanSingleSymbol(symbol: string): Promise<ScannedStock | n
         emaRibbon: { value: ribbon.spread, signal: ribbon.signal, score: ribbon.score },
         pearson: { value: pearson.avgR, signal: pearson.signal, score: pearson.score, pos: pearson.avgPos },
         matlrns: { value: matDir, signal: matSignal, score: matScore },
+        extra: {
+          sma50,
+          sma200,
+          ema21,
+          ema100,
+          avgVolume5,
+          avgVolume10,
+          volumeRatio
+        }
       },
     };
   } catch (err) {
@@ -253,7 +293,7 @@ export async function runClientScan(
   if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
     try {
       const parsed = JSON.parse(savedCache);
-      if (parsed && parsed.length > 0) {
+      if (parsed && parsed.length > 0 && parsed[0].indicators.extra) {
         cachedResults = parsed;
         cachedTimestamp = Date.now();
         return parsed;
