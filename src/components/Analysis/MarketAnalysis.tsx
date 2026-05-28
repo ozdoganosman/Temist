@@ -552,19 +552,6 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     setRuleMatchingMode('and');
   };
 
-  const heatmapData = useMemo(() => {
-    const list = activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
-    return list.map(s => {
-      const fin = financialsData[s.symbol];
-      return {
-        symbol: s.symbol,
-        close: s.close,
-        changePercent: s.changePercent,
-        combinedScore: s.combinedScore,
-        marketCap: fin ? fin.piyasaDegeri || 0 : 0
-      } as HeatmapItem;
-    });
-  }, [activeTab, filteredAndSorted, indicatorFilteredAndSorted, financialsData]);
 
   // Toggle visible columns
   const handleToggleColumn = (mod: string) => {
@@ -1140,6 +1127,20 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
 
     return list;
   }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection, searchQuery]);
+
+  const heatmapData = useMemo(() => {
+    const list = activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
+    return list.map(s => {
+      const fin = financialsData[s.symbol];
+      return {
+        symbol: s.symbol,
+        close: s.close,
+        changePercent: s.changePercent,
+        combinedScore: s.combinedScore,
+        marketCap: fin ? fin.piyasaDegeri || 0 : 0
+      } as HeatmapItem;
+    });
+  }, [activeTab, filteredAndSorted, indicatorFilteredAndSorted, financialsData]);
 
   // Scroll position persistence
   const tableWrapRef = useRef<HTMLDivElement>(null);
