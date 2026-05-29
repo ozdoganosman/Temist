@@ -114,6 +114,7 @@ export default function ChartContainer({
   logScale = false,
   showCommentary = true,
 }: ChartContainerProps) {
+  const filtered = data;
   const containerRef = useRef<HTMLDivElement>(null);
   const [commentaryOpen, setCommentaryOpen] = useState(() => {
     return localStorage.getItem('temist_chart_commentary_open') !== 'false';
@@ -475,8 +476,6 @@ export default function ChartContainer({
   }, []);
 
   void toggleBollinger; // reserved for future UI
-
-  const filtered = data;
 
   // Compute combined signal events for scatter markers
   const signalEvents = useMemo<SignalEvent[]>(() => {
