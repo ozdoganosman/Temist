@@ -398,31 +398,30 @@ export default function ChartContainer({
     // 11. Pearson Channels
     if (showPearsonChannels && n >= 21) {
       const pResults = computeAllPearsonChannels(closes);
-      if (pResults.length > 0) {
-        const activeCh = pResults[0]; // First channel config (En Kısa)
-        const pos = (lastPrice - activeCh.B) / activeCh.rmse;
-        const r = activeCh.r;
+      for (const ch of pResults) {
+        const pos = ch.rmse > 0 ? (lastPrice - ch.B) / ch.rmse : 0;
+        const r = ch.r;
         let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
         let comment = '';
 
         if (pos > 0.8) {
           signal = 'bearish';
-          comment = `Pearson kanalında (${activeCh.label}) fiyat kanal üst sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Kar realizasyonu veya dirençten dönüş görülebilir.`;
+          comment = `Pearson kanalında (${ch.label}) fiyat kanal üst sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Kar realizasyonu veya dirençten dönüş görülebilir.`;
         } else if (pos < -0.8) {
           signal = 'bullish';
-          comment = `Pearson kanalında (${activeCh.label}) fiyat kanal alt sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Buradan destek bulup tepki vermesi beklenebilir.`;
+          comment = `Pearson kanalında (${ch.label}) fiyat kanal alt sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Buradan destek bulup tepki vermesi beklenebilir.`;
         } else if (r > 0.6) {
           signal = 'bullish';
-          comment = `Pearson kanalında (${activeCh.label}) güçlü pozitif korelasyon (R = ${r.toFixed(2)}) ile yükseliş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
+          comment = `Pearson kanalında (${ch.label}) güçlü pozitif korelasyon (R = ${r.toFixed(2)}) ile yükseliş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
         } else if (r < -0.6) {
           signal = 'bearish';
-          comment = `Pearson kanalında (${activeCh.label}) güçlü negatif korelasyon (R = ${r.toFixed(2)}) ile düşüş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
+          comment = `Pearson kanalında (${ch.label}) güçlü negatif korelasyon (R = ${r.toFixed(2)}) ile düşüş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
         } else {
           signal = 'neutral';
           comment = `Pearson kanal korelasyonu (R = ${r.toFixed(2)}) yatay/nötr bir trende işaret etmektedir.`;
         }
         items.push({
-          title: `Pearson (${activeCh.label})`,
+          title: `Pearson (${ch.label})`,
           valueText: `Korelasyon: ${r.toFixed(2)}`,
           signal,
           comment,

@@ -38,6 +38,14 @@ export interface ScannedStock {
       signal: 'bullish' | 'bearish' | 'neutral';
       score: number; // 0-20
       pos: number; // average position
+      extra_short_r: number;
+      extra_short_pos: number;
+      short_r: number;
+      short_pos: number;
+      long_r: number;
+      long_pos: number;
+      extra_long_r: number;
+      extra_long_pos: number;
     };
     extra: {
       sma50: number | null;
@@ -97,13 +105,25 @@ function calculateEMARibbonLast(closes: number[]): { spread: number; score: numb
   return { spread: avgSpread, score: Math.round(score), signal };
 }
 
-/** Calculate Pearson 3-channel score client side */
-function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number; score: number; signal: 'bullish' | 'bearish' | 'neutral' } {
-  const configs: PearsonConfig[] = DEFAULT_PEARSON_CONFIGS.filter(c => c.id !== 'extra_short');
+/** Calculate Pearson 4-channel score client side */
+function calculatePearsonLast(closes: number[]): { 
+  avgR: number; 
+  avgPos: number; 
+  score: number; 
+  signal: 'bullish' | 'bearish' | 'neutral';
+  channels: Record<string, { r: number; pos: number }>;
+} {
+  const configs: PearsonConfig[] = DEFAULT_PEARSON_CONFIGS;
   let sumScore = 0;
   let sumR = 0;
   let sumPos = 0;
   let validChannels = 0;
+  const channels: Record<string, { r: number; pos: number }> = {};
+
+  // Initialize defaults for all 4 configs
+  for (const cfg of DEFAULT_PEARSON_CONFIGS) {
+    channels[cfg.id] = { r: 0, pos: 0 };
+  }
 
   for (const cfg of configs) {
     const res = computePearsonChannel(closes, cfg);
@@ -115,6 +135,8 @@ function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number;
 
       sumR += r;
       sumPos += pos;
+
+      channels[cfg.id] = { r, pos };
 
       let chanScore = 0.5 + 0.3 * r;
       if (r > 0) {
@@ -129,7 +151,7 @@ function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number;
   }
 
   if (validChannels === 0) {
-    return { avgR: 0, avgPos: 0, score: 10, signal: 'neutral' };
+    return { avgR: 0, avgPos: 0, score: 10, signal: 'neutral', channels };
   }
 
   const avgR = sumR / validChannels;
@@ -140,7 +162,7 @@ function calculatePearsonLast(closes: number[]): { avgR: number; avgPos: number;
   if (avgR > 0.2 && avgPos > -0.8) signal = 'bullish';
   else if (avgR < -0.2 && avgPos < 0.8) signal = 'bearish';
 
-  return { avgR, avgPos, score: Math.round(finalScore), signal };
+  return { avgR, avgPos, score: Math.round(finalScore), signal, channels };
 }
 
 function calculateSMA(data: number[], period: number): number | null {
@@ -408,7 +430,20 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
           emacd: ncEmacd
         },
         emaRibbon: { value: ribbon.spread, signal: ribbon.signal, score: ribbon.score },
-        pearson: { value: pearson.avgR, signal: pearson.signal, score: pearson.score, pos: pearson.avgPos },
+        pearson: { 
+          value: pearson.avgR, 
+          signal: pearson.signal, 
+          score: pearson.score, 
+          pos: pearson.avgPos,
+          extra_short_r: pearson.channels.extra_short?.r ?? 0,
+          extra_short_pos: pearson.channels.extra_short?.pos ?? 0,
+          short_r: pearson.channels.short?.r ?? 0,
+          short_pos: pearson.channels.short?.pos ?? 0,
+          long_r: pearson.channels.long?.r ?? 0,
+          long_pos: pearson.channels.long?.pos ?? 0,
+          extra_long_r: pearson.channels.extra_long?.r ?? 0,
+          extra_long_pos: pearson.channels.extra_long?.pos ?? 0,
+        },
         extra: {
           sma50,
           sma200,
