@@ -52,11 +52,11 @@ export function useWatchlist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextLists));
   }, []);
 
-  const addList = useCallback((name: string) => {
+  const addList = useCallback((name: string, initialSymbols: string[] = []) => {
     const newList: WatchlistCategory = {
       id: 'list_' + Date.now(),
       name: name.trim() || `Takip Listesi ${lists.length + 1}`,
-      symbols: [],
+      symbols: initialSymbols,
       isCollapsed: false,
     };
     saveLists([...lists, newList]);

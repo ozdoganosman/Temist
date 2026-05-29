@@ -369,3 +369,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Drag and Drop visual feedback */
+.watchlist-category.drag-over {
+  background: rgba(37, 99, 235, 0.08) !important;
+  box-shadow: 0 0 0 2px var(--accent, #2563eb) inset !important;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+

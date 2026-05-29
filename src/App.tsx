@@ -125,7 +125,12 @@ function AppContent() {
               <div className="analysis-wrapper mobile-tab-panel">
                 <ErrorBoundary>
                   <Suspense fallback={<ViewFallback />}>
-                    <MarketAnalysis onSymbolClick={handleSymbolClick} />
+                    <MarketAnalysis
+                      onSymbolClick={handleSymbolClick}
+                      watchlists={lists}
+                      onAddSymbolToList={addSymbolToList}
+                      onAddList={addList}
+                    />
                   </Suspense>
                 </ErrorBoundary>
               </div>
@@ -370,7 +375,12 @@ function AppContent() {
             <div className="analysis-wrapper">
               <ErrorBoundary>
                 <Suspense fallback={<ViewFallback />}>
-                  <MarketAnalysis onSymbolClick={handleSymbolClick} />
+                  <MarketAnalysis
+                    onSymbolClick={handleSymbolClick}
+                    watchlists={lists}
+                    onAddSymbolToList={addSymbolToList}
+                    onAddList={addList}
+                  />
                 </Suspense>
               </ErrorBoundary>
             </div>

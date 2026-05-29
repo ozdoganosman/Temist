@@ -7,10 +7,14 @@ import IndicatorRadarChart from './IndicatorRadarChart';
 import MiniSparklineChart from './MiniSparklineChart';
 import ScanHeatmap, { type HeatmapItem } from './ScanHeatmap';
 import { getStockSector, SECTORS } from '../../utils/sectorMap';
+import { useToast } from '../../components/Toast/Toast';
 import './MarketAnalysis.css';
 
 interface Props {
   onSymbolClick?: (symbol: string) => void;
+  watchlists?: Array<{ id: string; name: string; symbols: string[] }>;
+  onAddSymbolToList?: (listId: string, symbol: string) => void;
+  onAddList?: (name: string, initialSymbols?: string[]) => void;
 }
 
 type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'combinedScore' | 'fundamentalScore' | 'piotroskiScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson';
@@ -234,7 +238,36 @@ try {
   console.error('Failed to parse cached financials:', e);
 }
 
-export default function MarketAnalysis({ onSymbolClick }: Props) {
+export default function MarketAnalysis({
+  onSymbolClick,
+  watchlists = [],
+  onAddSymbolToList,
+  onAddList,
+}: Props) {
+  const { toast } = useToast();
+
+  // Selection states
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean; stockSymbol: string } | null>(null);
+
+  // Close context menu on any window click or scroll
+  useEffect(() => {
+    const handleCloseMenu = () => {
+      if (contextMenu) setContextMenu(null);
+    };
+    window.addEventListener('click', handleCloseMenu);
+    window.addEventListener('scroll', handleCloseMenu, { passive: true });
+    return () => {
+      window.removeEventListener('click', handleCloseMenu);
+      window.removeEventListener('scroll', handleCloseMenu);
+    };
+  }, [contextMenu]);
+
+  // Clear selections when tab changes
+  useEffect(() => {
+    setSelectedSymbols(new Set());
+  }, [activeTab]);
+
   // Tabs
   const [activeTab, setActiveTab] = useState<'smart' | 'indicator'>(() => {
     const saved = localStorage.getItem('temist_scanner_active_tab');
@@ -1178,6 +1211,82 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
   }, [activeTab, filteredAndSorted, indicatorFilteredAndSorted, financialsData]);
 
+  const handleRowSelectToggle = (symbol: string) => {
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) {
+        next.delete(symbol);
+      } else {
+        next.add(symbol);
+      }
+      return next;
+    });
+  };
+
+  const currentTabStocks = useMemo(() => {
+    return activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
+  }, [activeTab, filteredAndSorted, indicatorFilteredAndSorted]);
+
+  const isAllSelected = useMemo(() => {
+    if (currentTabStocks.length === 0) return false;
+    return currentTabStocks.every(s => selectedSymbols.has(s.symbol));
+  }, [currentTabStocks, selectedSymbols]);
+
+  const handleSelectAllToggle = () => {
+    if (isAllSelected) {
+      setSelectedSymbols((prev) => {
+        const next = new Set(prev);
+        currentTabStocks.forEach(s => next.delete(s.symbol));
+        return next;
+      });
+    } else {
+      setSelectedSymbols((prev) => {
+        const next = new Set(prev);
+        currentTabStocks.forEach(s => next.add(s.symbol));
+        return next;
+      });
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, stockSymbol: string) => {
+    e.preventDefault();
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (!next.has(stockSymbol)) {
+        next.clear();
+        next.add(stockSymbol);
+      }
+      return next;
+    });
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      stockSymbol,
+    });
+  };
+
+  const handleBulkAdd = (listId: string) => {
+    const symbolArray = Array.from(selectedSymbols);
+    if (symbolArray.length === 0) return;
+
+    if (listId === '__new__') {
+      const listName = prompt('Yeni takip listesi adı:');
+      if (listName && listName.trim()) {
+        onAddList?.(listName.trim(), symbolArray);
+        toast(`${symbolArray.length} hisse yeni "${listName.trim()}" listesine eklendi.`, 'success');
+        setSelectedSymbols(new Set());
+      }
+    } else {
+      const targetList = watchlists.find(l => l.id === listId);
+      if (targetList) {
+        symbolArray.forEach(sym => onAddSymbolToList?.(listId, sym));
+        toast(`${symbolArray.length} hisse "${targetList.name}" listesine eklendi.`, 'success');
+        setSelectedSymbols(new Set());
+      }
+    }
+  };
+
   // Scroll position persistence
   const tableWrapRef = useRef<HTMLDivElement>(null);
 
@@ -1507,6 +1616,13 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   <table className="scanner-table">
                     <thead>
                       <tr>
+                        <th className="checkbox-th">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={handleSelectAllToggle}
+                          />
+                        </th>
                         <th onClick={() => handleSort('symbol')} className="sortable">
                           Hisse {sortKey === 'symbol' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
@@ -1548,8 +1664,25 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                         <tr
                           key={stock.symbol}
                           onClick={() => handleRowClick(stock)}
-                          className={`stock-row ${selectedStock?.symbol === stock.symbol ? 'selected' : ''}`}
+                          onContextMenu={(e) => handleContextMenu(e, stock.symbol)}
+                          className={`stock-row ${selectedStock?.symbol === stock.symbol ? 'selected' : ''} ${selectedSymbols.has(stock.symbol) ? 'row-selected' : ''}`}
+                          draggable
+                          onDragStart={(e) => {
+                            let symbolsToDrag = [stock.symbol];
+                            if (selectedSymbols.has(stock.symbol)) {
+                              symbolsToDrag = Array.from(selectedSymbols);
+                            }
+                            e.dataTransfer.setData('text/plain', JSON.stringify(symbolsToDrag));
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
                         >
+                          <td className="checkbox-td" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedSymbols.has(stock.symbol)}
+                              onChange={() => handleRowSelectToggle(stock.symbol)}
+                            />
+                          </td>
                           <td className="stock-sym">
                             <button
                               className="chart-link-btn"
@@ -1623,7 +1756,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     ))}
                     {filteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="no-results-cell">
+                        <td colSpan={12} className="no-results-cell">
                           Arama kriterlerine uygun hisse bulunamadı.
                         </td>
                       </tr>
@@ -1954,6 +2087,13 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   <table className="scanner-table indicator-table">
                   <thead>
                     <tr>
+                      <th className="checkbox-th">
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          onChange={handleSelectAllToggle}
+                        />
+                      </th>
                       <th onClick={() => handleIndSort('symbol')} className="sortable">
                         Hisse {indSortKey === 'symbol' && (indSortDirection === 'asc' ? '▲' : '▼')}
                       </th>
@@ -2096,8 +2236,25 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                         <tr
                           key={stock.symbol}
                           onClick={() => handleRowClick(stock)}
-                          className="stock-row-indicator"
+                          onContextMenu={(e) => handleContextMenu(e, stock.symbol)}
+                          className={`stock-row-indicator ${selectedStock?.symbol === stock.symbol ? 'selected' : ''} ${selectedSymbols.has(stock.symbol) ? 'row-selected' : ''}`}
+                          draggable
+                          onDragStart={(e) => {
+                            let symbolsToDrag = [stock.symbol];
+                            if (selectedSymbols.has(stock.symbol)) {
+                              symbolsToDrag = Array.from(selectedSymbols);
+                            }
+                            e.dataTransfer.setData('text/plain', JSON.stringify(symbolsToDrag));
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
                         >
+                          <td className="checkbox-td" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedSymbols.has(stock.symbol)}
+                              onChange={() => handleRowSelectToggle(stock.symbol)}
+                            />
+                          </td>
                           <td className="stock-sym">
                             <button
                               className="chart-link-btn"
@@ -2242,7 +2399,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
+                        <td colSpan={4 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>
@@ -2476,6 +2633,97 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
           </div>
         )}
       </div>
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedSymbols.size > 0 && (
+        <div className="scanner-bulk-action-bar animate-slide-up">
+          <div className="bulk-info">
+            <span className="bulk-count">{selectedSymbols.size}</span> hisse seçildi
+          </div>
+          <div className="bulk-actions">
+            <select
+              className="bulk-select"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleBulkAdd(e.target.value);
+                  e.target.value = ""; // Reset selection after triggering action
+                }
+              }}
+            >
+              <option value="" disabled>Takip Listesine Ekle...</option>
+              {watchlists.map(list => (
+                <option key={list.id} value={list.id}>{list.name}</option>
+              ))}
+              <option value="__new__">+ Yeni Liste Oluştur...</option>
+            </select>
+            <button className="bulk-clear-btn" onClick={() => setSelectedSymbols(new Set())}>
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Context Menu */}
+      {contextMenu && contextMenu.visible && (
+        <div
+          className="custom-context-menu animate-fade-in"
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="menu-header">{contextMenu.stockSymbol}</div>
+          <div className="menu-section-title">Takip Listesine Ekle</div>
+          {watchlists.map(list => {
+            const isInList = list.symbols.includes(contextMenu.stockSymbol);
+            return (
+              <button
+                key={list.id}
+                className="menu-item"
+                onClick={() => {
+                  handleBulkAdd(list.id);
+                  setContextMenu(null);
+                }}
+              >
+                📁 {list.name} {isInList && <span className="menu-item-check">✓</span>}
+              </button>
+            );
+          })}
+          <button
+            className="menu-item new-list-item"
+            onClick={() => {
+              handleBulkAdd('__new__');
+              setContextMenu(null);
+            }}
+          >
+            ➕ Yeni Liste Oluştur...
+          </button>
+          <div className="menu-separator" />
+          <button
+            className="menu-item action-item"
+            onClick={() => {
+              onSymbolClick?.(contextMenu.stockSymbol);
+              setContextMenu(null);
+            }}
+          >
+            📈 Grafiğini Detaylı Aç
+          </button>
+          <button
+            className="menu-item action-item"
+            onClick={() => {
+              const stockObj = results.find(s => s.symbol === contextMenu.stockSymbol);
+              if (stockObj) {
+                handleRowClick(stockObj);
+              }
+              setContextMenu(null);
+            }}
+          >
+            🔍 Detayları İncele
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -158,7 +158,33 @@ export default function Watchlist({
           const isSearching = activeSearchListId === list.id;
 
           return (
-            <div key={list.id} className="watchlist-category">
+            <div
+              key={list.id}
+              className="watchlist-category"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+              }}
+              onDragEnter={(e) => {
+                e.currentTarget.classList.add('drag-over');
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.classList.remove('drag-over');
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove('drag-over');
+                try {
+                  const dataStr = e.dataTransfer.getData('text/plain');
+                  const symbols = JSON.parse(dataStr);
+                  if (Array.isArray(symbols)) {
+                    symbols.forEach((sym) => onAddSymbolToList(list.id, sym));
+                  }
+                } catch (err) {
+                  console.error('Failed to parse dropped symbols:', err);
+                }
+              }}
+            >
               {/* Category Header */}
               <div className="watchlist-category-header">
                 <div
