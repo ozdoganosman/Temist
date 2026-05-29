@@ -263,16 +263,16 @@ export default function MarketAnalysis({
     };
   }, [contextMenu]);
 
-  // Clear selections when tab changes
-  useEffect(() => {
-    setSelectedSymbols(new Set());
-  }, [activeTab]);
-
   // Tabs
   const [activeTab, setActiveTab] = useState<'smart' | 'indicator'>(() => {
     const saved = localStorage.getItem('temist_scanner_active_tab');
     return (saved === 'smart' || saved === 'indicator') ? saved : 'indicator';
   });
+
+  // Clear selections when tab changes
+  useEffect(() => {
+    setSelectedSymbols(new Set());
+  }, [activeTab]);
 
   // Visible Columns for Indicator Scanner Table
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
