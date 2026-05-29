@@ -115,6 +115,7 @@ function SlotChart({
             showIchimoku={showIchimoku}
             showOBV={showOBV}
             logScale={logScale}
+            showCommentary={false}
           />
         )}
       </div>

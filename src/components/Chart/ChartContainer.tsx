@@ -13,10 +13,63 @@ import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
 import { buildOption, getThemeColors, getPaddingCount, getGridMargins } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
+import {
+  computeRSI,
+  computeMACD,
+  computeStochRSI,
+  computeOBV,
+  computeSuperTrend,
+  computeIchimoku,
+  computeWilliamsPasa,
+  computeNizamiCedid,
+  computeBollingerBands,
+  ema,
+} from '../../utils/indicators';
+import { computeAllPearsonChannels } from '../../utils/pearsonChannels';
 import './ChartContainer.css';
 
 // Keep import reference for future use (signal scatter is already called inside buildOption)
 void buildSignalScatterSeries;
+
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
+function calculateEMARibbonLast(closes: number[]): { spread: number; score: number; signal: 'bullish' | 'bearish' | 'neutral' } {
+  const n = closes.length;
+  const periods = [8, 13, 21, 34, 55, 89, 144, 233, 377, 610].filter(p => n >= p);
+  if (periods.length < 2) {
+    return { spread: 0, score: 10, signal: 'neutral' };
+  }
+
+  const closesN = closes as (number | null)[];
+  const emas = periods.map(p => ema(closesN, p));
+  const lastIdx = n - 1;
+
+  let sumClamped = 0;
+  let validPairs = 0;
+  const spreadMultiplier = 0.003;
+
+  for (let j = 0; j < periods.length - 1; j++) {
+    const emaCurr = emas[j][lastIdx];
+    const emaNext = emas[j + 1][lastIdx];
+    if (emaCurr !== null && emaNext !== null && emaNext !== 0) {
+      const diffRatio = (emaCurr - emaNext) / emaNext;
+      const clamped = clamp(diffRatio / spreadMultiplier, -1, 1);
+      sumClamped += clamped;
+      validPairs++;
+    }
+  }
+
+  const avgSpread = validPairs > 0 ? sumClamped / validPairs : 0;
+  const score = ((avgSpread + 1) / 2) * 20;
+
+  let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  if (avgSpread > 0.2) signal = 'bullish';
+  else if (avgSpread < -0.2) signal = 'bearish';
+
+  return { spread: avgSpread, score: Math.round(score), signal };
+}
 
 interface ChartContainerProps {
   data: OHLCVData[];
@@ -37,6 +90,7 @@ interface ChartContainerProps {
   showSignals?: boolean;
   signalConfig?: SignalConfig;
   logScale?: boolean;
+  showCommentary?: boolean;
 }
 
 export default function ChartContainer({
@@ -58,8 +112,338 @@ export default function ChartContainer({
   showSignals = false,
   signalConfig,
   logScale = false,
+  showCommentary = true,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [commentaryOpen, setCommentaryOpen] = useState(() => {
+    return localStorage.getItem('temist_chart_commentary_open') !== 'false';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('temist_chart_commentary_open', String(commentaryOpen));
+  }, [commentaryOpen]);
+
+  // ── Commentary generation ──
+  const commentaries = useMemo(() => {
+    const items: Array<{
+      title: string;
+      valueText: string;
+      signal: 'bullish' | 'bearish' | 'neutral';
+      comment: string;
+    }> = [];
+
+    if (filtered.length < 10) return items;
+
+    const highs = filtered.map((d) => d.high);
+    const lows = filtered.map((d) => d.low);
+    const closes = filtered.map((d) => d.close);
+    const volumes = filtered.map((d) => d.volume);
+    const n = closes.length;
+    const lastPrice = closes[n - 1];
+
+    // 1. Bollinger Bands
+    if (showBollinger && n >= 20) {
+      const bb = computeBollingerBands(closes);
+      const upper = bb.upper[n - 1];
+      const middle = bb.middle[n - 1];
+      const lower = bb.lower[n - 1];
+      const pctB = bb.pctB[n - 1];
+
+      if (upper !== null && lower !== null && pctB !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (pctB > 1.0) {
+          signal = 'bearish';
+          comment = `Fiyat Bollinger üst bandının (${upper.toFixed(2)}) dışına taşmış durumda. Bu güçlü bir yükseliş ivmesi veya kısa vadeli aşırı alım (düzeltme riski) işareti olabilir.`;
+        } else if (pctB < 0.0) {
+          signal = 'bullish';
+          comment = `Fiyat Bollinger alt bandının (${lower.toFixed(2)}) altına sarkmış durumda. Kısa vadeli tepki yükselişi olasılığı bulunan bir aşırı satım bölgesidir.`;
+        } else if (pctB >= 0.8) {
+          signal = 'bullish';
+          comment = `Fiyat üst banda yakın seyrediyor. Yükseliş yönlü ivme güçlü şekilde korunmaktadır (Pozisyon: %${(pctB * 100).toFixed(0)}).`;
+        } else if (pctB <= 0.2) {
+          signal = 'bearish';
+          comment = `Fiyat alt banda yakın seyrediyor. Satıcıların baskısı devam etmektedir (Pozisyon: %${(pctB * 100).toFixed(0)}).`;
+        } else {
+          signal = 'neutral';
+          comment = `Fiyat Bollinger orta bandının (${middle?.toFixed(2)}) çevresinde dengeli ve yatay bir seyir izlemektedir.`;
+        }
+        items.push({
+          title: 'Bollinger Bantları',
+          valueText: `Fiyat: ${lastPrice.toFixed(2)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 2. RSI
+    if (showRSI && n >= 15) {
+      const rsiRes = computeRSI(closes, 14);
+      const rsiVal = rsiRes.rsi[n - 1];
+      if (rsiVal !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (rsiVal > 70) {
+          signal = 'bearish';
+          comment = `RSI aşırı alım bölgesinde (${rsiVal.toFixed(1)}). Fiyatta yorulma belirtileri ve kısa vadeli bir düzeltme (kar satışı) beklenebilir.`;
+        } else if (rsiVal < 30) {
+          signal = 'bullish';
+          comment = `RSI aşırı satım bölgesinde (${rsiVal.toFixed(1)}). Buradan tepki alımları veya yukarı yönlü bir dönüş hareketi gelebilir.`;
+        } else {
+          signal = 'neutral';
+          comment = `RSI nötr bölgede (${rsiVal.toFixed(1)}). Aşırı alım veya satım sinyali bulunmuyor, trend dengeli seyretmektedir.`;
+        }
+        items.push({
+          title: 'RSI (14)',
+          valueText: `Değer: ${rsiVal.toFixed(1)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 3. MACD
+    if (showMACD && n >= 26) {
+      const macdRes = computeMACD(closes);
+      const mVal = macdRes.macd[n - 1];
+      const sVal = macdRes.signal[n - 1];
+      if (mVal !== null && sVal !== null) {
+        const signal = mVal > sVal ? 'bullish' : 'bearish';
+        const comment = mVal > sVal
+          ? `MACD çizgisi (${mVal.toFixed(2)}) sinyal çizgisinin (${sVal.toFixed(2)}) üzerinde seyrediyor. Yükseliş ivmesi ve alım iştahı artmaktadır.`
+          : `MACD çizgisi (${mVal.toFixed(2)}) sinyal çizgisinin (${sVal.toFixed(2)}) altında seyrediyor. Satış baskısı ve aşağı yönlü momentum korunmaktadır.`;
+        items.push({
+          title: 'MACD (12/26)',
+          valueText: `Hist: ${(mVal - sVal).toFixed(2)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 4. Stochastic RSI
+    if (showStochRSI && n >= 28) {
+      const stochRes = computeStochRSI(closes);
+      const kVal = stochRes.k[n - 1];
+      const dVal = stochRes.d[n - 1];
+      if (kVal !== null && dVal !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (kVal > 80) {
+          signal = 'bearish';
+          comment = `StochRSI aşırı alım bölgesinde (%${kVal.toFixed(0)}). Kısa vadede ivme kaybı ve dönüş riski mevcuttur.`;
+        } else if (kVal < 20) {
+          signal = 'bullish';
+          comment = `StochRSI aşırı satım bölgesinde (%${kVal.toFixed(0)}). Kısa vadeli tepki alımları için elverişli bir seviyededir.`;
+        } else if (kVal > dVal) {
+          signal = 'bullish';
+          comment = `StochRSI K çizgisi D çizgisinin üzerinde seyrediyor (%${kVal.toFixed(0)} > %${dVal.toFixed(0)}). Yükseliş yönlü toparlanma eğilimi mevcuttur.`;
+        } else {
+          signal = 'bearish';
+          comment = `StochRSI K çizgisi D çizgisinin altında seyrediyor (%${kVal.toFixed(0)} < %${dVal.toFixed(0)}). Satış baskısı devam ediyor.`;
+        }
+        items.push({
+          title: 'Stochastic RSI',
+          valueText: `K: %${kVal.toFixed(0)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 5. SuperTrend
+    if (showSuperTrend && n >= 11) {
+      const stRes = computeSuperTrend(highs, lows, closes);
+      const stVal = stRes.supertrend[n - 1];
+      const dirVal = stRes.direction[n - 1];
+      if (stVal !== null && dirVal !== null) {
+        const signal = dirVal === 1 ? 'bullish' : 'bearish';
+        const comment = dirVal === 1
+          ? `SuperTrend alım (Bullish) sinyali üretiyor. Trend yönü yukarıdır ve destek seviyesi ${stVal.toFixed(2)} olarak takip edilebilir.`
+          : `SuperTrend satım (Bearish) sinyali üretiyor. Trend yönü aşağıdır ve direnç seviyesi ${stVal.toFixed(2)} olarak takip edilebilir.`;
+        items.push({
+          title: 'SuperTrend',
+          valueText: signal === 'bullish' ? 'AL' : 'SAT',
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 6. Ichimoku Cloud
+    if (showIchimoku && n >= 52) {
+      const ichRes = computeIchimoku(highs, lows, closes);
+      const tenkanVal = ichRes.tenkan[n - 1];
+      const kijunVal = ichRes.kijun[n - 1];
+      const senkouAVal = ichRes.senkouA[n - 1];
+      const senkouBVal = ichRes.senkouB[n - 1];
+
+      if (tenkanVal !== null && kijunVal !== null && senkouAVal !== null && senkouBVal !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (lastPrice > senkouAVal && lastPrice > senkouBVal) {
+          signal = 'bullish';
+          comment = `Fiyat bulutun (Kumo) üzerinde seyrediyor. Bu orta-uzun vadede güçlü yükseliş trendini destekler. Tenkan-sen: ${tenkanVal.toFixed(2)}, Kijun-sen: ${kijunVal.toFixed(2)}.`;
+        } else if (lastPrice < senkouAVal && lastPrice < senkouBVal) {
+          signal = 'bearish';
+          comment = `Fiyat bulutun (Kumo) altında seyrediyor. Orta-uzun vadeli düşüş trendinin sürdüğünü teyit eder.`;
+        } else if (tenkanVal > kijunVal) {
+          signal = 'bullish';
+          comment = `Kısa vadeli Tenkan-sen çizgisi uzun vadeli Kijun-sen çizgisini yukarı yönlü kesmiş durumda. Fiyat bulut içinde yön aramaktadır.`;
+        } else {
+          signal = 'neutral';
+          comment = `Fiyat bulutun (Kumo) içinde seyrediyor, kararsız ve konsolidasyon (yatay) aşaması devam etmektedir.`;
+        }
+        items.push({
+          title: 'Ichimoku Bulutu',
+          valueText: lastPrice > senkouAVal ? 'Bulut Üstü' : 'Bulut Altı',
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 7. OBV
+    if (showOBV && n >= 20) {
+      const obvRes = computeOBV(closes, volumes);
+      const obvVal = obvRes.obv[n - 1];
+      const emaVal = obvRes.obvEma[n - 1];
+      if (obvVal !== null && emaVal !== null) {
+        const signal = obvVal > emaVal ? 'bullish' : 'bearish';
+        const comment = obvVal > emaVal
+          ? `OBV kendi 20 günlük EMA ortalamasının üzerinde seyrediyor. Hacim fiyat yükselişini destekliyor, piyasaya alıcı girişi mevcuttur.`
+          : `OBV kendi 20 günlük EMA ortalamasının altında seyrediyor. Hacimsel zayıflık ve piyasadan para çıkışı emaresi mevcuttur.`;
+        items.push({
+          title: 'OBV Hacim',
+          valueText: obvVal > emaVal ? 'Para Girişi' : 'Para Çıkışı',
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 8. Williams Paşa
+    if (showWilliamsPasa && n >= 260) {
+      const wpRes = computeWilliamsPasa(highs, lows, closes);
+      const wpVal = wpRes.percentR[n - 1];
+      const emaVal = wpRes.emaWil[n - 1];
+      if (wpVal !== null && emaVal !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (wpVal < 20) {
+          signal = 'bullish';
+          comment = `Williams Paşa %R aşırı satım bölgesinde (${wpVal.toFixed(1)}). Dipten dönüş veya tepki alımları beklenmektedir.`;
+        } else if (wpVal > 80) {
+          signal = 'bearish';
+          comment = `Williams Paşa %R aşırı alım bölgesinde (${wpVal.toFixed(1)}). Kar satışı veya kısa vadeli bir düzeltme riski artmıştır.`;
+        } else if (wpVal > emaVal) {
+          signal = 'bullish';
+          comment = `Williams Paşa %R değeri (${wpVal.toFixed(1)}) kendi EMA seviyesinin (${emaVal.toFixed(1)}) üzerindedir, alım iştahı artıyor.`;
+        } else {
+          signal = 'bearish';
+          comment = `Williams Paşa %R değeri (${wpVal.toFixed(1)}) kendi EMA seviyesinin (${emaVal.toFixed(1)}) altındadır, satış baskısı sürüyor.`;
+        }
+        items.push({
+          title: 'Williams Paşa %R',
+          valueText: `Değer: ${wpVal.toFixed(1)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 9. Nizami Cedid
+    if (showNizamiCedid && n >= 260) {
+      const ncRes = computeNizamiCedid(closes, volumes);
+      const deltaVal = ncRes.delta[n - 1];
+      const condVal = ncRes.condition[n - 1];
+      if (deltaVal !== null && condVal !== null) {
+        const signal = deltaVal > 0 && condVal ? 'bullish' : 'bearish';
+        const comment = deltaVal > 0 && condVal
+          ? `Nizami Cedid delta değeri pozitif (${(deltaVal * 100).toFixed(2)}%) ve uzun vadeli yükseliş trend koşulu (EMA 377 > 610) sağlanmıştır. Sağlıklı yükseliş yapısı devam ediyor.`
+          : `Nizami Cedid delta değeri negatif (${(deltaVal * 100).toFixed(2)}%) veya trend zayıflamıştır (EMA 377 < 610). Negatif eğilim/düzeltme süreci hakimdir.`;
+        items.push({
+          title: 'Nizami Cedid',
+          valueText: `Delta: ${(deltaVal * 100).toFixed(2)}%`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    // 10. EMA Overlay
+    if (showEMAOverlay && n >= 21) {
+      const ribbon = calculateEMARibbonLast(closes);
+      const spread = ribbon.spread;
+      const signal = ribbon.signal;
+      let comment = '';
+      if (signal === 'bullish') {
+        comment = `EMA hareketli ortalamalar şeridi ideal yükseliş sıralamasındadır (Yayılım: ${spread.toFixed(3)}). Güçlü bir yükseliş trendi teyit ediliyor.`;
+      } else if (signal === 'bearish') {
+        comment = `EMA şeridi ters sıralanmış veya aşağı yönlü açılmaktadır (Yayılım: ${spread.toFixed(3)}). Düşüş trendi ve satış baskısı devam ediyor.`;
+      } else {
+        comment = `EMA ortalamaları birbirine yakın seyrediyor (Yayılım: ${spread.toFixed(3)}). Yatay konsolidasyon veya trend dönüşüm bölgesindeyiz.`;
+      }
+      items.push({
+        title: 'EMA Şeritleri',
+        valueText: `Yayılım: ${spread.toFixed(3)}`,
+        signal,
+        comment,
+      });
+    }
+
+    // 11. Pearson Channels
+    if (showPearsonChannels && n >= 21) {
+      const pResults = computeAllPearsonChannels(closes);
+      if (pResults.length > 0) {
+        const activeCh = pResults[0]; // First channel config (En Kısa)
+        const pos = (lastPrice - activeCh.B) / activeCh.rmse;
+        const r = activeCh.r;
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+
+        if (pos > 0.8) {
+          signal = 'bearish';
+          comment = `Pearson kanalında (${activeCh.label}) fiyat kanal üst sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Kar realizasyonu veya dirençten dönüş görülebilir.`;
+        } else if (pos < -0.8) {
+          signal = 'bullish';
+          comment = `Pearson kanalında (${activeCh.label}) fiyat kanal alt sınırına yakın (Pozisyon: ${pos.toFixed(2)}). Buradan destek bulup tepki vermesi beklenebilir.`;
+        } else if (r > 0.6) {
+          signal = 'bullish';
+          comment = `Pearson kanalında (${activeCh.label}) güçlü pozitif korelasyon (R = ${r.toFixed(2)}) ile yükseliş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
+        } else if (r < -0.6) {
+          signal = 'bearish';
+          comment = `Pearson kanalında (${activeCh.label}) güçlü negatif korelasyon (R = ${r.toFixed(2)}) ile düşüş trendi hakimdir. Fiyat orta çizgi civarında seyrediyor.`;
+        } else {
+          signal = 'neutral';
+          comment = `Pearson kanal korelasyonu (R = ${r.toFixed(2)}) yatay/nötr bir trende işaret etmektedir.`;
+        }
+        items.push({
+          title: `Pearson (${activeCh.label})`,
+          valueText: `Korelasyon: ${r.toFixed(2)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
+    return items;
+  }, [
+    filtered,
+    showBollinger,
+    showRSI,
+    showMACD,
+    showStochRSI,
+    showSuperTrend,
+    showIchimoku,
+    showOBV,
+    showWilliamsPasa,
+    showNizamiCedid,
+    showEMAOverlay,
+    showPearsonChannels,
+  ]);
+
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
   const currentDataRef = useRef<OHLCVData[]>([]);
@@ -621,8 +1005,44 @@ export default function ChartContainer({
   }, [updateChart]);
 
   return (
-    <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-      <div ref={containerRef} className="chart-container" />
+    <div className="chart-outer-container" style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="chart-inner-container" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <div ref={containerRef} className="chart-container" />
+      </div>
+
+      {/* 💡 Yorumlayan Bilgi Kutusu */}
+      {showCommentary && (
+        <div className={`chart-commentary-box ${commentaryOpen ? 'open' : 'collapsed'}`}>
+          <div className="commentary-header" onClick={() => setCommentaryOpen(!commentaryOpen)}>
+            <span className="commentary-header-title">
+              <span>💡</span> İndikatör Analiz & Yorumları
+            </span>
+            <button className="commentary-toggle-btn">
+              {commentaryOpen ? '▼' : '▲'}
+            </button>
+          </div>
+          {commentaryOpen && (
+            <div className="commentary-content">
+              {commentaries.length === 0 ? (
+                <div className="commentary-placeholder">
+                  Grafikte yorumlanacak aktif bir indikatör bulunmuyor. Sol üstteki araç çubuğundan indikatörleri açabilirsiniz.
+                </div>
+              ) : (
+                commentaries.map((c, idx) => (
+                  <div key={idx} className="commentary-item">
+                    <div className="commentary-item-title-row">
+                      <span className={`signal-dot ${c.signal}`} />
+                      <strong className="commentary-item-title">{c.title}</strong>
+                      <span className="commentary-item-value">{c.valueText}</span>
+                    </div>
+                    <p className="commentary-item-text">{c.comment}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
