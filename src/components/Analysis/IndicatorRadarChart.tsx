@@ -8,7 +8,6 @@ interface Props {
     nizamiCedid: number;
     emaRibbon: number;
     pearson: number;
-    matlrns: number;
   };
 }
 
@@ -45,7 +44,6 @@ export default function IndicatorRadarChart({ scores }: Props) {
           { name: 'Nizami Cedid', max: 20 },
           { name: 'EMA Ribbon', max: 20 },
           { name: 'Pearson', max: 20 },
-          { name: 'MATLRNS', max: 20 },
         ],
         shape: 'circle',
         radius: '62%',
@@ -89,7 +87,6 @@ export default function IndicatorRadarChart({ scores }: Props) {
                 scores.nizamiCedid,
                 scores.emaRibbon,
                 scores.pearson,
-                scores.matlrns,
               ],
               name: 'Skor (Maks 20)',
               symbol: 'circle',

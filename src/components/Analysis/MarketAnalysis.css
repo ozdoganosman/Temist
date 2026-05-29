@@ -406,7 +406,7 @@
   background: var(--bg-secondary, #14161d);
   border: 1px solid var(--border-primary, #1f2229);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto; /* changed from hidden to allow horizontal scroll */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
@@ -442,6 +442,36 @@
   border-bottom: 1px solid var(--border-primary, #1f2229);
   color: var(--text-primary, #ffffff);
   vertical-align: middle;
+}
+
+/* Sticky First Column for horizontal scrolling */
+.scanner-table th:first-child,
+.scanner-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  border-right: 1px solid var(--border-primary, #1f2229);
+}
+
+.scanner-table th:first-child {
+  background: #191c24;
+}
+
+.scanner-table td:first-child {
+  background: #14161d;
+}
+
+/* Maintain hover and selected styles on sticky cells */
+.scanner-table tr:hover td:first-child {
+  background-color: #1d202a !important; /* Slightly lighter hover color */
+}
+
+.scanner-table tr.selected td:first-child {
+  background-color: #16223b !important; /* Blue overlay highlight */
+}
+
+.scanner-table tr.selected:hover td:first-child {
+  background-color: #1d2b4a !important;
 }
 
 /* Wide view horizontal scrolling for indicator table */
@@ -914,6 +944,10 @@
 
   .add-filter-selector-wrap {
     min-width: 100% !important;
+  }
+
+  .scanner-table {
+    min-width: 720px; /* Ensure table stretches enough on mobile to scroll and read indicators */
   }
 }
 
@@ -1517,3 +1551,48 @@
   white-space: nowrap;
 }
 
+/* Sector Filter styling */
+.search-and-filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 4px 0 16px 0;
+  width: 100%;
+}
+
+.search-and-filter-row .search-box-wrap {
+  flex: 1;
+}
+
+.sector-filter-wrap {
+  min-width: 240px;
+}
+
+.sector-filter-dropdown {
+  width: 100%;
+  background: var(--bg-secondary, #14161d);
+  border: 1px solid var(--border-primary, #1f2229);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-primary, #ffffff);
+  font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+
+.sector-filter-dropdown:focus {
+  border-color: #2563eb;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+@media (max-width: 768px) {
+  .search-and-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .sector-filter-wrap {
+    min-width: 100%;
+  }
+}

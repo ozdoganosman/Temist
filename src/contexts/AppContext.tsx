@@ -17,7 +17,6 @@ interface IndicatorState {
   showNizamiCedid: boolean;
   showEMAOverlay: boolean;
   showPearsonChannels: boolean;
-  showMATLRNS: boolean;
   showFinancials: boolean;
   logScale: boolean;
 }
@@ -38,7 +37,6 @@ const initialState: IndicatorState = {
   showNizamiCedid: false,
   showEMAOverlay: false,
   showPearsonChannels: false,
-  showMATLRNS: false,
   showFinancials: false,
   logScale: false,
 };

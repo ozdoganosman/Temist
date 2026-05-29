@@ -2,9 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as echarts from 'echarts';
 import type { Interval, LegendData } from './types';
 import type { OHLCVData } from '../../api/borsaApi';
-import { DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import type { BollingerOverlayResult } from '../../utils/regressionChannels';
-import { computeAllBollingerOverlays } from '../../utils/regressionChannels';
+import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import {
   computeCombinedSignals,
   extractCombinedSignalEvents,
@@ -35,7 +34,6 @@ interface ChartContainerProps {
   showNizamiCedid?: boolean;
   showEMAOverlay?: boolean;
   showPearsonChannels?: boolean;
-  showMATLRNS?: boolean;
   showSignals?: boolean;
   signalConfig?: SignalConfig;
   logScale?: boolean;
@@ -57,7 +55,6 @@ export default function ChartContainer({
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
-  showMATLRNS = false,
   showSignals = false,
   signalConfig,
   logScale = false,
@@ -585,7 +582,6 @@ export default function ChartContainer({
       showNizamiCedid,
       showEMAOverlay,
       showPearsonChannels,
-      showMATLRNS,
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -615,7 +611,6 @@ export default function ChartContainer({
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
-    showMATLRNS,
     logScale,
     signalEvents,
     signalConfig,

@@ -1,7 +1,6 @@
 import { fetchHistory, fetchScanResults, type OHLCVData } from '../../api/borsaApi';
 import { computeWilliamsPasa, computeNizamiCedid, ema } from '../../utils/indicators';
 import { computePearsonChannel, DEFAULT_PEARSON_CONFIGS, type PearsonConfig } from '../../utils/pearsonChannels';
-import { computeMATLRNS } from '../../utils/matlrns';
 import { getCacheItem, setCacheItem } from '../../utils/indexedDbCache';
 import { computeKPIs } from '../../utils/computeFinancialMetrics';
 
@@ -40,11 +39,6 @@ export interface ScannedStock {
       signal: 'bullish' | 'bearish' | 'neutral';
       score: number; // 0-20
       pos: number; // average position
-    };
-    matlrns: {
-      value: number; // -2 to +2
-      signal: 'bullish' | 'bearish' | 'neutral';
-      score: number; // 0-20
     };
     extra: {
       sma50: number | null;
@@ -194,13 +188,19 @@ async function fetchFinancialsWithCache(symbol: string, forceRefresh: boolean): 
  * Calculates dynamic fundamental score (0-10) and Piotroski F-Score (0-9)
  */
 function calculateFundamentalScores(allFin: any, ohlcv: OHLCVData[]): { fundamentalScore: number; piotroskiScore: number } {
-  const periods = (allFin.income_stmt?.periods || []).filter((p: string) => p.endsWith('/12'));
+  const periods = allFin.income_stmt?.periods || [];
   if (periods.length === 0) {
     return { fundamentalScore: 5, piotroskiScore: 5 }; // defaults
   }
 
   const p1 = periods[periods.length - 1];
-  const p2 = periods.length > 1 ? periods[periods.length - 2] : null;
+
+  // Find same quarter/month of the previous year (YoY comparison period)
+  const parts = p1.split('/');
+  const year = parseInt(parts[0]);
+  const month = parts[1];
+  const p2Target = `${year - 1}/${month}`;
+  const p2 = periods.includes(p2Target) ? p2Target : (periods.length > 1 ? periods[periods.length - 2] : null);
 
   const kpis = computeKPIs(allFin, ohlcv);
 
@@ -352,21 +352,7 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
     // 4. Pearson Channels
     const pearson = calculatePearsonLast(closes);
 
-    // 5. MATLRNS
-    const matResult = computeMATLRNS(closes, highs, lows, volumes);
-    const matDir = matResult.direction[n - 1] ?? 0;
-    let matBase = 10;
-    if (matDir === 2) matBase = 18;
-    else if (matDir === 1) matBase = 14;
-    else if (matDir === -1) matBase = 6;
-    else if (matDir === -2) matBase = 2;
-
-    const fastMAVal = matResult.fastMA[n - 1];
-    const matPriceFactor = fastMAVal !== null ? (lastClose > fastMAVal ? 2 : -2) : 0;
-    const matScore = clamp(matBase + matPriceFactor, 0, 20);
-    const matSignal = matDir > 0 ? 'bullish' : matDir < 0 ? 'bearish' : 'neutral';
-
-    const overallScore = Math.round(wpScore + ncScore + ribbon.score + pearson.score + matScore);
+    const overallScore = Math.round((wpScore + ncScore + ribbon.score + pearson.score) * 1.25);
 
     // 6. Advanced Technical Moving Averages & Volume metrics
     const sma50 = calculateSMA(closes, 50);
@@ -393,8 +379,17 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
     }
 
     const techScoreClamped = clamp(overallScore, 0, 100);
-    // Combined score: 60% Technical + 40% Fundamental (Fundamental score is scaled to 100)
-    const combinedScore = Math.round(techScoreClamped * 0.6 + fundamentalScore * 10 * 0.4);
+    
+    // Scale Fundamental Health Score (0-10) to 0-100: fundamentalScore * 10
+    // Scale Piotroski F-Score (0-9) to 0-100: (piotroskiScore * 100) / 9
+    const scaledFundHealth = fundamentalScore * 10;
+    const scaledPiotroski = (piotroskiScore * 100) / 9;
+    
+    // Combined Fundamental Score: 50% Health + 50% Piotroski F-Score
+    const avgFundamentalScore = (scaledFundHealth + scaledPiotroski) / 2;
+
+    // Combined score: 60% Technical + 40% Combined Fundamental
+    const combinedScore = Math.round(techScoreClamped * 0.6 + avgFundamentalScore * 0.4);
 
     return {
       symbol,
@@ -418,7 +413,6 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
         },
         emaRibbon: { value: ribbon.spread, signal: ribbon.signal, score: ribbon.score },
         pearson: { value: pearson.avgR, signal: pearson.signal, score: pearson.score, pos: pearson.avgPos },
-        matlrns: { value: matDir, signal: matSignal, score: matScore },
         extra: {
           sma50,
           sma200,

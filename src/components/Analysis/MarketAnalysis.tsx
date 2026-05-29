@@ -1,18 +1,19 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { runClientScan, clearScanCache, getCachedScanResults, type ScannedStock } from './scanEngine';
 import { computeKPIs } from '../../utils/computeFinancialMetrics';
-import { fetchHistory, type OHLCVData } from '../../api/borsaApi';
+import { fetchHistory, fetchSymbols, type OHLCVData } from '../../api/borsaApi';
 import { getCacheItem } from '../../utils/indexedDbCache';
 import IndicatorRadarChart from './IndicatorRadarChart';
 import MiniSparklineChart from './MiniSparklineChart';
 import ScanHeatmap, { type HeatmapItem } from './ScanHeatmap';
+import { getStockSector, SECTORS } from '../../utils/sectorMap';
 import './MarketAnalysis.css';
 
 interface Props {
   onSymbolClick?: (symbol: string) => void;
 }
 
-type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'combinedScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson' | 'matlrns';
+type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'combinedScore' | 'fundamentalScore' | 'piotroskiScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson';
 
 export interface StockFinancialData {
   netProfit: number | null;
@@ -56,7 +57,6 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'er_value', module: 'er', field: 'value', label: 'EMA Ribbon: Yayılım', type: 'number' },
   { key: 'pc_value', module: 'pc', field: 'value', label: 'Pearson: Korelasyon R', type: 'number' },
   { key: 'pc_pos', module: 'pc', field: 'pos', label: 'Pearson: Kanal Konumu', type: 'number' },
-  { key: 'ml_value', module: 'ml', field: 'value', label: 'MATLRNS: Yön (-2 ile +2)', type: 'number' },
   // Extra technical metrics
   { key: 'extra_changePercent', module: 'extra', field: 'changePercent', label: 'Teknik: Günlük Değişim (%)', type: 'number' },
   { key: 'extra_sma50', module: 'extra', field: 'sma50', label: 'Teknik: SMA 50', type: 'number' },
@@ -94,8 +94,8 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
 
   let leftVal: any = null;
   const modId = leftDef.module;
-  if (['wp', 'nc', 'er', 'pc', 'ml'].includes(modId)) {
-    const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : modId === 'pc' ? 'pearson' : 'matlrns'];
+  if (['wp', 'nc', 'er', 'pc'].includes(modId)) {
+    const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : 'pearson'];
     if (!indicatorData) return true;
     leftVal = (indicatorData as any)[leftDef.field];
   } else if (modId === 'extra') {
@@ -127,8 +127,8 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
     const rightDef = ALL_FIELDS.find(f => f.key === rule.rightValue);
     if (!rightDef) return true;
     const rightModId = rightDef.module;
-    if (['wp', 'nc', 'er', 'pc', 'ml'].includes(rightModId)) {
-      const indicatorData = stock.indicators[rightModId === 'wp' ? 'williamsPasa' : rightModId === 'nc' ? 'nizamiCedid' : rightModId === 'er' ? 'emaRibbon' : rightModId === 'pc' ? 'pearson' : 'matlrns'];
+    if (['wp', 'nc', 'er', 'pc'].includes(rightModId)) {
+      const indicatorData = stock.indicators[rightModId === 'wp' ? 'williamsPasa' : rightModId === 'nc' ? 'nizamiCedid' : rightModId === 'er' ? 'emaRibbon' : 'pearson'];
       rightVal = indicatorData ? (indicatorData as any)[rightDef.field] : null;
     } else if (rightModId === 'extra') {
       rightVal = rightDef.field === 'changePercent' ? stock.changePercent : (stock.indicators.extra as any)[rightDef.field];
@@ -178,7 +178,7 @@ export const PRESETS: Record<string, PresetConfig> = {
       { id: 'gc_1', leftFieldKey: 'extra_sma50', operator: '>', rightType: 'field', rightValue: 'extra_sma200' },
       { id: 'gc_2', leftFieldKey: 'extra_volumeRatio', operator: '>', rightType: 'number', rightValue: '1.5' }
     ],
-    columns: { wp: false, nc: false, er: false, pc: false, ml: false, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
+    columns: { wp: false, nc: false, er: false, pc: false, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
   },
   oversold: {
     name: 'Aşırı Satım Tepki',
@@ -187,16 +187,16 @@ export const PRESETS: Record<string, PresetConfig> = {
       { id: 'os_2', leftFieldKey: 'pc_pos', operator: '>', rightType: 'number', rightValue: '-1.8' },
       { id: 'os_3', leftFieldKey: 'pc_pos', operator: '<', rightType: 'number', rightValue: '-0.5' }
     ],
-    columns: { wp: true, nc: false, er: false, pc: true, ml: false, extra: false, netProfit: false, revGrowth: false, equity: false, kpis: false }
+    columns: { wp: true, nc: false, er: false, pc: true, extra: false, netProfit: false, revGrowth: false, equity: false, kpis: false }
   },
   momentum: {
     name: 'Hacimli Momentum Kırılımı',
     rules: [
       { id: 'mo_1', leftFieldKey: 'extra_changePercent', operator: '>', rightType: 'number', rightValue: '0' },
-      { id: 'mo_2', leftFieldKey: 'ml_value', operator: '>=', rightType: 'number', rightValue: '1' },
+      { id: 'mo_2', leftFieldKey: 'wp_value', operator: '>', rightType: 'field', rightValue: 'wp_ema' },
       { id: 'mo_3', leftFieldKey: 'extra_volumeRatio', operator: '>', rightType: 'number', rightValue: '2.0' }
     ],
-    columns: { wp: false, nc: false, er: false, pc: false, ml: true, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
+    columns: { wp: true, nc: false, er: false, pc: false, extra: true, netProfit: false, revGrowth: false, equity: false, kpis: false }
   },
   valueGrowth: {
     name: 'Değer & Büyüme (Temel)',
@@ -208,7 +208,7 @@ export const PRESETS: Record<string, PresetConfig> = {
       { id: 'vg_5', leftFieldKey: 'revGrowth_revenueGrowth', operator: '>', rightType: 'number', rightValue: '20' },
       { id: 'vg_6', leftFieldKey: 'kpis_roe', operator: '>', rightType: 'number', rightValue: '20' }
     ],
-    columns: { wp: false, nc: false, er: false, pc: false, ml: false, extra: false, netProfit: false, revGrowth: true, equity: false, kpis: true }
+    columns: { wp: false, nc: false, er: false, pc: false, extra: false, netProfit: false, revGrowth: true, equity: false, kpis: true }
   }
 };
 
@@ -256,7 +256,6 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
       nc: true,
       er: false,
       pc: false,
-      ml: false,
       extra: false,
       netProfit: false,
       revGrowth: false,
@@ -377,12 +376,41 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const [progress, setProgress] = useState<{ completed: number; total: number; currentSymbol: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Sector and Symbol Info States
+  const [selectedSector, setSelectedSector] = useState<string>(() => {
+    return localStorage.getItem('temist_scanner_selected_sector') || 'Tümü';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('temist_scanner_selected_sector', selectedSector);
+  }, [selectedSector]);
+
+  const [symbolInfoMap, setSymbolInfoMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetchSymbols().then(res => {
+      const map: Record<string, string> = {};
+      for (const s of res.stocks) {
+        map[s.name] = s.displayName;
+      }
+      for (const idx of res.indices) {
+        map[idx.name] = idx.displayName;
+      }
+      setSymbolInfoMap(map);
+    }).catch(err => {
+      console.error('Failed to fetch symbols for sector mapping:', err);
+    });
+  }, []);
+
+  const getSymbolDisplayName = useCallback((symbol: string): string => {
+    return symbolInfoMap[symbol] || '';
+  }, [symbolInfoMap]);
+
   // Akıllı Tarama Filters & Search
   const [filterBullishWP, setFilterBullishWP] = useState(() => localStorage.getItem('temist_scanner_f_wp') === 'true');
   const [filterBullishNC, setFilterBullishNC] = useState(() => localStorage.getItem('temist_scanner_f_nc') === 'true');
   const [filterBullishER, setFilterBullishER] = useState(() => localStorage.getItem('temist_scanner_f_er') === 'true');
   const [filterBullishPC, setFilterBullishPC] = useState(() => localStorage.getItem('temist_scanner_f_pc') === 'true');
-  const [filterBullishML, setFilterBullishML] = useState(() => localStorage.getItem('temist_scanner_f_ml') === 'true');
   const [filterHighScore, setFilterHighScore] = useState(() => localStorage.getItem('temist_scanner_f_high') === 'true');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>(() => (localStorage.getItem('temist_scanner_view_mode') as 'table' | 'heatmap') || 'table');
@@ -397,7 +425,6 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   useEffect(() => { localStorage.setItem('temist_scanner_f_nc', String(filterBullishNC)); }, [filterBullishNC]);
   useEffect(() => { localStorage.setItem('temist_scanner_f_er', String(filterBullishER)); }, [filterBullishER]);
   useEffect(() => { localStorage.setItem('temist_scanner_f_pc', String(filterBullishPC)); }, [filterBullishPC]);
-  useEffect(() => { localStorage.setItem('temist_scanner_f_ml', String(filterBullishML)); }, [filterBullishML]);
   useEffect(() => { localStorage.setItem('temist_scanner_f_high', String(filterHighScore)); }, [filterHighScore]);
 
   // Financial data loading state
@@ -663,10 +690,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
         { label: 'Kanal Konum', getValue: s => s.indicators.pearson.pos.toFixed(2) }
       );
     }
-    if (visibleColumns.ml) {
-      headers.push('MATLRNS Yön');
-      colKeys.push({ label: 'MATLRNS Yön', getValue: s => String(s.indicators.matlrns.value) });
-    }
+
     if (visibleColumns.extra) {
       headers.push('SMA 50', 'SMA 200', 'EMA 21', 'EMA 100', 'Hacim Oranı');
       colKeys.push(
@@ -779,8 +803,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
         return stock.indicators.emaRibbon.score;
       case 'pearson':
         return stock.indicators.pearson.score;
-      case 'matlrns':
-        return stock.indicators.matlrns.score;
+
       default:
         return stock[key];
     }
@@ -789,6 +812,11 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   // Apply filters and sorting to Smart Scanner
   const filteredAndSorted = useMemo(() => {
     let list = [...results];
+
+    // Sector filter
+    if (selectedSector !== 'Tümü') {
+      list = list.filter(item => getStockSector(item.symbol, getSymbolDisplayName(item.symbol)) === selectedSector);
+    }
 
     // Search query filter
     if (searchQuery.trim() !== '') {
@@ -809,9 +837,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     if (filterBullishPC) {
       list = list.filter(item => item.indicators.pearson.signal === 'bullish');
     }
-    if (filterBullishML) {
-      list = list.filter(item => item.indicators.matlrns.signal === 'bullish');
-    }
+
     if (filterHighScore) {
       list = list.filter(item => item.overallScore >= 70);
     }
@@ -831,7 +857,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
 
     return list;
-  }, [results, filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterBullishML, filterHighScore, sortKey, sortDirection, searchQuery]);
+  }, [results, filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterHighScore, sortKey, sortDirection, searchQuery, selectedSector, getSymbolDisplayName]);
 
   // Market sentiment calculations
   const sentimentStats = useMemo(() => {
@@ -978,10 +1004,15 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   const technicallyFiltered = useMemo(() => {
     let list = [...results];
 
+    // Sector filter
+    if (selectedSector !== 'Tümü') {
+      list = list.filter(item => getStockSector(item.symbol, getSymbolDisplayName(item.symbol)) === selectedSector);
+    }
+
     // Evaluate active technical rules
     const techRules = rules.filter(r => {
       const fieldDef = ALL_FIELDS.find(f => f.key === r.leftFieldKey);
-      return fieldDef && ['wp', 'nc', 'er', 'pc', 'ml', 'extra'].includes(fieldDef.module);
+      return fieldDef && ['wp', 'nc', 'er', 'pc', 'extra'].includes(fieldDef.module);
     });
 
     for (const rule of techRules) {
@@ -989,7 +1020,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     }
 
     return list;
-  }, [results, rules]);
+  }, [results, rules, selectedSector, getSymbolDisplayName]);
 
   // Background financials loader triggered by technical filters / matching rules
   useEffect(() => {
@@ -1064,8 +1095,8 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     if (!fieldDef) return 0;
 
     const modId = fieldDef.module;
-    if (['wp', 'nc', 'er', 'pc', 'ml'].includes(modId)) {
-      const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : modId === 'pc' ? 'pearson' : 'matlrns'];
+    if (['wp', 'nc', 'er', 'pc'].includes(modId)) {
+      const indicatorData = stock.indicators[modId === 'wp' ? 'williamsPasa' : modId === 'nc' ? 'nizamiCedid' : modId === 'er' ? 'emaRibbon' : 'pearson'];
       if (!indicatorData) return 0;
       return (indicatorData as any)[fieldDef.field];
     } else if (modId === 'extra') {
@@ -1092,6 +1123,11 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
   // Apply financials filters and sort for indicator tab (unified AND/OR logic)
   const indicatorFilteredAndSorted = useMemo(() => {
     let list = [...results];
+
+    // Sector filter
+    if (selectedSector !== 'Tümü') {
+      list = list.filter(item => getStockSector(item.symbol, getSymbolDisplayName(item.symbol)) === selectedSector);
+    }
 
     // Search query filter
     if (searchQuery.trim() !== '') {
@@ -1126,7 +1162,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     });
 
     return list;
-  }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection, searchQuery]);
+  }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection, searchQuery, selectedSector, getSymbolDisplayName]);
 
   const heatmapData = useMemo(() => {
     const list = activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
@@ -1208,22 +1244,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
     return `Pearson regresyon kanalları yatay veya karışık yönlerde. Trend gücü (Korelasyon R = ${pc.value.toFixed(2)}) belirgin bir yöne işaret etmemektedir.`;
   };
 
-  const getMatlrnsExplanation = (stock: ScannedStock) => {
-    const ml = stock.indicators.matlrns;
-    if (ml.value === 2) {
-      return 'MATLRNS trend takip sistemi +2 seviyesinde tam boğa durumunda. Hem hızlı hem yavaş hareketli ortalamalar güçlü bir yükseliş teyidi vermektedir.';
-    }
-    if (ml.value === 1) {
-      return 'MATLRNS trend takip sistemi +1 seviyesinde. Yükseliş eğilimi başlamış veya zayıf da olsa devam etmektedir.';
-    }
-    if (ml.value === -1) {
-      return 'MATLRNS trend takip sistemi -1 seviyesinde. Düşüş yönlü baskılar artmakta ve temkinli olunması gerekmektedir.';
-    }
-    if (ml.value === -2) {
-      return 'MATLRNS trend takip sistemi -2 seviyesinde tam ayı durumunda. Satış baskısı en üst seviyededir.';
-    }
-    return 'MATLRNS trend takip sistemi 0 (nötr) seviyesinde. Kararsızlık veya trend dönüşüm uyarısı mevcuttur.';
-  };
+
 
   const formatLargeMoney = (value: number | null): string => {
     if (value === null) return '-';
@@ -1294,39 +1315,56 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
         {/* Error */}
         {error && <div className="scan-error">{error}</div>}
 
-        {/* Search Input Box */}
+        {/* Search & Sector Filter Box */}
         {results.length > 0 && (
-          <div className="search-box-wrap" style={{ margin: '4px 0 16px 0' }}>
-            <svg
-              className="search-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              className="scanner-search-input"
-              placeholder="Hisse senedi kodu arayın... (Örn: THYAO, EREGL)"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                className="search-clear-btn"
-                onClick={() => setSearchQuery('')}
-                title="Aramayı Temizle"
+          <div className="search-and-filter-row">
+            <div className="search-box-wrap">
+              <svg
+                className="search-icon"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                &times;
-              </button>
-            )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                className="scanner-search-input"
+                placeholder="Hisse senedi kodu arayın... (Örn: THYAO, EREGL)"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  className="search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  title="Aramayı Temizle"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+
+            <div className="sector-filter-wrap">
+              <select
+                value={selectedSector}
+                onChange={e => setSelectedSector(e.target.value)}
+                className="sector-filter-dropdown"
+              >
+                <option value="Tümü">Tüm Sektörler</option>
+                {SECTORS.map(sec => (
+                  <option key={sec} value={sec}>
+                    {sec}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -1402,14 +1440,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   />
                   <span>Pearson Kanal</span>
                 </label>
-                <label className="filter-pill">
-                  <input
-                    type="checkbox"
-                    checked={filterBullishML}
-                    onChange={e => setFilterBullishML(e.target.checked)}
-                  />
-                  <span>MATLRNS</span>
-                </label>
+
                 <label className="filter-pill score-pill">
                   <input
                     type="checkbox"
@@ -1485,6 +1516,15 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                         <th onClick={() => handleSort('changePercent')} className="sortable text-right">
                           Günlük Değ. {sortKey === 'changePercent' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
+                        <th onClick={() => handleSort('overallScore')} className="sortable text-center">
+                          Teknik {sortKey === 'overallScore' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('fundamentalScore')} className="sortable text-center">
+                          Temel Sağlık {sortKey === 'fundamentalScore' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => handleSort('piotroskiScore')} className="sortable text-center">
+                          Piotroski {sortKey === 'piotroskiScore' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </th>
                         <th onClick={() => handleSort('combinedScore')} className="sortable score-th">
                           Birleşik Puan {sortKey === 'combinedScore' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
@@ -1500,9 +1540,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                         <th onClick={() => handleSort('pearson')} className="sortable text-center">
                           PC {sortKey === 'pearson' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th onClick={() => handleSort('matlrns')} className="sortable text-center">
-                          ML {sortKey === 'matlrns' && (sortDirection === 'asc' ? '▲' : '▼')}
-                        </th>
+
                       </tr>
                     </thead>
                     <tbody>
@@ -1532,6 +1570,15 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                           <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
                             {stock.changePercent > 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
                           </td>
+                          <td className="text-center font-mono font-semibold" style={{ color: getScoreColor(stock.overallScore) }}>
+                            {stock.overallScore}
+                          </td>
+                          <td className="text-center font-mono font-semibold" style={{ color: '#06b6d4' }}>
+                            {stock.fundamentalScore}/10
+                          </td>
+                          <td className="text-center font-mono font-semibold" style={{ color: '#f97316' }}>
+                            {stock.piotroskiScore}/9
+                          </td>
                           <td className="score-td">
                             <div className="overall-score-bar-wrap">
                               <span className="score-number-label">{stock.combinedScore}</span>
@@ -1544,9 +1591,6 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                                   }}
                                 />
                               </div>
-                              <span className="score-breakdown" style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                                (T: {stock.overallScore} | F: {stock.fundamentalScore}/10)
-                              </span>
                             </div>
                           </td>
                         {/* 5 Indicator status columns */}
@@ -1574,17 +1618,12 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                             title={`PC Puanı: ${stock.indicators.pearson.score}/20 (Eğilim R: ${stock.indicators.pearson.value.toFixed(2)})`}
                           />
                         </td>
-                        <td className="text-center">
-                          <span
-                            className={`indicator-status-dot ${stock.indicators.matlrns.signal}`}
-                            title={`ML Puanı: ${stock.indicators.matlrns.score}/20 (Sinyal: ${stock.indicators.matlrns.value})`}
-                          />
-                        </td>
+
                       </tr>
                     ))}
                     {filteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="no-results-cell">
+                        <td colSpan={11} className="no-results-cell">
                           Arama kriterlerine uygun hisse bulunamadı.
                         </td>
                       </tr>
@@ -1636,14 +1675,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   />
                   <span>Pearson Kanal</span>
                 </label>
-                <label className="filter-pill">
-                  <input
-                    type="checkbox"
-                    checked={visibleColumns.ml}
-                    onChange={() => handleToggleColumn('ml')}
-                  />
-                  <span>MATLRNS</span>
-                </label>
+
                 <label className="filter-pill">
                   <input
                     type="checkbox"
@@ -1977,11 +2009,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                           </th>
                         </>
                       )}
-                      {visibleColumns.ml && (
-                        <th onClick={() => handleIndSort('ml_value')} className="sortable text-center">
-                          MATLRNS Yön {indSortKey === 'ml_value' && (indSortDirection === 'asc' ? '▲' : '▼')}
-                        </th>
-                      )}
+
                       {visibleColumns.extra && (
                         <>
                           <th onClick={() => handleIndSort('extra_sma50')} className="sortable text-right">
@@ -2060,7 +2088,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                       const nc = stock.indicators.nizamiCedid;
                       const er = stock.indicators.emaRibbon;
                       const pc = stock.indicators.pearson;
-                      const ml = stock.indicators.matlrns;
+
 
                       const fin = financialsData[stock.symbol];
 
@@ -2138,11 +2166,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                               </td>
                             </>
                           )}
-                          {visibleColumns.ml && (
-                            <td className={`text-center font-mono font-semibold ${ml.value > 0 ? 'text-bullish' : ml.value < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                              {ml.value > 0 ? `+${ml.value}` : ml.value}
-                            </td>
-                          )}
+
                           {visibleColumns.extra && (
                             <>
                               <td className="text-right font-mono">
@@ -2218,7 +2242,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.ml ? 1 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
+                        <td colSpan={3 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>
@@ -2250,6 +2274,9 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
             <div className="drawer-header">
               <div className="drawer-header-left">
                 <h3 className="drawer-title">{selectedStock.symbol}</h3>
+                <span className="drawer-sector" style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Sektör: {getStockSector(selectedStock.symbol, getSymbolDisplayName(selectedStock.symbol))}
+                </span>
                 <span className="drawer-price font-mono">
                   {selectedStock.close.toFixed(2)}{' '}
                   <span className={`drawer-change ${selectedStock.changePercent > 0 ? 'text-bullish' : selectedStock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
@@ -2296,7 +2323,6 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                     nizamiCedid: selectedStock.indicators.nizamiCedid.score,
                     emaRibbon: selectedStock.indicators.emaRibbon.score,
                     pearson: selectedStock.indicators.pearson.score,
-                    matlrns: selectedStock.indicators.matlrns.score,
                   }}
                 />
               </div>
@@ -2433,19 +2459,7 @@ export default function MarketAnalysis({ onSymbolClick }: Props) {
                   <p className="ind-desc">{getPearsonExplanation(selectedStock)}</p>
                 </div>
 
-                {/* 5. MATLRNS */}
-                <div className="indicator-detail-item">
-                  <div className="indicator-detail-header">
-                    <h4 className="ind-name">MATLRNS (Trend Takip Sistemi)</h4>
-                    <span className={`badge ${getSignalBadgeClass(selectedStock.indicators.matlrns.signal)}`}>
-                      {getSignalLabelTr(selectedStock.indicators.matlrns.signal)} ({selectedStock.indicators.matlrns.score}/20)
-                    </span>
-                  </div>
-                  <div className="ind-metrics">
-                    <span>Hızlı-Yavaş Yön Sinyali: <strong className="font-mono">{selectedStock.indicators.matlrns.value > 0 ? `+${selectedStock.indicators.matlrns.value}` : selectedStock.indicators.matlrns.value}</strong></span>
-                  </div>
-                  <p className="ind-desc">{getMatlrnsExplanation(selectedStock)}</p>
-                </div>
+
               </div>
 
               {/* Direct chart action button */}

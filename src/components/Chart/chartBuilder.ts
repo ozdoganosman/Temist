@@ -17,7 +17,7 @@ import {
 } from '../../utils/indicators';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { computeAllPearsonChannels, DEFAULT_PEARSON_CONFIGS } from '../../utils/pearsonChannels';
-import { computeMATLRNS } from '../../utils/matlrns';
+
 
 interface SignalPoint {
   value: [number, number];
@@ -368,7 +368,6 @@ export function buildOption(
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
-  showMATLRNS = false,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -822,225 +821,7 @@ export function buildOption(
     });
   }
 
-  const matlrnsSeries: echarts.SeriesOption[] = [];
-  if (showMATLRNS && filtered.length > 21) {
-    const closes = filtered.map((d) => d.close);
-    const highs = filtered.map((d) => d.high);
-    const lows = filtered.map((d) => d.low);
-    const volumes = filtered.map((d) => d.volume);
 
-    const res = computeMATLRNS(closes, highs, lows, volumes, interval ?? '1d');
-    const fastPadded = [...padNull, ...res.fastMA, ...padNull];
-    const slowPadded = [...padNull, ...res.slowMA, ...padNull];
-
-    const bullishFastData = new Array(total).fill(null);
-    const bearishFastData = new Array(total).fill(null);
-    const neutralFastData = new Array(total).fill(null);
-
-    for (let i = 0; i < total; i++) {
-      const val = fastPadded[i];
-      if (val === null) continue;
-      const origIdx = i - pad;
-      if (origIdx < 0 || origIdx >= res.direction.length) continue;
-
-      const d = res.direction[origIdx];
-      if (d > 0) {
-        bullishFastData[i] = val;
-        if (i > 0 && bullishFastData[i - 1] === null) {
-          bullishFastData[i - 1] = fastPadded[i - 1];
-        }
-      } else if (d < 0) {
-        bearishFastData[i] = val;
-        if (i > 0 && bearishFastData[i - 1] === null) {
-          bearishFastData[i - 1] = fastPadded[i - 1];
-        }
-      } else {
-        neutralFastData[i] = val;
-        if (i > 0 && neutralFastData[i - 1] === null) {
-          neutralFastData[i - 1] = fastPadded[i - 1];
-        }
-      }
-    }
-
-    matlrnsSeries.push(
-      {
-        name: 'MATLRNS Hızlı (Yükseliş)',
-        type: 'line',
-        data: bullishFastData,
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { color: UP_COLOR, width: 2 },
-        connectNulls: false,
-        z: 6,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Hızlı (Düşüş)',
-        type: 'line',
-        data: bearishFastData,
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { color: DOWN_COLOR, width: 2 },
-        connectNulls: false,
-        z: 6,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Hızlı (Nötr)',
-        type: 'line',
-        data: neutralFastData,
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { color: '#787B86', width: 2 },
-        connectNulls: false,
-        z: 6,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Yavaş',
-        type: 'line',
-        data: slowPadded,
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { color: 'rgba(120, 123, 134, 0.5)', width: 1.5, type: 'dashed' },
-        connectNulls: false,
-        z: 5,
-        tooltip: { show: false },
-      }
-    );
-
-    const bullishDiff = new Array(total).fill(null);
-    const bearishDiff = new Array(total).fill(null);
-    const neutralDiff = new Array(total).fill(null);
-    const bullishBase = new Array(total).fill(null);
-    const bearishBase = new Array(total).fill(null);
-    const neutralBase = new Array(total).fill(null);
-
-    for (let i = 0; i < total; i++) {
-      const f = fastPadded[i];
-      const s = slowPadded[i];
-      if (f === null || s === null) continue;
-      const origIdx = i - pad;
-      const d = res.direction[origIdx];
-
-      const minVal = Math.min(f, s);
-      const diffVal = Math.abs(f - s);
-
-      if (d > 0) {
-        bullishBase[i] = minVal;
-        bullishDiff[i] = diffVal;
-        if (i > 0 && bullishBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
-          bullishBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
-          bullishDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
-        }
-      } else if (d < 0) {
-        bearishBase[i] = minVal;
-        bearishDiff[i] = diffVal;
-        if (i > 0 && bearishBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
-          bearishBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
-          bearishDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
-        }
-      } else {
-        neutralBase[i] = minVal;
-        neutralDiff[i] = diffVal;
-        if (i > 0 && neutralBase[i - 1] === null && fastPadded[i - 1] !== null && slowPadded[i - 1] !== null) {
-          neutralBase[i - 1] = Math.min(fastPadded[i - 1] as number, slowPadded[i - 1] as number);
-          neutralDiff[i - 1] = Math.abs((fastPadded[i - 1] as number) - (slowPadded[i - 1] as number));
-        }
-      }
-    }
-
-    matlrnsSeries.push(
-      {
-        name: 'MATLRNS Slow Base',
-        type: 'line',
-        data: bullishBase,
-        stack: 'matlrns-bull',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'transparent' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Bullish Band',
-        type: 'line',
-        data: bullishDiff,
-        stack: 'matlrns-bull',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(38, 166, 154, 0.08)' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Slow Base Bear',
-        type: 'line',
-        data: bearishBase,
-        stack: 'matlrns-bear',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'transparent' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Bearish Band',
-        type: 'line',
-        data: bearishDiff,
-        stack: 'matlrns-bear',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(239, 83, 80, 0.08)' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Slow Base Neut',
-        type: 'line',
-        data: neutralBase,
-        stack: 'matlrns-neut',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'transparent' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MATLRNS Neutral Band',
-        type: 'line',
-        data: neutralDiff,
-        stack: 'matlrns-neut',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(120, 123, 134, 0.08)' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      }
-    );
-  }
 
 
   // RSI sub panel
@@ -1789,7 +1570,6 @@ export function buildOption(
         : []),
       ...emaSeries,
       ...pearsonSeries,
-      ...matlrnsSeries,
       ...subSeries,
     ],
   };

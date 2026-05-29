@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Interval, ActiveView } from '../Chart/types';
 import type { SymbolInfo } from '../../api/borsaApi';
 import { SymbolSearch } from '../SymbolSearch/SymbolSearch';
@@ -34,8 +35,6 @@ interface ToolbarProps {
   showEMAOverlay: boolean;
   onTogglePearsonChannels: () => void;
   showPearsonChannels: boolean;
-  onToggleMATLRNS: () => void;
-  showMATLRNS: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -95,8 +94,6 @@ export default function Toolbar({
   showEMAOverlay,
   onTogglePearsonChannels,
   showPearsonChannels,
-  onToggleMATLRNS,
-  showMATLRNS,
   logScale,
   onToggleLogScale,
   activeView,
@@ -240,13 +237,7 @@ export default function Toolbar({
           >
             3ChanPers
           </button>
-          <button
-            className={`toolbar-btn ${showMATLRNS ? 'active' : ''}`}
-            onClick={onToggleMATLRNS}
-            aria-label="MATLRNS goster"
-          >
-            MATLRNS
-          </button>
+
           <button
             className={`toolbar-btn ${showFinancials ? 'active' : ''}`}
             onClick={onToggleFinancials}

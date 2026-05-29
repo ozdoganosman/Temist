@@ -35,8 +35,6 @@ interface MobileToolbarProps {
   showEMAOverlay: boolean;
   onTogglePearsonChannels: () => void;
   showPearsonChannels: boolean;
-  onToggleMATLRNS: () => void;
-  showMATLRNS: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -172,8 +170,6 @@ export default function MobileToolbar({
   onToggleEMAOverlay,
   showPearsonChannels,
   onTogglePearsonChannels,
-  showMATLRNS,
-  onToggleMATLRNS,
   isLandscape = false,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -246,9 +242,6 @@ export default function MobileToolbar({
               </button>
               <button className={`mt-scroll-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
                 3ChanPers
-              </button>
-              <button className={`mt-scroll-btn ${showMATLRNS ? 'active' : ''}`} onClick={onToggleMATLRNS}>
-                MATLRNS
               </button>
             </div>
           </div>

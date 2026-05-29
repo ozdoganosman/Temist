@@ -58,21 +58,53 @@ const NULL_KPIS: FinancialKPIs = {
   latestPeriod: null,
 };
 
+function getTTMValue(data: FinancialRow[], itemName: string, currentPeriod: string, periods: string[]): number | null {
+  const row = findRow(data, itemName);
+  if (!row) return null;
+
+  const currentVal = val(row, currentPeriod);
+  if (currentVal === null) return null;
+
+  const parts = currentPeriod.split('/');
+  if (parts.length !== 2) return currentVal;
+
+  const month = parseInt(parts[1]);
+  if (month === 12) {
+    return currentVal; // For year-end, cumulative is already TTM
+  }
+
+  const year = parseInt(parts[0]);
+  const prevYearEndPeriod = `${year - 1}/12`;
+  const prevYearCumulativePeriod = `${year - 1}/${parts[1]}`;
+
+  if (periods.includes(prevYearEndPeriod) && periods.includes(prevYearCumulativePeriod)) {
+    const prevYearEndVal = val(row, prevYearEndPeriod);
+    const prevYearCumulativeVal = val(row, prevYearCumulativePeriod);
+
+    if (prevYearEndVal !== null && prevYearCumulativeVal !== null) {
+      return currentVal + prevYearEndVal - prevYearCumulativeVal;
+    }
+  }
+
+  // Fallback: Scale the current cumulative value to 12 months
+  return (currentVal / month) * 12;
+}
+
 export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[]): FinancialKPIs {
-  const yearlyPeriods = getYearlyPeriods(allFin.income_stmt.periods);
-  const latestPeriod = yearlyPeriods.length > 0 ? yearlyPeriods[yearlyPeriods.length - 1] : null;
+  const periods = allFin.income_stmt.periods;
+  const latestPeriod = periods.length > 0 ? periods[periods.length - 1] : null;
   if (!latestPeriod) return NULL_KPIS;
 
   const lastPrice = ohlcvData.length > 0 ? ohlcvData[ohlcvData.length - 1].close : null;
 
-  // Income statement
-  const revenue = val(findRow(allFin.income_stmt.data, 'Satış Gelirleri'), latestPeriod);
-  const grossProfit = val(findRow(allFin.income_stmt.data, 'BRÜT KAR (ZARAR)'), latestPeriod);
-  const netIncome = val(findRow(allFin.income_stmt.data, 'Ana Ortaklık Payları'), latestPeriod);
+  // Use TTM values for income statement metrics (revenue, gross profit, net income)
+  const revenue = getTTMValue(allFin.income_stmt.data, 'Satış Gelirleri', latestPeriod, periods);
+  const grossProfit = getTTMValue(allFin.income_stmt.data, 'BRÜT KAR (ZARAR)', latestPeriod, periods);
+  const netIncome = getTTMValue(allFin.income_stmt.data, 'Ana Ortaklık Payları', latestPeriod, periods);
 
-  // Balance sheet — use same yearly period
-  const bsYearly = getYearlyPeriods(allFin.balance_sheet.periods);
-  const bsPeriod = bsYearly.length > 0 ? bsYearly[bsYearly.length - 1] : null;
+  // Balance sheet uses the latest balance sheet period directly (point-in-time snapshot)
+  const bsPeriods = allFin.balance_sheet.periods;
+  const bsPeriod = bsPeriods.length > 0 ? bsPeriods[bsPeriods.length - 1] : null;
 
   const equity = bsPeriod ? val(findRow(allFin.balance_sheet.data, 'Özkaynaklar'), bsPeriod) : null;
   const paidInCapital = bsPeriod ? val(findRow(allFin.balance_sheet.data, 'Ödenmiş Sermaye'), bsPeriod) : null;
