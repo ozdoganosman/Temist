@@ -1,14 +1,21 @@
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { QuoteData, SymbolInfo } from '../../api/borsaApi';
 import { usePriceService } from '../../hooks/usePriceService';
+import type { WatchlistCategory } from '../../hooks/useWatchlist';
 import './Watchlist.css';
 
 interface WatchlistProps {
-  watchlist: string[];
+  lists: WatchlistCategory[];
   symbols: SymbolInfo[];
   currentSymbol: string;
   onSymbolClick: (symbol: string) => void;
-  onRemove: (symbol: string) => void;
+  onRemoveFromList: (listId: string, symbol: string) => void;
+  onAddSymbolToList: (listId: string, symbol: string) => void;
+  onToggleCollapse: (listId: string) => void;
+  onAddList: (name: string) => void;
+  onRemoveList: (listId: string) => void;
+  onRenameList: (listId: string, name: string) => void;
   onClose: () => void;
 }
 
@@ -43,62 +50,272 @@ function PriceCell({ data }: { data: QuoteData | undefined }) {
 }
 
 export default function Watchlist({
-  watchlist,
+  lists,
   symbols,
   currentSymbol,
   onSymbolClick,
-  onRemove,
+  onRemoveFromList,
+  onAddSymbolToList,
+  onToggleCollapse,
+  onAddList,
+  onRemoveList,
+  onRenameList,
   onClose,
 }: WatchlistProps) {
   const { t } = useTranslation();
-  const prices = usePriceService(watchlist);
+
+  // Search states for adding stocks to list
+  const [activeSearchListId, setActiveSearchListId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
+
+  // Editing list name states
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [editNameText, setEditNameText] = useState('');
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto focus search input when opened
+  useEffect(() => {
+    if (activeSearchListId && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [activeSearchListId]);
+
+  // Auto focus edit input when opened
+  useEffect(() => {
+    if (editingListId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingListId]);
+
+  // Aggregate all unique symbols across all watchlists to query their prices
+  const allSymbols = useMemo(() => {
+    const set = new Set<string>();
+    lists.forEach((l) => l.symbols.forEach((s) => set.add(s)));
+    return Array.from(set);
+  }, [lists]);
+
+  const prices = usePriceService(allSymbols);
 
   const getDisplayName = (sym: string) => {
     const info = symbols.find((s) => s.name === sym);
     return info?.displayName ?? sym;
   };
 
+  // Filtered symbols for autocomplete suggestions
+  const suggestions = useMemo(() => {
+    if (!searchText.trim()) return [];
+    const query = searchText.toUpperCase().trim();
+    return symbols
+      .filter((s) => s.name.toUpperCase().includes(query) || s.displayName.toUpperCase().includes(query))
+      .slice(0, 5);
+  }, [searchText, symbols]);
+
+  const handleAddListClick = () => {
+    const listName = prompt('Yeni takip listesi adı:');
+    if (listName && listName.trim()) {
+      onAddList(listName.trim());
+    }
+  };
+
+  const handleRenameClick = (list: WatchlistCategory) => {
+    setEditingListId(list.id);
+    setEditNameText(list.name);
+  };
+
+  const handleSaveRename = (listId: string) => {
+    if (editNameText.trim()) {
+      onRenameList(listId, editNameText.trim());
+    }
+    setEditingListId(null);
+  };
+
+  const handleAddSymbol = (listId: string, sym: string) => {
+    onAddSymbolToList(listId, sym);
+    setSearchText('');
+    setActiveSearchListId(null);
+  };
+
   return (
     <div className="watchlist-panel">
       <div className="watchlist-header">
-        <span className="watchlist-title">{t('watchlist.title')}</span>
-        <button className="watchlist-close-btn" onClick={onClose} title="Kapat">
-          ✕
-        </button>
+        <span className="watchlist-title">Takip Listelerim</span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button className="add-list-btn" onClick={handleAddListClick} title="Yeni Liste Oluştur">
+            + Yeni
+          </button>
+          <button className="watchlist-close-btn" onClick={onClose} title="Kapat">
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="watchlist-list">
-        {watchlist.length === 0 ? (
-          <div className="watchlist-empty">
-            {t('watchlist.empty')}
-            <br />
-            {t('watchlist.emptyHint')}
-          </div>
-        ) : (
-          watchlist.map((sym) => (
-            <div
-              key={sym}
-              className={`watchlist-item ${sym === currentSymbol ? 'active' : ''}`}
-              onClick={() => onSymbolClick(sym)}
-            >
-              <div className="watchlist-item-info">
-                <div className="watchlist-item-symbol">{sym}</div>
-                <div className="watchlist-item-name">{getDisplayName(sym)}</div>
+        {lists.map((list) => {
+          const isCollapsed = list.isCollapsed ?? false;
+          const isEditing = editingListId === list.id;
+          const isSearching = activeSearchListId === list.id;
+
+          return (
+            <div key={list.id} className="watchlist-category">
+              {/* Category Header */}
+              <div className="watchlist-category-header">
+                <div
+                  className="watchlist-category-header-click"
+                  onClick={() => onToggleCollapse(list.id)}
+                >
+                  <span className="watchlist-category-collapse-icon">
+                    {isCollapsed ? '▶' : '▼'}
+                  </span>
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      className="watchlist-category-rename-input"
+                      value={editNameText}
+                      onChange={(e) => setEditNameText(e.target.value)}
+                      onBlur={() => handleSaveRename(list.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveRename(list.id);
+                        if (e.key === 'Escape') setEditingListId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="watchlist-category-name" title="Çift tıklayarak düzenleyin" onDoubleClick={() => handleRenameClick(list)}>
+                      {list.name}
+                    </span>
+                  )}
+                  <span className="watchlist-category-count">
+                    ({list.symbols.length})
+                  </span>
+                </div>
+
+                <div className="watchlist-category-controls">
+                  <button
+                    className="category-control-btn rename-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRenameClick(list);
+                    }}
+                    title="Yeniden Adlandır"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    className="category-control-btn add-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isSearching) {
+                        setActiveSearchListId(null);
+                      } else {
+                        setActiveSearchListId(list.id);
+                        setSearchText('');
+                      }
+                    }}
+                    title="Hisse Ekle"
+                  >
+                    +
+                  </button>
+                  {lists.length > 1 && (
+                    <button
+                      className="category-control-btn delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`"${list.name}" listesini silmek istediğinize emin misiniz?`)) {
+                          onRemoveList(list.id);
+                        }
+                      }}
+                      title="Listeyi Sil"
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
               </div>
-              <PriceCell data={prices.get(sym)} />
-              <button
-                className="watchlist-remove-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove(sym);
-                }}
-                title="Kaldir"
-              >
-                ✕
-              </button>
+
+              {/* Inline Symbol Adding Search Row */}
+              {isSearching && (
+                <div className="category-search-row">
+                  <div style={{ position: 'relative', display: 'flex', width: '100%', gap: '4px' }}>
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      className="category-search-input"
+                      placeholder="Hisse kodu/adı yazın..."
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setActiveSearchListId(null);
+                        if (e.key === 'Enter' && suggestions.length > 0) {
+                          handleAddSymbol(list.id, suggestions[0].name);
+                        }
+                      }}
+                    />
+                    <button
+                      className="category-search-cancel"
+                      onClick={() => setActiveSearchListId(null)}
+                      title="Kapat"
+                    >
+                      ✕
+                    </button>
+                    
+                    {/* Autocomplete Suggestions Dropdown */}
+                    {suggestions.length > 0 && (
+                      <div className="category-search-suggestions">
+                        {suggestions.map((s) => (
+                          <div
+                            key={s.name}
+                            className="category-search-suggestion"
+                            onClick={() => handleAddSymbol(list.id, s.name)}
+                          >
+                            <span className="suggestion-code">{s.name}</span>
+                            <span className="suggestion-desc">{s.displayName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Items List */}
+              {!isCollapsed && (
+                <div className="watchlist-category-items">
+                  {list.symbols.length === 0 ? (
+                    <div className="category-empty-placeholder">
+                      Bu liste boş. + tuşuyla hisse ekleyin.
+                    </div>
+                  ) : (
+                    list.symbols.map((sym) => (
+                      <div
+                        key={sym}
+                        className={`watchlist-item ${sym === currentSymbol ? 'active' : ''}`}
+                        onClick={() => onSymbolClick(sym)}
+                      >
+                        <div className="watchlist-item-info">
+                          <div className="watchlist-item-symbol">{sym}</div>
+                          <div className="watchlist-item-name">{getDisplayName(sym)}</div>
+                        </div>
+                        <PriceCell data={prices.get(sym)} />
+                        <button
+                          className="watchlist-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveFromList(list.id, sym);
+                          }}
+                          title="Listeden Kaldır"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
     </div>
   );

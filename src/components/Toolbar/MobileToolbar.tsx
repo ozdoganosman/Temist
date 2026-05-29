@@ -3,6 +3,7 @@ import type { Interval, ActiveView } from '../Chart/types';
 import type { SymbolInfo } from '../../api/borsaApi';
 import { useTheme } from '../../contexts/ThemeContext';
 import Watchlist from '../Watchlist/Watchlist';
+import type { WatchlistCategory } from '../../hooks/useWatchlist';
 import './MobileToolbar.css';
 
 interface MobileToolbarProps {
@@ -44,8 +45,13 @@ interface MobileToolbarProps {
   isCurrentSymbolWatched: boolean;
   onToggleCurrentSymbolWatch: () => void;
   dataTimestamp: number | null;
-  watchlist: string[];
-  onRemoveSymbol: (symbol: string) => void;
+  lists: WatchlistCategory[];
+  onRemoveFromList: (listId: string, symbol: string) => void;
+  onAddSymbolToList: (listId: string, symbol: string) => void;
+  onToggleCollapse: (listId: string) => void;
+  onAddList: (name: string) => void;
+  onRemoveList: (listId: string) => void;
+  onRenameList: (listId: string, name: string) => void;
   activeMobileTab?: 'chart' | 'financials';
   onMobileTabChange?: (tab: 'chart' | 'financials') => void;
   isLandscape?: boolean;
@@ -156,8 +162,13 @@ export default function MobileToolbar({
   onToggleCurrentSymbolWatch,
   dataTimestamp,
   onMobileTabChange,
-  watchlist,
-  onRemoveSymbol,
+  lists,
+  onRemoveFromList,
+  onAddSymbolToList,
+  onToggleCollapse,
+  onAddList,
+  onRemoveList,
+  onRenameList,
   interval,
   onIntervalChange,
   logScale,
@@ -292,7 +303,7 @@ export default function MobileToolbar({
 
             <div className="mm-section mm-watchlist-section">
               <Watchlist
-                watchlist={watchlist}
+                lists={lists}
                 symbols={symbols}
                 currentSymbol={symbol}
                 onSymbolClick={(sym) => {
@@ -301,7 +312,11 @@ export default function MobileToolbar({
                   onMobileTabChange?.('chart');
                   setMenuOpen(false);
                 }}
-                onRemove={onRemoveSymbol}
+                onRemoveFromList={onRemoveFromList}
+                onToggleCollapse={onToggleCollapse}
+                onAddList={onAddList}
+                onRemoveList={onRemoveList}
+                onRenameList={onRenameList}
                 onClose={() => setMenuOpen(false)}
               />
             </div>

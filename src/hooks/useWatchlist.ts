@@ -1,46 +1,144 @@
 import { useState, useCallback } from 'react';
 import { loadFromStorage, saveToStorage } from '../utils/storage';
 
-const DEFAULT_KEY = 'borsa_watchlist';
+export interface WatchlistCategory {
+  id: string;
+  name: string;
+  symbols: string[];
+  isCollapsed?: boolean;
+}
 
-export function useWatchlist(storageKey = DEFAULT_KEY) {
-  const [watchlist, setWatchlist] = useState<string[]>(() => loadFromStorage<string[]>(storageKey, []));
+const STORAGE_KEY = 'temist_watchlists';
+const OLD_KEY = 'borsa_watchlist';
 
-  const addSymbol = useCallback(
-    (symbol: string) => {
-      setWatchlist((prev) => {
-        if (prev.includes(symbol)) return prev;
-        const next = [...prev, symbol];
-        saveToStorage(storageKey, next);
-        return next;
-      });
-    },
-    [storageKey],
-  );
+export function useWatchlist() {
+  const [lists, setLists] = useState<WatchlistCategory[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
 
-  const removeSymbol = useCallback(
-    (symbol: string) => {
-      setWatchlist((prev) => {
-        const next = prev.filter((s) => s !== symbol);
-        saveToStorage(storageKey, next);
-        return next;
-      });
-    },
-    [storageKey],
-  );
+    // Migrate old watchlist if exists
+    const old = localStorage.getItem(OLD_KEY);
+    let initialSymbols: string[] = ['THYAO', 'GARAN', 'AKBNK', 'ASELS'];
+    if (old) {
+      try {
+        const parsedOld = JSON.parse(old);
+        if (Array.isArray(parsedOld) && parsedOld.length > 0) {
+          initialSymbols = parsedOld;
+        }
+      } catch (e) {}
+    }
 
-  const toggleSymbol = useCallback(
-    (symbol: string) => {
-      setWatchlist((prev) => {
-        const next = prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol];
-        saveToStorage(storageKey, next);
-        return next;
-      });
-    },
-    [storageKey],
-  );
+    const defaultLists: WatchlistCategory[] = [
+      {
+        id: 'default',
+        name: 'Takip Listesi 1',
+        symbols: initialSymbols,
+        isCollapsed: false,
+      },
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultLists));
+    return defaultLists;
+  });
 
-  const isWatched = useCallback((symbol: string) => watchlist.includes(symbol), [watchlist]);
+  const saveLists = useCallback((nextLists: WatchlistCategory[]) => {
+    setLists(nextLists);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextLists));
+  }, []);
 
-  return { watchlist, addSymbol, removeSymbol, toggleSymbol, isWatched };
+  const addList = useCallback((name: string) => {
+    const newList: WatchlistCategory = {
+      id: 'list_' + Date.now(),
+      name: name.trim() || `Takip Listesi ${lists.length + 1}`,
+      symbols: [],
+      isCollapsed: false,
+    };
+    saveLists([...lists, newList]);
+  }, [lists, saveLists]);
+
+  const removeList = useCallback((id: string) => {
+    if (lists.length <= 1) return; // Keep at least one list
+    saveLists(lists.filter(l => l.id !== id));
+  }, [lists, saveLists]);
+
+  const renameList = useCallback((id: string, newName: string) => {
+    if (!newName.trim()) return;
+    saveLists(lists.map(l => l.id === id ? { ...l, name: newName.trim() } : l));
+  }, [lists, saveLists]);
+
+  const toggleCollapseList = useCallback((id: string) => {
+    saveLists(lists.map(l => l.id === id ? { ...l, isCollapsed: !l.isCollapsed } : l));
+  }, [lists, saveLists]);
+
+  const addSymbolToList = useCallback((listId: string, symbol: string) => {
+    saveLists(lists.map(l => {
+      if (l.id === listId) {
+        if (l.symbols.includes(symbol)) return l;
+        return { ...l, symbols: [...l.symbols, symbol] };
+      }
+      return l;
+    }));
+  }, [lists, saveLists]);
+
+  const removeSymbolFromList = useCallback((listId: string, symbol: string) => {
+    saveLists(lists.map(l => {
+      if (l.id === listId) {
+        return { ...l, symbols: l.symbols.filter(s => s !== symbol) };
+      }
+      return l;
+    }));
+  }, [lists, saveLists]);
+
+  const toggleSymbolInList = useCallback((listId: string, symbol: string) => {
+    saveLists(lists.map(l => {
+      if (l.id === listId) {
+        const symbols = l.symbols.includes(symbol)
+          ? l.symbols.filter(s => s !== symbol)
+          : [...l.symbols, symbol];
+        return { ...l, symbols };
+      }
+      return l;
+    }));
+  }, [lists, saveLists]);
+
+  const isWatchedInAnyList = useCallback((symbol: string) => {
+    return lists.some(l => l.symbols.includes(symbol));
+  }, [lists]);
+
+  // For backward compatibility and single-action triggers (e.g. Star Toggle in Toolbar)
+  const toggleSymbol = useCallback((symbol: string) => {
+    if (lists.length === 0) return;
+    // If watched in any list, remove it from all lists where it exists
+    const watched = isWatchedInAnyList(symbol);
+    if (watched) {
+      saveLists(lists.map(l => ({ ...l, symbols: l.symbols.filter(s => s !== symbol) })));
+    } else {
+      // Add to the first list
+      addSymbolToList(lists[0].id, symbol);
+    }
+  }, [lists, isWatchedInAnyList, addSymbolToList, saveLists]);
+
+  const removeSymbol = useCallback((symbol: string) => {
+    saveLists(lists.map(l => ({ ...l, symbols: l.symbols.filter(s => s !== symbol) })));
+  }, [lists, saveLists]);
+
+  return {
+    lists,
+    addList,
+    removeList,
+    renameList,
+    toggleCollapseList,
+    addSymbolToList,
+    removeSymbolFromList,
+    toggleSymbolInList,
+    isWatched: isWatchedInAnyList,
+    toggleSymbol,
+    removeSymbol,
+  };
 }

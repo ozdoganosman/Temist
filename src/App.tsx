@@ -68,7 +68,14 @@ function AppContent() {
     logScale,
     finHeight,
     splitterRef,
-    watchlist,
+    lists,
+    addList,
+    removeList,
+    renameList,
+    toggleCollapseList,
+    addSymbolToList,
+    removeSymbolFromList,
+    toggleSymbolInList,
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
@@ -99,8 +106,13 @@ function AppContent() {
       <div className="app mobile-app">
         <MobileToolbar
           {...toolbarProps}
-          watchlist={watchlist}
-          onRemoveSymbol={removeSymbol}
+          lists={lists}
+          onRemoveFromList={removeSymbolFromList}
+          onAddSymbolToList={addSymbolToList}
+          onToggleCollapse={toggleCollapseList}
+          onAddList={addList}
+          onRemoveList={removeList}
+          onRenameList={renameList}
           activeMobileTab={mobileTab}
           onMobileTabChange={(tab) => setMobileTab(tab)}
           isLandscape={isLandscape}
@@ -290,11 +302,16 @@ function AppContent() {
       <div className="app-body">
         {watchlistOpen && (
           <Watchlist
-            watchlist={watchlist}
+            lists={lists}
             symbols={symbols}
             currentSymbol={symbol}
             onSymbolClick={handleSymbolClick}
-            onRemove={removeSymbol}
+            onRemoveFromList={removeSymbolFromList}
+            onAddSymbolToList={addSymbolToList}
+            onToggleCollapse={toggleCollapseList}
+            onAddList={addList}
+            onRemoveList={removeList}
+            onRenameList={renameList}
             onClose={() => setWatchlistOpen(false)}
           />
         )}

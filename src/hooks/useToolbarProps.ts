@@ -70,7 +70,19 @@ export function useToolbarProps() {
   const splitterRef = useRef<HTMLDivElement>(null);
 
   // ── Sub-hooks ──
-  const { watchlist, toggleSymbol, removeSymbol, isWatched } = useWatchlist();
+  const {
+    lists,
+    addList,
+    removeList,
+    renameList,
+    toggleCollapseList,
+    addSymbolToList,
+    removeSymbolFromList,
+    toggleSymbolInList,
+    isWatched,
+    toggleSymbol,
+    removeSymbol,
+  } = useWatchlist();
   const isMobile = useIsMobile();
   const { data, loading } = useHistoryData(symbol, interval);
 
@@ -278,7 +290,15 @@ export function useToolbarProps() {
     splitterRef,
 
     // watchlist
-    watchlist,
+    lists,
+    addList,
+    removeList,
+    renameList,
+    toggleCollapseList,
+    addSymbolToList,
+    removeSymbolFromList,
+    toggleSymbolInList,
+    isWatched,
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
