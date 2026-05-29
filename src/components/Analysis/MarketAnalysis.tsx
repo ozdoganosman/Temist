@@ -57,7 +57,6 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'nc_macdSignal', module: 'nc', field: 'macdSignal', label: 'Nizami Cedid: Signal', type: 'number' },
   { key: 'nc_emacd', module: 'nc', field: 'emacd', label: 'Nizami Cedid: eMACD', type: 'number' },
   { key: 'nc_value', module: 'nc', field: 'value', label: 'Nizami Cedid: Delta', type: 'number' },
-  { key: 'nc_condition', module: 'nc', field: 'condition', label: 'Nizami Cedid: Trend (EMA 377 > 610)', type: 'boolean' },
   { key: 'er_value', module: 'er', field: 'value', label: 'EMA Ribbon: Yayılım', type: 'number' },
   { key: 'pc_value', module: 'pc', field: 'value', label: 'Pearson: Korelasyon R', type: 'number' },
   { key: 'pc_pos', module: 'pc', field: 'pos', label: 'Pearson: Kanal Konumu', type: 'number' },
@@ -703,13 +702,12 @@ export default function MarketAnalysis({
       );
     }
     if (visibleColumns.nc) {
-      headers.push('NC Delta', 'NC MACD', 'NC Signal', 'NC eMACD', 'NC Trend');
+      headers.push('NC Delta', 'NC MACD', 'NC Signal', 'NC eMACD');
       colKeys.push(
         { label: 'NC Delta', getValue: s => (s.indicators.nizamiCedid.value * 100).toFixed(2) + '%' },
         { label: 'NC MACD', getValue: s => (s.indicators.nizamiCedid.macd * 100).toFixed(2) + '%' },
         { label: 'NC Signal', getValue: s => (s.indicators.nizamiCedid.macdSignal * 100).toFixed(2) + '%' },
-        { label: 'NC eMACD', getValue: s => (s.indicators.nizamiCedid.emacd * 100).toFixed(2) + '%' },
-        { label: 'NC Trend', getValue: s => s.indicators.nizamiCedid.condition ? 'EMA 377 > 610' : 'EMA 377 < 610' }
+        { label: 'NC eMACD', getValue: s => (s.indicators.nizamiCedid.emacd * 100).toFixed(2) + '%' }
       );
     }
     if (visibleColumns.er) {
@@ -1329,15 +1327,12 @@ export default function MarketAnalysis({
   const getNizamiCedidExplanation = (stock: ScannedStock) => {
     const nc = stock.indicators.nizamiCedid;
     if (nc.signal === 'bullish') {
-      return `Nizami Cedid delta değeri pozitif (${nc.value.toFixed(4)}) ve uzun vadeli trend (EMA 377 > EMA 610) koşulu sağlanmış durumda. Bu, sağlıklı bir orta-uzun vadeli yükseliş yapısını destekler.`;
+      return `Nizami Cedid delta değeri pozitif (${(nc.value * 100).toFixed(2)}%) seviyesindedir. Hacim ağırlıklı hareketli ortalamalarda momentumun yükseliş yönlü güçlendiğini teyit eder.`;
     }
     if (nc.signal === 'bearish') {
-      if (!nc.condition) {
-        return `Uzun vadeli trend düşüş yönünde (EMA 377 < EMA 610) seyrediyor. Delta değeri negatif veya zayıf seyrederek genel negatif trend eğilimini teyit etmektedir.`;
-      }
-      return `Nizami Cedid delta değeri negatif (${nc.value.toFixed(4)}), bu durum orta vadeli bir geri çekilmeye veya satıcıların hakimiyeti ele geçirdiğine işaret eder.`;
+      return `Nizami Cedid delta değeri negatif (${(nc.value * 100).toFixed(2)}%) seviyesindedir. Satış baskısının ve momentum kaybının arttığını göstermektedir.`;
     }
-    return `Nizami Cedid delta değeri sıfıra yakın seyrediyor. Hacim ağırlıklı hareketli ortalamalarda konsolidasyon ve kararsızlık mevcuttur.`;
+    return `Nizami Cedid delta değeri nötr (${(nc.value * 100).toFixed(2)}%) seviyesindedir, belirgin bir yön kararı bulunmamaktadır.`;
   };
 
   const getEmaRibbonExplanation = (stock: ScannedStock) => {
@@ -2138,9 +2133,6 @@ export default function MarketAnalysis({
                           <th onClick={() => handleIndSort('nc_emacd')} className="sortable text-center">
                             NC eMACD {indSortKey === 'nc_emacd' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
-                          <th onClick={() => handleIndSort('nc_condition')} className="sortable text-center">
-                            NC Trend {indSortKey === 'nc_condition' && (indSortDirection === 'asc' ? '▲' : '▼')}
-                          </th>
                         </>
                       )}
                       {visibleColumns.er && (
@@ -2310,11 +2302,6 @@ export default function MarketAnalysis({
                               <td className="text-center font-mono">
                                 {(nc.emacd * 100).toFixed(2)}%
                               </td>
-                              <td className="text-center">
-                                <span className={`badge ${nc.condition ? 'badge-bullish' : 'badge-bearish'}`}>
-                                  {nc.condition ? 'EMA 377 > 610' : 'EMA 377 < 610'}
-                                </span>
-                              </td>
                             </>
                           )}
                           {visibleColumns.er && (
@@ -2408,7 +2395,7 @@ export default function MarketAnalysis({
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={4 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 5 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
+                        <td colSpan={4 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 4 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 2 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>

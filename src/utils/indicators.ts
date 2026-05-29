@@ -573,7 +573,6 @@ export interface NizamiCedidResult {
   emacd: (number | null)[];
   histogram: (number | null)[];
   delta: (number | null)[];
-  condition: (boolean | null)[];
 }
 
 export function computeNizamiCedid(
@@ -582,9 +581,7 @@ export function computeNizamiCedid(
   fast = 120,
   slow = 260,
   signalLen = 50,
-  vwmaLen = 185,
-  longEma1 = 377,
-  longEma2 = 610
+  vwmaLen = 185
 ): NizamiCedidResult {
   const n = closes.length;
   const closesN = closes as (number | null)[];
@@ -649,22 +646,12 @@ export function computeNizamiCedid(
     }
   }
 
-  const emaLong1 = ema(closesN, longEma1);
-  const emaLong2 = ema(closesN, longEma2);
-  const condition: (boolean | null)[] = new Array(n).fill(null);
-  for (let i = 0; i < n; i++) {
-    if (emaLong1[i] !== null && emaLong2[i] !== null) {
-      condition[i] = emaLong1[i]! > emaLong2[i]!;
-    }
-  }
-
   return {
     macd: normMacd,
     signal: normSignal,
     emacd: normEmacd,
     histogram: normHistogram,
     delta: normDelta,
-    condition,
   };
 }
 

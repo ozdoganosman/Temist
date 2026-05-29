@@ -24,7 +24,6 @@ export interface ScannedStock {
       value: number;
       signal: 'bullish' | 'bearish' | 'neutral';
       score: number; // 0-20
-      condition: boolean;
       macd: number;
       macdSignal: number;
       emacd: number;
@@ -338,13 +337,11 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
     // 2. Nizami Cedid
     const nc = computeNizamiCedid(closes, volumes);
     const ncDelta = nc.delta[n - 1] ?? 0;
-    const ncCondition = nc.condition[n - 1] ?? false;
     const ncMacd = nc.macd[n - 1] ?? 0;
     const ncMacdSignal = nc.signal[n - 1] ?? 0;
     const ncEmacd = nc.emacd[n - 1] ?? 0;
-    const ncBase = ncCondition ? 12 : 5;
-    const ncScore = clamp(ncBase + ncDelta * 200, 0, 20);
-    const ncSignal = ncDelta > 0.002 && ncCondition ? 'bullish' : ncDelta < -0.002 || !ncCondition ? 'bearish' : 'neutral';
+    const ncScore = clamp(10 + ncDelta * 400, 0, 20);
+    const ncSignal = ncDelta > 0.002 ? 'bullish' : ncDelta < -0.002 ? 'bearish' : 'neutral';
 
     // 3. EMA Ribbon
     const ribbon = calculateEMARibbonLast(closes);
@@ -406,7 +403,6 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
           value: ncDelta, 
           signal: ncSignal, 
           score: Math.round(ncScore), 
-          condition: ncCondition,
           macd: ncMacd,
           macdSignal: ncMacdSignal,
           emacd: ncEmacd

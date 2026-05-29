@@ -358,12 +358,13 @@ export default function ChartContainer({
     if (showNizamiCedid && n >= 260) {
       const ncRes = computeNizamiCedid(closes, volumes);
       const deltaVal = ncRes.delta[n - 1];
-      const condVal = ncRes.condition[n - 1];
-      if (deltaVal !== null && condVal !== null) {
-        const signal = deltaVal > 0 && condVal ? 'bullish' : 'bearish';
-        const comment = deltaVal > 0 && condVal
-          ? `Nizami Cedid delta değeri pozitif (${(deltaVal * 100).toFixed(2)}%) ve uzun vadeli yükseliş trend koşulu (EMA 377 > 610) sağlanmıştır. Sağlıklı yükseliş yapısı devam ediyor.`
-          : `Nizami Cedid delta değeri negatif (${(deltaVal * 100).toFixed(2)}%) veya trend zayıflamıştır (EMA 377 < 610). Negatif eğilim/düzeltme süreci hakimdir.`;
+      if (deltaVal !== null) {
+        const signal = deltaVal > 0.002 ? 'bullish' : deltaVal < -0.002 ? 'bearish' : 'neutral';
+        const comment = signal === 'bullish'
+          ? `Nizami Cedid delta değeri pozitif (${(deltaVal * 100).toFixed(2)}%) seviyesindedir. Hacim ağırlıklı hareketli ortalamalarda momentumun yükseliş yönlü güçlendiğini teyit eder.`
+          : signal === 'bearish'
+            ? `Nizami Cedid delta değeri negatif (${(deltaVal * 100).toFixed(2)}%) seviyesindedir. Satış baskısının ve momentum kaybının arttığını göstermektedir.`
+            : `Nizami Cedid delta değeri nötr (${(deltaVal * 100).toFixed(2)}%) seviyesindedir, belirgin bir yön kararı bulunmamaktadır.`;
         items.push({
           title: 'Nizami Cedid',
           valueText: `Delta: ${(deltaVal * 100).toFixed(2)}%`,
