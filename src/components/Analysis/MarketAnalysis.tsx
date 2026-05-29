@@ -919,6 +919,15 @@ export default function MarketAnalysis({
   const handleRowClick = (stock: ScannedStock) => {
     setSelectedStock(stock);
     setDrawerOpen(true);
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(stock.symbol)) {
+        next.delete(stock.symbol);
+      } else {
+        next.add(stock.symbol);
+      }
+      return next;
+    });
   };
 
   const getSentimentLabel = (score: number) => {
@@ -1676,11 +1685,11 @@ export default function MarketAnalysis({
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
                         >
-                          <td className="checkbox-td" onClick={(e) => e.stopPropagation()}>
+                          <td className="checkbox-td">
                             <input
                               type="checkbox"
                               checked={selectedSymbols.has(stock.symbol)}
-                              onChange={() => handleRowSelectToggle(stock.symbol)}
+                              readOnly
                             />
                           </td>
                           <td className="stock-sym">
@@ -2248,11 +2257,11 @@ export default function MarketAnalysis({
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
                         >
-                          <td className="checkbox-td" onClick={(e) => e.stopPropagation()}>
+                          <td className="checkbox-td">
                             <input
                               type="checkbox"
                               checked={selectedSymbols.has(stock.symbol)}
-                              onChange={() => handleRowSelectToggle(stock.symbol)}
+                              readOnly
                             />
                           </td>
                           <td className="stock-sym">
