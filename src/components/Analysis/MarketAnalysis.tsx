@@ -183,7 +183,7 @@ export const PRESETS: Record<string, PresetConfig> = {
   oversold: {
     name: 'Aşırı Satım Tepki',
     rules: [
-      { id: 'os_1', leftFieldKey: 'wp_value', operator: '<', rightType: 'number', rightValue: '-80' },
+      { id: 'os_1', leftFieldKey: 'wp_value', operator: '<', rightType: 'number', rightValue: '20' },
       { id: 'os_2', leftFieldKey: 'pc_pos', operator: '>', rightType: 'number', rightValue: '-1.8' },
       { id: 'os_3', leftFieldKey: 'pc_pos', operator: '<', rightType: 'number', rightValue: '-0.5' }
     ],
