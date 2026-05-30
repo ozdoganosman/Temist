@@ -7,8 +7,28 @@ import type { OHLCVData } from '../api/borsaApi';
 
 // ── Helpers ──────────────────────────────────
 
+export function findRowFlex(data: FinancialRow[], itemNames: string[]): FinancialRow | undefined {
+  for (const name of itemNames) {
+    const found = data.find((r) => r.item === name);
+    if (found) return found;
+  }
+  
+  // Try clean lowercase alphanumeric comparison
+  const clean = (str: string) => str.toLowerCase().replace(/[^a-z0-9çğıöşü]/g, '');
+  for (const name of itemNames) {
+    const cleanName = clean(name);
+    if (!cleanName) continue;
+    const found = data.find((r) => {
+      const cleanItem = clean(r.item);
+      return cleanItem.endsWith(cleanName) || cleanName.endsWith(cleanItem);
+    });
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function findRow(data: FinancialRow[], itemName: string): FinancialRow | undefined {
-  return data.find((r) => r.item === itemName);
+  return findRowFlex(data, [itemName]);
 }
 
 function val(row: FinancialRow | undefined, period: string): number | null {
@@ -58,8 +78,8 @@ const NULL_KPIS: FinancialKPIs = {
   latestPeriod: null,
 };
 
-function getTTMValue(data: FinancialRow[], itemName: string, currentPeriod: string, periods: string[]): number | null {
-  const row = findRow(data, itemName);
+function getTTMValue(data: FinancialRow[], itemNames: string[], currentPeriod: string, periods: string[]): number | null {
+  const row = findRowFlex(data, itemNames);
   if (!row) return null;
 
   const currentVal = val(row, currentPeriod);
@@ -98,20 +118,20 @@ export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[
   const lastPrice = ohlcvData.length > 0 ? ohlcvData[ohlcvData.length - 1].close : null;
 
   // Use TTM values for income statement metrics (revenue, gross profit, net income)
-  const revenue = getTTMValue(allFin.income_stmt.data, 'Satış Gelirleri', latestPeriod, periods);
-  const grossProfit = getTTMValue(allFin.income_stmt.data, 'BRÜT KAR (ZARAR)', latestPeriod, periods);
-  const netIncome = getTTMValue(allFin.income_stmt.data, 'Ana Ortaklık Payları', latestPeriod, periods);
+  const revenue = getTTMValue(allFin.income_stmt.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri'], latestPeriod, periods);
+  const grossProfit = getTTMValue(allFin.income_stmt.data, ['BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)', 'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri'], latestPeriod, periods);
+  const netIncome = getTTMValue(allFin.income_stmt.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı'], latestPeriod, periods);
 
   // Balance sheet uses the latest balance sheet period directly (point-in-time snapshot)
   const bsPeriods = allFin.balance_sheet.periods;
   const bsPeriod = bsPeriods.length > 0 ? bsPeriods[bsPeriods.length - 1] : null;
 
-  const equity = bsPeriod ? val(findRow(allFin.balance_sheet.data, 'Özkaynaklar'), bsPeriod) : null;
-  const paidInCapital = bsPeriod ? val(findRow(allFin.balance_sheet.data, 'Ödenmiş Sermaye'), bsPeriod) : null;
+  const equity = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['Özkaynaklar', 'Özsermaye']), bsPeriod) : null;
+  const paidInCapital = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['Ödenmiş Sermaye', 'Ödenmiş Sermaye (Nominal)']), bsPeriod) : null;
   const shortTermDebt = bsPeriod
-    ? val(findRow(allFin.balance_sheet.data, 'Kısa Vadeli Yükümlülükler'), bsPeriod)
+    ? val(findRowFlex(allFin.balance_sheet.data, ['Kısa Vadeli Yükümlülükler']), bsPeriod)
     : null;
-  const longTermDebt = bsPeriod ? val(findRow(allFin.balance_sheet.data, 'Uzun Vadeli Yükümlülükler'), bsPeriod) : null;
+  const longTermDebt = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['Uzun Vadeli Yükümlülükler']), bsPeriod) : null;
 
   // Shares outstanding = Ödenmiş Sermaye (BIST nominal = 1 TL)
   const shares = paidInCapital;
@@ -123,7 +143,15 @@ export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[
   const netKarMarji = netIncome != null && revenue != null && revenue !== 0 ? (netIncome / revenue) * 100 : null;
   const brutKarMarji = grossProfit != null && revenue != null && revenue !== 0 ? (grossProfit / revenue) * 100 : null;
   const roe = netIncome != null && equity != null && equity !== 0 ? (netIncome / equity) * 100 : null;
-  const totalDebt = (shortTermDebt ?? 0) + (longTermDebt ?? 0);
+  
+  let totalDebt = (shortTermDebt ?? 0) + (longTermDebt ?? 0);
+  if (shortTermDebt === null && longTermDebt === null) {
+    // Bank layout: total debt can be represented by Total Liabilities (Pasif Toplamı) - Equity (Özkaynaklar)
+    const pasifToplami = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['PASİF TOPLAMI', 'Pasif Toplamı']), bsPeriod) : null;
+    if (pasifToplami !== null && equity !== null) {
+      totalDebt = pasifToplami - equity;
+    }
+  }
   const borcOzkaynak = equity != null && equity !== 0 ? totalDebt / equity : null;
 
   return { fk, pddd, netKarMarji, brutKarMarji, roe, borcOzkaynak, piyasaDegeri: marketCap, lastPrice, latestPeriod };
@@ -140,8 +168,8 @@ export interface RevenueProfitPoint {
 export function deriveRevenueProfitTrend(allFin: AllFinancialsResponse, quarterly: boolean): RevenueProfitPoint[] {
   const section = allFin.income_stmt;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const revenueRow = findRow(section.data, 'Satış Gelirleri');
-  const profitRow = findRow(section.data, 'Ana Ortaklık Payları');
+  const revenueRow = findRowFlex(section.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri']);
+  const profitRow = findRowFlex(section.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı']);
 
   return periods.map((p) => ({
     label: formatPeriodLabel(p),
@@ -162,10 +190,10 @@ export interface MarginPoint {
 export function deriveProfitabilityTrend(allFin: AllFinancialsResponse, quarterly: boolean): MarginPoint[] {
   const section = allFin.income_stmt;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const revenueRow = findRow(section.data, 'Satış Gelirleri');
-  const grossRow = findRow(section.data, 'BRÜT KAR (ZARAR)');
-  const opRow = findRow(section.data, 'FAALİYET KARI (ZARARI)');
-  const netRow = findRow(section.data, 'Ana Ortaklık Payları');
+  const revenueRow = findRowFlex(section.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri']);
+  const grossRow = findRowFlex(section.data, ['BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)', 'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri']);
+  const opRow = findRowFlex(section.data, ['FAALİYET KARI (ZARARI)', 'Faaliyet Karı (Zararı)', 'NET FAALİYET KARI/ZARARI (VIII-IX-X)', 'Faaliyet Karı']);
+  const netRow = findRowFlex(section.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı']);
 
   return periods.map((p) => {
     const rev = val(revenueRow, p);
@@ -195,11 +223,11 @@ export interface BalanceSheetPoint {
 export function deriveBalanceSheetTrend(allFin: AllFinancialsResponse, quarterly: boolean): BalanceSheetPoint[] {
   const section = allFin.balance_sheet;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const ca = findRow(section.data, 'Dönen Varlıklar');
-  const nca = findRow(section.data, 'Duran Varlıklar');
-  const stl = findRow(section.data, 'Kısa Vadeli Yükümlülükler');
-  const ltl = findRow(section.data, 'Uzun Vadeli Yükümlülükler');
-  const eq = findRow(section.data, 'Özkaynaklar');
+  const ca = findRowFlex(section.data, ['Dönen Varlıklar']);
+  const nca = findRowFlex(section.data, ['Duran Varlıklar']);
+  const stl = findRowFlex(section.data, ['Kısa Vadeli Yükümlülükler']);
+  const ltl = findRowFlex(section.data, ['Uzun Vadeli Yükümlülükler']);
+  const eq = findRowFlex(section.data, ['Özkaynaklar', 'Özsermaye']);
 
   return periods.map((p) => ({
     label: formatPeriodLabel(p),
@@ -224,10 +252,10 @@ export interface CashFlowPoint {
 export function deriveCashFlowTrend(allFin: AllFinancialsResponse, quarterly: boolean): CashFlowPoint[] {
   const section = allFin.cashflow;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const opRow = findRow(section.data, 'İşletme Faaliyetlerinden Kaynaklanan Net Nakit');
-  const invRow = findRow(section.data, 'Yatırım Faaliyetlerinden Kaynaklanan Nakit');
-  const finRow = findRow(section.data, 'Finansman Faaliyetlerden Kaynaklanan Nakit');
-  const fcfRow = findRow(section.data, 'Serbest Nakit Akım');
+  const opRow = findRowFlex(section.data, ['İşletme Faaliyetlerinden Kaynaklanan Net Nakit']);
+  const invRow = findRowFlex(section.data, ['Yatırım Faaliyetlerinden Kaynaklanan Nakit']);
+  const finRow = findRowFlex(section.data, ['Finansman Faaliyetlerden Kaynaklanan Nakit']);
+  const fcfRow = findRowFlex(section.data, ['Serbest Nakit Akım']);
 
   return periods.map((p) => ({
     label: formatPeriodLabel(p),
