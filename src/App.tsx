@@ -64,6 +64,7 @@ function AppContent() {
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
+    showPEBands,
     showFinancials,
     logScale,
     finHeight,
