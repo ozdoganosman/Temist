@@ -538,6 +538,7 @@ export async function runClientScan(
   try {
     localStorage.setItem('temist_scanner_scan_results_cache_v4', JSON.stringify(results));
     localStorage.setItem('temist_scanner_scan_results_timestamp_v4', serverTimestamp);
+    window.dispatchEvent(new Event('temist_scanner_updated'));
   } catch (e) {
     console.error('Failed to save scan results cache to localStorage:', e);
   }

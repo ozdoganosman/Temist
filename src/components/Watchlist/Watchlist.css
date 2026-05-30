@@ -377,3 +377,37 @@
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Watchlist Item Score Badges */
+.watchlist-item-scores {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.score-pill {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.score-pill.combined {
+  background: rgba(168, 85, 247, 0.12); /* Purple */
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.score-pill.fundamental {
+  background: rgba(16, 185, 129, 0.12); /* Emerald */
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.score-pill.technical {
+  background: rgba(245, 158, 11, 0.12); /* Amber */
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+

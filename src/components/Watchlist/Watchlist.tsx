@@ -98,6 +98,45 @@ export default function Watchlist({
 
   const prices = usePriceService(allSymbols);
 
+  const [scores, setScores] = useState<Map<string, { combined: number; fundamental: number; technical: number }>>(new Map());
+
+  useEffect(() => {
+    const loadScores = () => {
+      const cached = localStorage.getItem('temist_scanner_scan_results_cache_v4');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const map = new Map<string, { combined: number; fundamental: number; technical: number }>();
+            parsed.forEach((item: any) => {
+              if (item.symbol) {
+                map.set(item.symbol, {
+                  combined: item.combinedScore,
+                  fundamental: item.fundamentalScore,
+                  technical: item.overallScore,
+                });
+              }
+            });
+            setScores(map);
+          }
+        } catch (e) {
+          console.error('Failed to parse scan results cache in Watchlist:', e);
+        }
+      }
+    };
+
+    loadScores();
+
+    const handleUpdate = () => {
+      loadScores();
+    };
+
+    window.addEventListener('temist_scanner_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('temist_scanner_updated', handleUpdate);
+    };
+  }, [allSymbols]);
+
   const getDisplayName = (sym: string) => {
     const info = symbols.find((s) => s.name === sym);
     return info?.displayName ?? sym;
@@ -322,6 +361,17 @@ export default function Watchlist({
                         <div className="watchlist-item-info">
                           <div className="watchlist-item-symbol">{sym}</div>
                           <div className="watchlist-item-name">{getDisplayName(sym)}</div>
+                          <div className="watchlist-item-scores">
+                            <span className="score-pill combined" title="Birleşik Puan">
+                              B: {scores.get(sym) ? scores.get(sym)!.combined.toFixed(0) : '--'}
+                            </span>
+                            <span className="score-pill fundamental" title="Temel Puan">
+                              Tem: {scores.get(sym) ? scores.get(sym)!.fundamental.toFixed(1) : '--'}
+                            </span>
+                            <span className="score-pill technical" title="Teknik Puan">
+                              Tek: {scores.get(sym) ? scores.get(sym)!.technical.toFixed(0) : '--'}
+                            </span>
+                          </div>
                         </div>
                         <PriceCell data={prices.get(sym)} />
                         <button
