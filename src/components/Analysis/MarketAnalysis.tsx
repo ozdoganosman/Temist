@@ -68,6 +68,14 @@ export const ALL_FIELDS: FieldDef[] = [
   { key: 'pc_long_pos', module: 'pc', field: 'long_pos', label: 'Pearson: Uzun Vade Kanal Konumu', type: 'number' },
   { key: 'pc_extra_long_r', module: 'pc', field: 'extra_long_r', label: 'Pearson: En Uzun Vade Korelasyon R', type: 'number' },
   { key: 'pc_extra_long_pos', module: 'pc', field: 'extra_long_pos', label: 'Pearson: En Uzun Vade Kanal Konumu', type: 'number' },
+  { key: 'pc_extra_short_slope', module: 'pc', field: 'extra_short_slope', label: 'Pearson: En Kısa Vade Günlük Eğilim', type: 'number' },
+  { key: 'pc_extra_short_slope_pct', module: 'pc', field: 'extra_short_slope_pct', label: 'Pearson: En Kısa Vade Günlük Eğilim (%)', type: 'number' },
+  { key: 'pc_short_slope', module: 'pc', field: 'short_slope', label: 'Pearson: Kısa Vade Günlük Eğilim', type: 'number' },
+  { key: 'pc_short_slope_pct', module: 'pc', field: 'short_slope_pct', label: 'Pearson: Kısa Vade Günlük Eğilim (%)', type: 'number' },
+  { key: 'pc_long_slope', module: 'pc', field: 'long_slope', label: 'Pearson: Uzun Vade Günlük Eğilim', type: 'number' },
+  { key: 'pc_long_slope_pct', module: 'pc', field: 'long_slope_pct', label: 'Pearson: Uzun Vade Günlük Eğilim (%)', type: 'number' },
+  { key: 'pc_extra_long_slope', module: 'pc', field: 'extra_long_slope', label: 'Pearson: En Uzun Vade Günlük Eğilim', type: 'number' },
+  { key: 'pc_extra_long_slope_pct', module: 'pc', field: 'extra_long_slope_pct', label: 'Pearson: En Uzun Vade Günlük Eğilim (%)', type: 'number' },
   // Extra technical metrics
   { key: 'extra_changePercent', module: 'extra', field: 'changePercent', label: 'Teknik: Günlük Değişim (%)', type: 'number' },
   { key: 'extra_sma50', module: 'extra', field: 'sma50', label: 'Teknik: SMA 50', type: 'number' },
@@ -725,22 +733,26 @@ export default function MarketAnalysis({
     if (visibleColumns.pc) {
       headers.push(
         'Pearson R (Ort.)', 'Kanal Konum (Ort.)',
-        'Pearson En Kısa R', 'Pearson En Kısa Konum',
-        'Pearson Kısa R', 'Pearson Kısa Konum',
-        'Pearson Uzun R', 'Pearson Uzun Konum',
-        'Pearson En Uzun R', 'Pearson En Uzun Konum'
+        'Pearson En Kısa R', 'Pearson En Kısa Konum', 'Pearson En Kısa Eğilim',
+        'Pearson Kısa R', 'Pearson Kısa Konum', 'Pearson Kısa Eğilim',
+        'Pearson Uzun R', 'Pearson Uzun Konum', 'Pearson Uzun Eğilim',
+        'Pearson En Uzun R', 'Pearson En Uzun Konum', 'Pearson En Uzun Eğilim'
       );
       colKeys.push(
         { label: 'Pearson R (Ort.)', getValue: s => s.indicators.pearson.value.toFixed(2) },
         { label: 'Kanal Konum (Ort.)', getValue: s => s.indicators.pearson.pos.toFixed(2) },
         { label: 'Pearson En Kısa R', getValue: s => s.indicators.pearson.extra_short_r.toFixed(2) },
         { label: 'Pearson En Kısa Konum', getValue: s => s.indicators.pearson.extra_short_pos.toFixed(2) },
+        { label: 'Pearson En Kısa Eğilim', getValue: s => (s.indicators.pearson.extra_short_slope >= 0 ? '+' : '') + s.indicators.pearson.extra_short_slope.toFixed(2) + ' (' + (s.indicators.pearson.extra_short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_short_slope_pct.toFixed(2) + '%)' },
         { label: 'Pearson Kısa R', getValue: s => s.indicators.pearson.short_r.toFixed(2) },
         { label: 'Pearson Kısa Konum', getValue: s => s.indicators.pearson.short_pos.toFixed(2) },
+        { label: 'Pearson Kısa Eğilim', getValue: s => (s.indicators.pearson.short_slope >= 0 ? '+' : '') + s.indicators.pearson.short_slope.toFixed(2) + ' (' + (s.indicators.pearson.short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.short_slope_pct.toFixed(2) + '%)' },
         { label: 'Pearson Uzun R', getValue: s => s.indicators.pearson.long_r.toFixed(2) },
         { label: 'Pearson Uzun Konum', getValue: s => s.indicators.pearson.long_pos.toFixed(2) },
+        { label: 'Pearson Uzun Eğilim', getValue: s => (s.indicators.pearson.long_slope >= 0 ? '+' : '') + s.indicators.pearson.long_slope.toFixed(2) + ' (' + (s.indicators.pearson.long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.long_slope_pct.toFixed(2) + '%)' },
         { label: 'Pearson En Uzun R', getValue: s => s.indicators.pearson.extra_long_r.toFixed(2) },
-        { label: 'Pearson En Uzun Konum', getValue: s => s.indicators.pearson.extra_long_pos.toFixed(2) }
+        { label: 'Pearson En Uzun Konum', getValue: s => s.indicators.pearson.extra_long_pos.toFixed(2) },
+        { label: 'Pearson En Uzun Eğilim', getValue: s => (s.indicators.pearson.extra_long_slope >= 0 ? '+' : '') + s.indicators.pearson.extra_long_slope.toFixed(2) + ' (' + (s.indicators.pearson.extra_long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_long_slope_pct.toFixed(2) + '%)' }
       );
     }
 
@@ -2176,11 +2188,17 @@ export default function MarketAnalysis({
                           <th onClick={() => handleIndSort('pc_extra_short_pos')} className="sortable text-center">
                             En Kısa Konum {indSortKey === 'pc_extra_short_pos' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
+                          <th onClick={() => handleIndSort('pc_extra_short_slope')} className="sortable text-center">
+                            En Kısa Eğilim {indSortKey === 'pc_extra_short_slope' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
                           <th onClick={() => handleIndSort('pc_short_r')} className="sortable text-center">
                             Kısa R {indSortKey === 'pc_short_r' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
                           <th onClick={() => handleIndSort('pc_short_pos')} className="sortable text-center">
                             Kısa Konum {indSortKey === 'pc_short_pos' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('pc_short_slope')} className="sortable text-center">
+                            Kısa Eğilim {indSortKey === 'pc_short_slope' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
                           <th onClick={() => handleIndSort('pc_long_r')} className="sortable text-center">
                             Uzun R {indSortKey === 'pc_long_r' && (indSortDirection === 'asc' ? '▲' : '▼')}
@@ -2188,11 +2206,17 @@ export default function MarketAnalysis({
                           <th onClick={() => handleIndSort('pc_long_pos')} className="sortable text-center">
                             Uzun Konum {indSortKey === 'pc_long_pos' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
+                          <th onClick={() => handleIndSort('pc_long_slope')} className="sortable text-center">
+                            Uzun Eğilim {indSortKey === 'pc_long_slope' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
                           <th onClick={() => handleIndSort('pc_extra_long_r')} className="sortable text-center">
                             En Uzun R {indSortKey === 'pc_extra_long_r' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
                           <th onClick={() => handleIndSort('pc_extra_long_pos')} className="sortable text-center">
                             En Uzun Konum {indSortKey === 'pc_extra_long_pos' && (indSortDirection === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th onClick={() => handleIndSort('pc_extra_long_slope')} className="sortable text-center">
+                            En Uzun Eğilim {indSortKey === 'pc_extra_long_slope' && (indSortDirection === 'asc' ? '▲' : '▼')}
                           </th>
                         </>
                       )}
@@ -2369,11 +2393,17 @@ export default function MarketAnalysis({
                               <td className={`text-center font-mono font-semibold ${pc.extra_short_pos > 1.2 ? 'text-bullish' : pc.extra_short_pos < -1.2 ? 'text-bearish' : ''}`}>
                                 {pc.extra_short_pos.toFixed(2)}
                               </td>
+                              <td className={`text-center font-mono ${pc.extra_short_slope > 0 ? 'text-bullish' : pc.extra_short_slope < 0 ? 'text-bearish' : 'text-neutral'}`}>
+                                {(pc.extra_short_slope >= 0 ? '+' : '') + pc.extra_short_slope.toFixed(2)} ({(pc.extra_short_slope_pct >= 0 ? '+' : '') + pc.extra_short_slope_pct.toFixed(2)}%)
+                              </td>
                               <td className={`text-center font-mono ${pc.short_r > 0.2 ? 'text-bullish' : pc.short_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.short_r.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono font-semibold ${pc.short_pos > 1.2 ? 'text-bullish' : pc.short_pos < -1.2 ? 'text-bearish' : ''}`}>
                                 {pc.short_pos.toFixed(2)}
+                              </td>
+                              <td className={`text-center font-mono ${pc.short_slope > 0 ? 'text-bullish' : pc.short_slope < 0 ? 'text-bearish' : 'text-neutral'}`}>
+                                {(pc.short_slope >= 0 ? '+' : '') + pc.short_slope.toFixed(2)} ({(pc.short_slope_pct >= 0 ? '+' : '') + pc.short_slope_pct.toFixed(2)}%)
                               </td>
                               <td className={`text-center font-mono ${pc.long_r > 0.2 ? 'text-bullish' : pc.long_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.long_r.toFixed(2)}
@@ -2381,11 +2411,17 @@ export default function MarketAnalysis({
                               <td className={`text-center font-mono font-semibold ${pc.long_pos > 1.2 ? 'text-bullish' : pc.long_pos < -1.2 ? 'text-bearish' : ''}`}>
                                 {pc.long_pos.toFixed(2)}
                               </td>
+                              <td className={`text-center font-mono ${pc.long_slope > 0 ? 'text-bullish' : pc.long_slope < 0 ? 'text-bearish' : 'text-neutral'}`}>
+                                {(pc.long_slope >= 0 ? '+' : '') + pc.long_slope.toFixed(2)} ({(pc.long_slope_pct >= 0 ? '+' : '') + pc.long_slope_pct.toFixed(2)}%)
+                              </td>
                               <td className={`text-center font-mono ${pc.extra_long_r > 0.2 ? 'text-bullish' : pc.extra_long_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.extra_long_r.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono font-semibold ${pc.extra_long_pos > 1.2 ? 'text-bullish' : pc.extra_long_pos < -1.2 ? 'text-bearish' : ''}`}>
                                 {pc.extra_long_pos.toFixed(2)}
+                              </td>
+                              <td className={`text-center font-mono ${pc.extra_long_slope > 0 ? 'text-bullish' : pc.extra_long_slope < 0 ? 'text-bearish' : 'text-neutral'}`}>
+                                {(pc.extra_long_slope >= 0 ? '+' : '') + pc.extra_long_slope.toFixed(2)} ({(pc.extra_long_slope_pct >= 0 ? '+' : '') + pc.extra_long_slope_pct.toFixed(2)}%)
                               </td>
                             </>
                           )}
@@ -2465,7 +2501,7 @@ export default function MarketAnalysis({
                     })}
                     {indicatorFilteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={4 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 4 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 10 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
+                        <td colSpan={4 + (visibleColumns.wp ? 2 : 0) + (visibleColumns.nc ? 4 : 0) + (visibleColumns.er ? 1 : 0) + (visibleColumns.pc ? 14 : 0) + (visibleColumns.extra ? 5 : 0) + (visibleColumns.netProfit ? 1 : 0) + (visibleColumns.revGrowth ? 1 : 0) + (visibleColumns.equity ? 1 : 0) + (visibleColumns.kpis ? 10 : 0)} className="no-results-cell">
                           Filtrelere uygun hisse senedi bulunamadı.
                         </td>
                       </tr>
