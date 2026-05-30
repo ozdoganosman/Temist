@@ -319,7 +319,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     const rStr = rVal.toFixed(2);
     const rColor = rVal >= 0.5 ? '#26a69a' : rVal <= -0.5 ? '#ef5350' : tc.text;
 
-    const slopePct = res.A !== 0 ? ((res.B - res.A) / res.A) / res.p * 100 : 0;
+    const slopePct = res.B !== 0 ? ((res.B - res.A) / res.B) / res.p * 100 : 0;
     const slopeStr = (slopePct >= 0 ? '+' : '') + slopePct.toFixed(2) + '%';
     const slopeColor = slopePct > 0 ? '#26a69a' : slopePct < 0 ? '#ef5350' : tc.text;
 
@@ -367,7 +367,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 
     const avgP = results.reduce((sum, r) => sum + r.p, 0) / results.length;
     const avgR = results.reduce((sum, r) => sum + r.r, 0) / results.length;
-    const avgSlopePct = results.reduce((sum, r) => sum + (r.A !== 0 ? ((r.B - r.A) / r.A) / r.p * 100 : 0), 0) / results.length;
+    const avgSlopePct = results.reduce((sum, r) => sum + (r.B !== 0 ? ((r.B - r.A) / r.B) / r.p * 100 : 0), 0) / results.length;
 
     const y = firstRowY + results.length * rowHeight + (isMobile ? 5 : 7);
     const rColor = avgR >= 0.5 ? '#26a69a' : avgR <= -0.5 ? '#ef5350' : tc.text;

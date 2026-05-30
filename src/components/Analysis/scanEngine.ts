@@ -136,7 +136,7 @@ function calculatePearsonLast(closes: number[]): {
       const rmse = res.rmse;
       const pos = rmse > 0 ? (lastClose - res.B) / rmse : 0;
       const r = res.r;
-      const slopePct = res.A !== 0 ? ((res.B - res.A) / res.A) / res.p * 100 : 0;
+      const slopePct = res.B !== 0 ? ((res.B - res.A) / res.B) / res.p * 100 : 0;
 
       sumR += r;
       sumPos += pos;
