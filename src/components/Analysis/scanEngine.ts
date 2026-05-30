@@ -136,7 +136,7 @@ function calculatePearsonLast(closes: number[]): {
       const rmse = res.rmse;
       const pos = rmse > 0 ? (lastClose - res.B) / rmse : 0;
       const r = res.r;
-      const slopePct = res.B !== 0 ? ((res.B - res.A) / res.B) / res.p * 100 : 0;
+      const slopePct = (res.B - res.A) / res.p;
 
       sumR += r;
       sumPos += pos;
@@ -491,8 +491,8 @@ export async function runClientScan(
   }
 
   // Check localStorage cache first to avoid heavy network operations on deployed page
-  const savedCache = localStorage.getItem('temist_scanner_scan_results_cache_v3');
-  const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp_v3');
+  const savedCache = localStorage.getItem('temist_scanner_scan_results_cache_v4');
+  const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp_v4');
   const serverTimestamp = String(scanData.timestamp || 0);
 
   if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
@@ -536,8 +536,8 @@ export async function runClientScan(
   cachedTimestamp = Date.now();
 
   try {
-    localStorage.setItem('temist_scanner_scan_results_cache_v3', JSON.stringify(results));
-    localStorage.setItem('temist_scanner_scan_results_timestamp_v3', serverTimestamp);
+    localStorage.setItem('temist_scanner_scan_results_cache_v4', JSON.stringify(results));
+    localStorage.setItem('temist_scanner_scan_results_timestamp_v4', serverTimestamp);
   } catch (e) {
     console.error('Failed to save scan results cache to localStorage:', e);
   }

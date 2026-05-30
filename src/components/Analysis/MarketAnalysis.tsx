@@ -739,16 +739,16 @@ export default function MarketAnalysis({
         { label: 'Kanal Konum (Ort.)', getValue: s => s.indicators.pearson.pos.toFixed(2) },
         { label: 'Pearson En Kısa R', getValue: s => s.indicators.pearson.extra_short_r.toFixed(2) },
         { label: 'Pearson En Kısa Konum', getValue: s => s.indicators.pearson.extra_short_pos.toFixed(2) },
-        { label: 'Pearson En Kısa Eğilim', getValue: s => (s.indicators.pearson.extra_short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_short_slope_pct.toFixed(2) + '%' },
+        { label: 'Pearson En Kısa Eğilim', getValue: s => (s.indicators.pearson.extra_short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_short_slope_pct.toFixed(4) + '%' },
         { label: 'Pearson Kısa R', getValue: s => s.indicators.pearson.short_r.toFixed(2) },
         { label: 'Pearson Kısa Konum', getValue: s => s.indicators.pearson.short_pos.toFixed(2) },
-        { label: 'Pearson Kısa Eğilim', getValue: s => (s.indicators.pearson.short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.short_slope_pct.toFixed(2) + '%' },
+        { label: 'Pearson Kısa Eğilim', getValue: s => (s.indicators.pearson.short_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.short_slope_pct.toFixed(4) + '%' },
         { label: 'Pearson Uzun R', getValue: s => s.indicators.pearson.long_r.toFixed(2) },
         { label: 'Pearson Uzun Konum', getValue: s => s.indicators.pearson.long_pos.toFixed(2) },
-        { label: 'Pearson Uzun Eğilim', getValue: s => (s.indicators.pearson.long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.long_slope_pct.toFixed(2) + '%' },
+        { label: 'Pearson Uzun Eğilim', getValue: s => (s.indicators.pearson.long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.long_slope_pct.toFixed(4) + '%' },
         { label: 'Pearson En Uzun R', getValue: s => s.indicators.pearson.extra_long_r.toFixed(2) },
         { label: 'Pearson En Uzun Konum', getValue: s => s.indicators.pearson.extra_long_pos.toFixed(2) },
-        { label: 'Pearson En Uzun Eğilim', getValue: s => (s.indicators.pearson.extra_long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_long_slope_pct.toFixed(2) + '%' }
+        { label: 'Pearson En Uzun Eğilim', getValue: s => (s.indicators.pearson.extra_long_slope_pct >= 0 ? '+' : '') + s.indicators.pearson.extra_long_slope_pct.toFixed(4) + '%' }
       );
     }
 
@@ -2390,7 +2390,7 @@ export default function MarketAnalysis({
                                 {pc.extra_short_pos.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono ${pc.extra_short_slope_pct > 0 ? 'text-bullish' : pc.extra_short_slope_pct < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                                {(pc.extra_short_slope_pct >= 0 ? '+' : '') + pc.extra_short_slope_pct.toFixed(2)}%
+                                {(pc.extra_short_slope_pct >= 0 ? '+' : '') + pc.extra_short_slope_pct.toFixed(4)}%
                               </td>
                               <td className={`text-center font-mono ${pc.short_r > 0.2 ? 'text-bullish' : pc.short_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.short_r.toFixed(2)}
@@ -2399,7 +2399,7 @@ export default function MarketAnalysis({
                                 {pc.short_pos.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono ${pc.short_slope_pct > 0 ? 'text-bullish' : pc.short_slope_pct < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                                {(pc.short_slope_pct >= 0 ? '+' : '') + pc.short_slope_pct.toFixed(2)}%
+                                {(pc.short_slope_pct >= 0 ? '+' : '') + pc.short_slope_pct.toFixed(4)}%
                               </td>
                               <td className={`text-center font-mono ${pc.long_r > 0.2 ? 'text-bullish' : pc.long_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.long_r.toFixed(2)}
@@ -2408,7 +2408,7 @@ export default function MarketAnalysis({
                                 {pc.long_pos.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono ${pc.long_slope_pct > 0 ? 'text-bullish' : pc.long_slope_pct < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                                {(pc.long_slope_pct >= 0 ? '+' : '') + pc.long_slope_pct.toFixed(2)}%
+                                {(pc.long_slope_pct >= 0 ? '+' : '') + pc.long_slope_pct.toFixed(4)}%
                               </td>
                               <td className={`text-center font-mono ${pc.extra_long_r > 0.2 ? 'text-bullish' : pc.extra_long_r < -0.2 ? 'text-bearish' : 'text-neutral'}`}>
                                 {pc.extra_long_r.toFixed(2)}
@@ -2417,7 +2417,7 @@ export default function MarketAnalysis({
                                 {pc.extra_long_pos.toFixed(2)}
                               </td>
                               <td className={`text-center font-mono ${pc.extra_long_slope_pct > 0 ? 'text-bullish' : pc.extra_long_slope_pct < 0 ? 'text-bearish' : 'text-neutral'}`}>
-                                {(pc.extra_long_slope_pct >= 0 ? '+' : '') + pc.extra_long_slope_pct.toFixed(2)}%
+                                {(pc.extra_long_slope_pct >= 0 ? '+' : '') + pc.extra_long_slope_pct.toFixed(4)}%
                               </td>
                             </>
                           )}
