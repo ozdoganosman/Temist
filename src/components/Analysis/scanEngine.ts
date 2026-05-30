@@ -491,8 +491,8 @@ export async function runClientScan(
   }
 
   // Check localStorage cache first to avoid heavy network operations on deployed page
-  const savedCache = localStorage.getItem('temist_scanner_scan_results_cache');
-  const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp');
+  const savedCache = localStorage.getItem('temist_scanner_scan_results_cache_v3');
+  const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp_v3');
   const serverTimestamp = String(scanData.timestamp || 0);
 
   if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
@@ -536,8 +536,8 @@ export async function runClientScan(
   cachedTimestamp = Date.now();
 
   try {
-    localStorage.setItem('temist_scanner_scan_results_cache', JSON.stringify(results));
-    localStorage.setItem('temist_scanner_scan_results_timestamp', serverTimestamp);
+    localStorage.setItem('temist_scanner_scan_results_cache_v3', JSON.stringify(results));
+    localStorage.setItem('temist_scanner_scan_results_timestamp_v3', serverTimestamp);
   } catch (e) {
     console.error('Failed to save scan results cache to localStorage:', e);
   }
