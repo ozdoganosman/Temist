@@ -40,19 +40,15 @@ export interface ScannedStock {
       pos: number; // average position
       extra_short_r: number;
       extra_short_pos: number;
-      extra_short_slope: number;
       extra_short_slope_pct: number;
       short_r: number;
       short_pos: number;
-      short_slope: number;
       short_slope_pct: number;
       long_r: number;
       long_pos: number;
-      long_slope: number;
       long_slope_pct: number;
       extra_long_r: number;
       extra_long_pos: number;
-      extra_long_slope: number;
       extra_long_slope_pct: number;
     };
     extra: {
@@ -119,18 +115,18 @@ function calculatePearsonLast(closes: number[]): {
   avgPos: number; 
   score: number; 
   signal: 'bullish' | 'bearish' | 'neutral';
-  channels: Record<string, { r: number; pos: number; slope: number; slopePct: number }>;
+  channels: Record<string, { r: number; pos: number; slopePct: number }>;
 } {
   const configs: PearsonConfig[] = DEFAULT_PEARSON_CONFIGS;
   let sumScore = 0;
   let sumR = 0;
   let sumPos = 0;
   let validChannels = 0;
-  const channels: Record<string, { r: number; pos: number; slope: number; slopePct: number }> = {};
+  const channels: Record<string, { r: number; pos: number; slopePct: number }> = {};
 
   // Initialize defaults for all 4 configs
   for (const cfg of DEFAULT_PEARSON_CONFIGS) {
-    channels[cfg.id] = { r: 0, pos: 0, slope: 0, slopePct: 0 };
+    channels[cfg.id] = { r: 0, pos: 0, slopePct: 0 };
   }
 
   for (const cfg of configs) {
@@ -140,13 +136,12 @@ function calculatePearsonLast(closes: number[]): {
       const rmse = res.rmse;
       const pos = rmse > 0 ? (lastClose - res.B) / rmse : 0;
       const r = res.r;
-      const slope = (res.B - res.A) / res.p;
       const slopePct = res.A !== 0 ? ((res.B - res.A) / res.A) / res.p * 100 : 0;
 
       sumR += r;
       sumPos += pos;
 
-      channels[cfg.id] = { r, pos, slope, slopePct };
+      channels[cfg.id] = { r, pos, slopePct };
 
       let chanScore = 0.5 + 0.3 * r;
       if (r > 0) {
@@ -447,19 +442,15 @@ export async function scanSingleSymbol(symbol: string, forceRefresh = false): Pr
           pos: pearson.avgPos,
           extra_short_r: pearson.channels.extra_short?.r ?? 0,
           extra_short_pos: pearson.channels.extra_short?.pos ?? 0,
-          extra_short_slope: pearson.channels.extra_short?.slope ?? 0,
           extra_short_slope_pct: pearson.channels.extra_short?.slopePct ?? 0,
           short_r: pearson.channels.short?.r ?? 0,
           short_pos: pearson.channels.short?.pos ?? 0,
-          short_slope: pearson.channels.short?.slope ?? 0,
           short_slope_pct: pearson.channels.short?.slopePct ?? 0,
           long_r: pearson.channels.long?.r ?? 0,
           long_pos: pearson.channels.long?.pos ?? 0,
-          long_slope: pearson.channels.long?.slope ?? 0,
           long_slope_pct: pearson.channels.long?.slopePct ?? 0,
           extra_long_r: pearson.channels.extra_long?.r ?? 0,
           extra_long_pos: pearson.channels.extra_long?.pos ?? 0,
-          extra_long_slope: pearson.channels.extra_long?.slope ?? 0,
           extra_long_slope_pct: pearson.channels.extra_long?.slopePct ?? 0,
         },
         extra: {

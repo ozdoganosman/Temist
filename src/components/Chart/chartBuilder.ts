@@ -248,7 +248,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     typeof window !== 'undefined' &&
     (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
   const rowHeight = isMobile ? 26 : 32;
-  const tableWidth = isMobile ? 320 : 410;
+  const tableWidth = isMobile ? 260 : 340;
   
   const hasAverage = results.length > 0;
   const extraRows = hasAverage ? 1.2 : 0;
@@ -258,8 +258,8 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
   const titleFontSize = isMobile ? '12px' : '14px';
   const rowFontSize = isMobile ? '11px' : '13px';
   const leftColX = isMobile ? 10 : 15;
-  const midColX = isMobile ? 125 : 155;
-  const rightColX = isMobile ? 200 : 255;
+  const midColX = isMobile ? 115 : 145;
+  const rightColX = isMobile ? 185 : 235;
   const headerLineY = isMobile ? 28 : 34;
   const firstRowY = isMobile ? 35 : 42;
 
@@ -319,10 +319,9 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     const rStr = rVal.toFixed(2);
     const rColor = rVal >= 0.5 ? '#26a69a' : rVal <= -0.5 ? '#ef5350' : tc.text;
 
-    const slope = (res.B - res.A) / res.p;
     const slopePct = res.A !== 0 ? ((res.B - res.A) / res.A) / res.p * 100 : 0;
-    const slopeStr = (slope >= 0 ? '+' : '') + slope.toFixed(2) + ' ₺ (' + (slopePct >= 0 ? '+' : '') + slopePct.toFixed(2) + '%)';
-    const slopeColor = slope > 0 ? '#26a69a' : slope < 0 ? '#ef5350' : tc.text;
+    const slopeStr = (slopePct >= 0 ? '+' : '') + slopePct.toFixed(2) + '%';
+    const slopeColor = slopePct > 0 ? '#26a69a' : slopePct < 0 ? '#ef5350' : tc.text;
 
     children.push(
       {
@@ -368,13 +367,12 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 
     const avgP = results.reduce((sum, r) => sum + r.p, 0) / results.length;
     const avgR = results.reduce((sum, r) => sum + r.r, 0) / results.length;
-    const avgSlope = results.reduce((sum, r) => sum + (r.B - r.A) / r.p, 0) / results.length;
     const avgSlopePct = results.reduce((sum, r) => sum + (r.A !== 0 ? ((r.B - r.A) / r.A) / r.p * 100 : 0), 0) / results.length;
 
     const y = firstRowY + results.length * rowHeight + (isMobile ? 5 : 7);
     const rColor = avgR >= 0.5 ? '#26a69a' : avgR <= -0.5 ? '#ef5350' : tc.text;
-    const avgSlopeStr = (avgSlope >= 0 ? '+' : '') + avgSlope.toFixed(2) + ' ₺ (' + (avgSlopePct >= 0 ? '+' : '') + avgSlopePct.toFixed(2) + '%)';
-    const avgSlopeColor = avgSlope > 0 ? '#26a69a' : avgSlope < 0 ? '#ef5350' : tc.text;
+    const avgSlopeStr = (avgSlopePct >= 0 ? '+' : '') + avgSlopePct.toFixed(2) + '%';
+    const avgSlopeColor = avgSlopePct > 0 ? '#26a69a' : avgSlopePct < 0 ? '#ef5350' : tc.text;
 
     children.push(
       {
