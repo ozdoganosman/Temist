@@ -215,15 +215,22 @@ def build_scan(symbols: list[str]):
 
 BANK_SYMBOLS = {
     "GARAN", "AKBNK", "YKBNK", "HALKB", "VAKBN", "ISCTR", "TSKB", "ALBRK",
-    "SKBNK", "ICBCT", "QNBFK", "QNBTR", "KLNMA", "ISATR", "ISBTR", "ISKUR",
-    "ISFIN", "SEKFK", "VAKFN",
+    "SKBNK", "ICBCT", "QNBTR", "KLNMA", "ISATR", "ISBTR", "ISKUR",
+}
+
+INSURANCE_SYMBOLS = {
+    "AGESA", "AKGRT", "ANSGR", "TURSG", "RAYSG", "ANHYT",
+}
+
+FACTORING_SYMBOLS = {
+    "GARFA", "LIDFA", "VAKFN", "ISFIN", "CRDFA", "ULUFA", "SEKFK", "QNBFK", "DSTKF", "VAKFA",
 }
 
 # Filter map: report_name -> FINANCIAL_ITEM_CODE prefix check
 REPORT_FILTERS = {
-    "income_stmt": lambda code: code.startswith("3"),
-    "balance_sheet": lambda code: code[0] in ("1", "2") if code else False,
-    "cashflow": lambda code: code.startswith("4C"),
+    "income_stmt": lambda code: code.startswith("3") or code.startswith("A3"),
+    "balance_sheet": lambda code: (code[0] in ("1", "2") or code.startswith("A1") or code.startswith("A2")) if code else False,
+    "cashflow": lambda code: code.startswith("4C") or code.startswith("A4"),
 }
 
 
@@ -232,6 +239,7 @@ def _setup_ssl_bypass():
     import requests as _requests
     import urllib3
     import isyatirimhisse.FetchFinancials as _ff_mod
+    import urllib.parse as urlparse
 
     _ff_mod._SSL_VERIFY = False
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -244,6 +252,20 @@ def _setup_ssl_bypass():
 
     def _get_no_ssl(*args, **kwargs):
         kwargs["verify"] = False
+        url = args[0] if args else kwargs.get("url")
+        if url and "companyCode=" in url:
+            parsed = urlparse.urlparse(url)
+            params = urlparse.parse_qs(parsed.query)
+            company_code = params.get("companyCode", [None])[0]
+            if company_code in FACTORING_SYMBOLS:
+                query_dict = {k: v[0] for k, v in params.items()}
+                query_dict["financialGroup"] = "XI_29K"
+                new_query = urlparse.urlencode(query_dict)
+                new_url = parsed._replace(query=new_query).geturl()
+                if args:
+                    args = (new_url,) + args[1:]
+                else:
+                    kwargs["url"] = new_url
         return _no_ssl_session.get(*args, **kwargs)
 
     _ff_mod.requests.get = _get_no_ssl
@@ -296,7 +318,15 @@ def _fetch_one_financial(symbol: str) -> tuple[str, dict | None]:
     from isyatirimhisse import fetch_financials as isy_fetch
     from datetime import datetime
 
-    fg = "2" if symbol in BANK_SYMBOLS else "1"
+    if symbol in INSURANCE_SYMBOLS:
+        fg = "2" if symbol == "RAYSG" else "3"
+    elif symbol in FACTORING_SYMBOLS:
+        fg = "3"
+    elif symbol in BANK_SYMBOLS:
+        fg = "2"
+    else:
+        fg = "1"
+
     try:
         df = isy_fetch(
             symbols=symbol,

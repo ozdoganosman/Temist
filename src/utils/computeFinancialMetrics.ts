@@ -20,11 +20,39 @@ export function findRowFlex(data: FinancialRow[], itemNames: string[]): Financia
     if (!cleanName) continue;
     const found = data.find((r) => {
       const cleanItem = clean(r.item);
-      return cleanItem.endsWith(cleanName) || cleanName.endsWith(cleanItem);
+      return cleanItem.includes(cleanName) || cleanName.includes(cleanItem);
     });
     if (found) return found;
   }
   return undefined;
+}
+
+export function sumRowsFlex(data: FinancialRow[], itemNamesList: string[][]): FinancialRow | undefined {
+  const foundRows: FinancialRow[] = [];
+  for (const itemNames of itemNamesList) {
+    const found = findRowFlex(data, itemNames);
+    if (found) {
+      foundRows.push(found);
+    }
+  }
+  if (foundRows.length === 0) return undefined;
+  if (foundRows.length === 1) return foundRows[0];
+  
+  const virtualRow: FinancialRow = { item: 'Virtual Sum Row' };
+  const periods = Object.keys(foundRows[0]).filter(k => k !== 'item');
+  for (const p of periods) {
+    let sum = 0;
+    let hasValue = false;
+    for (const row of foundRows) {
+      const val = row[p];
+      if (typeof val === 'number' && !isNaN(val)) {
+        sum += val;
+        hasValue = true;
+      }
+    }
+    virtualRow[p] = hasValue ? sum : null;
+  }
+  return virtualRow;
 }
 
 function findRow(data: FinancialRow[], itemName: string): FinancialRow | undefined {
@@ -78,8 +106,7 @@ const NULL_KPIS: FinancialKPIs = {
   latestPeriod: null,
 };
 
-function getTTMValue(data: FinancialRow[], itemNames: string[], currentPeriod: string, periods: string[]): number | null {
-  const row = findRowFlex(data, itemNames);
+function getTTMValueForRow(row: FinancialRow | undefined, currentPeriod: string, periods: string[]): number | null {
   if (!row) return null;
 
   const currentVal = val(row, currentPeriod);
@@ -110,6 +137,11 @@ function getTTMValue(data: FinancialRow[], itemNames: string[], currentPeriod: s
   return (currentVal / month) * 12;
 }
 
+function getTTMValue(data: FinancialRow[], itemNames: string[], currentPeriod: string, periods: string[]): number | null {
+  const row = findRowFlex(data, itemNames);
+  return getTTMValueForRow(row, currentPeriod, periods);
+}
+
 export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[]): FinancialKPIs {
   const periods = allFin.income_stmt.periods;
   const latestPeriod = periods.length > 0 ? periods[periods.length - 1] : null;
@@ -118,16 +150,44 @@ export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[
   const lastPrice = ohlcvData.length > 0 ? ohlcvData[ohlcvData.length - 1].close : null;
 
   // Use TTM values for income statement metrics (revenue, gross profit, net income)
-  const revenue = getTTMValue(allFin.income_stmt.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri'], latestPeriod, periods);
-  const grossProfit = getTTMValue(allFin.income_stmt.data, ['BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)', 'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri'], latestPeriod, periods);
-  const netIncome = getTTMValue(allFin.income_stmt.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı'], latestPeriod, periods);
+  const revenueRow = sumRowsFlex(allFin.income_stmt.data, [
+    ['Satış Gelirleri', 'Hasılat'],
+    ['Faiz Gelirleri', 'Faiz Geliri'],
+    ['Hayat Dışı Teknik Gelir', 'A- Hayat Dışı Teknik Gelir'],
+    ['Hayat Teknik Gelir', 'D- Hayat Teknik Gelir'],
+    ['Emeklilik Teknik Gelir', 'G- Emeklilik Teknik Gelir'],
+    ['Esas Faaliyet Gelirleri', 'I. ESAS FAALİYET GELİRLERİ']
+  ]);
+  const revenue = getTTMValueForRow(revenueRow, latestPeriod, periods);
+
+  const grossProfitRow = findRowFlex(allFin.income_stmt.data, [
+    'BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)',
+    'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri',
+    'Genel Teknik Bölüm Dengesi', 'J- Genel Teknik Bölüm Dengesi',
+    'NET FAALİYET K/Z', 'NET FAALİYET KARI (ZARARI)', 'Net Faaliyet Karı (Zararı)', 'VII. NET FAALİYET K/Z'
+  ]);
+  const grossProfit = getTTMValueForRow(grossProfitRow, latestPeriod, periods);
+
+  const netIncomeRow = findRowFlex(allFin.income_stmt.data, [
+    'Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı',
+    'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı',
+    'NET DÖNEM KARI (ZARARI)', 'NET DÖNEM KARI veya ZARARI',
+    'Dönem Net Karı veya Zararı', 'Dönem Net Kar veya Zararı',
+    'NET DÖNEM KARI VEYA ZARARI'
+  ]);
+  const netIncome = getTTMValueForRow(netIncomeRow, latestPeriod, periods);
 
   // Balance sheet uses the latest balance sheet period directly (point-in-time snapshot)
   const bsPeriods = allFin.balance_sheet.periods;
   const bsPeriod = bsPeriods.length > 0 ? bsPeriods[bsPeriods.length - 1] : null;
 
-  const equity = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['Özkaynaklar', 'Özsermaye']), bsPeriod) : null;
-  const paidInCapital = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['Ödenmiş Sermaye', 'Ödenmiş Sermaye (Nominal)']), bsPeriod) : null;
+  const equity = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, [
+    'Özkaynaklar', 'Özsermaye', 'Özsermaye Toplamı', 'Ana Ortaklığa Ait Özkaynaklar',
+    'ÖZ KAYNAKLAR', 'Özkaynaklar Toplamı'
+  ]), bsPeriod) : null;
+  const paidInCapital = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, [
+    'Ödenmiş Sermaye', 'Ödenmiş Sermaye (Nominal)', 'A- Ödenmiş Sermaye', '13.1 Ödenmiş Sermaye'
+  ]), bsPeriod) : null;
   const shortTermDebt = bsPeriod
     ? val(findRowFlex(allFin.balance_sheet.data, ['Kısa Vadeli Yükümlülükler']), bsPeriod)
     : null;
@@ -146,7 +206,7 @@ export function computeKPIs(allFin: AllFinancialsResponse, ohlcvData: OHLCVData[
   
   let totalDebt = (shortTermDebt ?? 0) + (longTermDebt ?? 0);
   if (shortTermDebt === null && longTermDebt === null) {
-    // Bank layout: total debt can be represented by Total Liabilities (Pasif Toplamı) - Equity (Özkaynaklar)
+    // Bank/Insurance/Factoring layout: total debt can be represented by Total Liabilities (Pasif Toplamı) - Equity (Özkaynaklar)
     const pasifToplami = bsPeriod ? val(findRowFlex(allFin.balance_sheet.data, ['PASİF TOPLAMI', 'Pasif Toplamı']), bsPeriod) : null;
     if (pasifToplami !== null && equity !== null) {
       totalDebt = pasifToplami - equity;
@@ -168,8 +228,21 @@ export interface RevenueProfitPoint {
 export function deriveRevenueProfitTrend(allFin: AllFinancialsResponse, quarterly: boolean): RevenueProfitPoint[] {
   const section = allFin.income_stmt;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const revenueRow = findRowFlex(section.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri']);
-  const profitRow = findRowFlex(section.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı']);
+  const revenueRow = sumRowsFlex(section.data, [
+    ['Satış Gelirleri', 'Hasılat'],
+    ['Faiz Gelirleri', 'Faiz Geliri'],
+    ['Hayat Dışı Teknik Gelir', 'A- Hayat Dışı Teknik Gelir'],
+    ['Hayat Teknik Gelir', 'D- Hayat Teknik Gelir'],
+    ['Emeklilik Teknik Gelir', 'G- Emeklilik Teknik Gelir'],
+    ['Esas Faaliyet Gelirleri', 'I. ESAS FAALİYET GELİRLERİ']
+  ]);
+  const profitRow = findRowFlex(section.data, [
+    'Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı',
+    'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı',
+    'NET DÖNEM KARI (ZARARI)', 'NET DÖNEM KARI veya ZARARI',
+    'Dönem Net Karı veya Zararı', 'Dönem Net Kar veya Zararı',
+    'NET DÖNEM KARI VEYA ZARARI'
+  ]);
 
   return periods.map((p) => ({
     label: formatPeriodLabel(p),
@@ -190,10 +263,37 @@ export interface MarginPoint {
 export function deriveProfitabilityTrend(allFin: AllFinancialsResponse, quarterly: boolean): MarginPoint[] {
   const section = allFin.income_stmt;
   const periods = quarterly ? section.periods : getYearlyPeriods(section.periods);
-  const revenueRow = findRowFlex(section.data, ['Satış Gelirleri', 'Hasılat', 'Faiz Gelirleri', 'Faiz Geliri']);
-  const grossRow = findRowFlex(section.data, ['BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)', 'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri']);
-  const opRow = findRowFlex(section.data, ['FAALİYET KARI (ZARARI)', 'Faaliyet Karı (Zararı)', 'NET FAALİYET KARI/ZARARI (VIII-IX-X)', 'Faaliyet Karı']);
-  const netRow = findRowFlex(section.data, ['Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı', 'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı']);
+  
+  const revenueRow = sumRowsFlex(section.data, [
+    ['Satış Gelirleri', 'Hasılat'],
+    ['Faiz Gelirleri', 'Faiz Geliri'],
+    ['Hayat Dışı Teknik Gelir', 'A- Hayat Dışı Teknik Gelir'],
+    ['Hayat Teknik Gelir', 'D- Hayat Teknik Gelir'],
+    ['Emeklilik Teknik Gelir', 'G- Emeklilik Teknik Gelir'],
+    ['Esas Faaliyet Gelirleri', 'I. ESAS FAALİYET GELİRLERİ']
+  ]);
+  
+  const grossRow = findRowFlex(section.data, [
+    'BRÜT KAR (ZARAR)', 'Brüt Kar (Zarar)',
+    'NET FAİZ GELİRİ/GİDERİ (I - II)', 'Net Faiz Geliri',
+    'Genel Teknik Bölüm Dengesi', 'J- Genel Teknik Bölüm Dengesi',
+    'NET FAALİYET K/Z', 'NET FAALİYET KARI (ZARARI)', 'Net Faaliyet Karı (Zararı)', 'VII. NET FAALİYET K/Z'
+  ]);
+  
+  const opRow = findRowFlex(section.data, [
+    'FAALİYET KARI (ZARARI)', 'Faaliyet Karı (Zararı)',
+    'NET FAALİYET KARI/ZARARI (VIII-IX-X)', 'Faaliyet Karı',
+    'Genel Teknik Bölüm Dengesi', 'J- Genel Teknik Bölüm Dengesi',
+    'NET FAALİYET K/Z', 'NET FAALİYET KARI (ZARARI)', 'Net Faaliyet Karı (Zararı)', 'VII. NET FAALİYET K/Z'
+  ]);
+  
+  const netRow = findRowFlex(section.data, [
+    'Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı',
+    'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı',
+    'NET DÖNEM KARI (ZARARI)', 'NET DÖNEM KARI veya ZARARI',
+    'Dönem Net Karı veya Zararı', 'Dönem Net Kar veya Zararı',
+    'NET DÖNEM KARI VEYA ZARARI'
+  ]);
 
   return periods.map((p) => {
     const rev = val(revenueRow, p);
@@ -227,7 +327,10 @@ export function deriveBalanceSheetTrend(allFin: AllFinancialsResponse, quarterly
   const nca = findRowFlex(section.data, ['Duran Varlıklar']);
   const stl = findRowFlex(section.data, ['Kısa Vadeli Yükümlülükler']);
   const ltl = findRowFlex(section.data, ['Uzun Vadeli Yükümlülükler']);
-  const eq = findRowFlex(section.data, ['Özkaynaklar', 'Özsermaye']);
+  const eq = findRowFlex(section.data, [
+    'Özkaynaklar', 'Özsermaye', 'Özsermaye Toplamı', 'Ana Ortaklığa Ait Özkaynaklar',
+    'ÖZ KAYNAKLAR', 'Özkaynaklar Toplamı'
+  ]);
 
   return periods.map((p) => ({
     label: formatPeriodLabel(p),
