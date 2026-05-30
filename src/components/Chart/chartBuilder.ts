@@ -249,7 +249,10 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
     (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
   const rowHeight = isMobile ? 26 : 32;
   const tableWidth = isMobile ? 220 : 280;
-  const tableHeight = (isMobile ? 32 : 40) + results.length * rowHeight;
+  
+  const hasAverage = results.length > 0;
+  const extraRows = hasAverage ? 1.2 : 0;
+  const tableHeight = (isMobile ? 32 : 40) + (results.length + extraRows) * rowHeight;
   const rightOffset = isMobile ? 38 : 65;
   
   const titleFontSize = isMobile ? '12px' : '14px';
@@ -328,6 +331,43 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
       }
     );
   });
+
+  if (hasAverage) {
+    const avgLineY = headerLineY + results.length * rowHeight;
+    children.push({
+      type: 'line',
+      shape: { x1: 0, y1: avgLineY, x2: tableWidth, y2: avgLineY },
+      style: { stroke: tc.border, lineWidth: 1.5, lineDash: [4, 4] },
+    });
+
+    const avgP = results.reduce((sum, r) => sum + r.p, 0) / results.length;
+    const avgR = results.reduce((sum, r) => sum + r.r, 0) / results.length;
+    const y = firstRowY + results.length * rowHeight + (isMobile ? 5 : 7);
+    const rColor = avgR >= 0.5 ? '#26a69a' : avgR <= -0.5 ? '#ef5350' : tc.text;
+
+    children.push(
+      {
+        type: 'text',
+        left: leftColX,
+        top: y,
+        style: {
+          text: `Ortalama (${avgP.toFixed(0)})`,
+          fill: tc.text,
+          font: `bold ${rowFontSize} sans-serif`,
+        },
+      },
+      {
+        type: 'text',
+        left: rightColX,
+        top: y,
+        style: {
+          text: avgR.toFixed(2),
+          fill: rColor,
+          font: `bold ${rowFontSize} sans-serif`,
+        },
+      }
+    );
+  }
 
   return {
     type: 'group',
