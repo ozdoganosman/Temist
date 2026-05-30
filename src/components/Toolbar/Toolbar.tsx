@@ -35,6 +35,8 @@ interface ToolbarProps {
   showEMAOverlay: boolean;
   onTogglePearsonChannels: () => void;
   showPearsonChannels: boolean;
+  onTogglePEBands: () => void;
+  showPEBands: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -94,6 +96,8 @@ export default function Toolbar({
   showEMAOverlay,
   onTogglePearsonChannels,
   showPearsonChannels,
+  onTogglePEBands,
+  showPEBands,
   logScale,
   onToggleLogScale,
   activeView,
@@ -236,6 +240,13 @@ export default function Toolbar({
             aria-label="Pearson Kanalları goster"
           >
             3ChanPers
+          </button>
+          <button
+            className={`toolbar-btn ${showPEBands ? 'active' : ''}`}
+            onClick={onTogglePEBands}
+            aria-label="F/K Bantları goster"
+          >
+            F/K Bantları
           </button>
 
           <button

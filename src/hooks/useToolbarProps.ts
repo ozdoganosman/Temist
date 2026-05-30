@@ -51,6 +51,7 @@ export function useToolbarProps() {
     showEMAOverlay,
     showPearsonChannels,
     showFinancials,
+    showPEBands,
     logScale,
     toggle,
   } = useAppContext();
@@ -236,6 +237,8 @@ export function useToolbarProps() {
     showEMAOverlay,
     onTogglePearsonChannels: () => toggle('showPearsonChannels'),
     showPearsonChannels,
+    onTogglePEBands: () => toggle('showPEBands'),
+    showPEBands,
     logScale,
     onToggleLogScale: () => toggle('logScale'),
     activeView,
@@ -282,6 +285,7 @@ export function useToolbarProps() {
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
+    showPEBands,
     showFinancials,
     logScale,
 

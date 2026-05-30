@@ -2,6 +2,7 @@ import * as echarts from 'echarts';
 import type { OHLCVData } from '../../api/borsaApi';
 import type { Interval } from './types';
 import { isIntraday } from './types';
+import type { PEBandsResult } from '../../utils/computeFinancialMetrics';
 import { formatPrice, formatVolume } from '../../utils/formatters';
 import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import {
@@ -447,6 +448,8 @@ export function buildOption(
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
+  showPEBands = false,
+  peBandsResult: PEBandsResult | null = null,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -1650,6 +1653,58 @@ export function buildOption(
       ...emaSeries,
       ...pearsonSeries,
       ...subSeries,
+      ...(showPEBands && peBandsResult
+        ? (() => {
+            const pad = getPaddingCount(filtered.length, intradayMode);
+            const padNull = new Array(pad).fill(null);
+            
+            const minPadded = [...padNull, ...peBandsResult.minBand, ...padNull];
+            const avgPadded = [...padNull, ...peBandsResult.avgBand, ...padNull];
+            const maxPadded = [...padNull, ...peBandsResult.maxBand, ...padNull];
+            
+            return [
+              {
+                name: `Ucuz F/K (${peBandsResult.peMin.toFixed(1)}x)`,
+                type: 'line' as const,
+                data: minPadded,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                showSymbol: false,
+                lineStyle: { color: '#4ade80', width: 1.2, type: 'dashed' },
+                connectNulls: true,
+                z: 3,
+                silent: true,
+                tooltip: { show: false },
+              },
+              {
+                name: `Ortalama F/K (${peBandsResult.peAvg.toFixed(1)}x)`,
+                type: 'line' as const,
+                data: avgPadded,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                showSymbol: false,
+                lineStyle: { color: '#818cf8', width: 1.2, type: 'dashed' },
+                connectNulls: true,
+                z: 3,
+                silent: true,
+                tooltip: { show: false },
+              },
+              {
+                name: `Pahalı F/K (${peBandsResult.peMax.toFixed(1)}x)`,
+                type: 'line' as const,
+                data: maxPadded,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                showSymbol: false,
+                lineStyle: { color: '#f87171', width: 1.2, type: 'dashed' },
+                connectNulls: true,
+                z: 3,
+                silent: true,
+                tooltip: { show: false },
+              },
+            ] as echarts.SeriesOption[];
+          })()
+        : []),
     ],
   };
 }

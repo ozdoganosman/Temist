@@ -93,6 +93,8 @@ function AppContent() {
       onToggleNizamiCedid,
       onToggleEMAOverlay,
       onTogglePearsonChannels,
+      onTogglePEBands,
+      showPEBands,
       onToggleBollinger,
       onToggleRSI,
       onToggleMACD,
@@ -179,6 +181,9 @@ function AppContent() {
                           <button className={`mqt-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
                             3ChanPers
                           </button>
+                          <button className={`mqt-btn ${showPEBands ? 'active' : ''}`} onClick={onTogglePEBands}>
+                            F/K Bant
+                          </button>
                         </div>
                       </div>
                     )}
@@ -212,6 +217,7 @@ function AppContent() {
                             showNizamiCedid={showNizamiCedid}
                             showEMAOverlay={showEMAOverlay}
                             showPearsonChannels={showPearsonChannels}
+                            showPEBands={showPEBands}
                             logScale={logScale}
                           />
                         </ErrorBoundary>
@@ -353,6 +359,7 @@ function AppContent() {
                       showNizamiCedid={showNizamiCedid}
                       showEMAOverlay={showEMAOverlay}
                       showPearsonChannels={showPearsonChannels}
+                      showPEBands={showPEBands}
                       logScale={logScale}
                     />
                   </ErrorBoundary>

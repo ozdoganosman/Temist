@@ -368,3 +368,176 @@ export function deriveCashFlowTrend(allFin: AllFinancialsResponse, quarterly: bo
     freeCashFlow: val(fcfRow, p),
   }));
 }
+
+// ── Historical P/E Valuation Bands ───────────
+
+export interface PEBandsResult {
+  dates: string[];
+  minBand: (number | null)[];
+  avgBand: (number | null)[];
+  maxBand: (number | null)[];
+  peMin: number;
+  peAvg: number;
+  peMax: number;
+  currentPe: number | null;
+}
+
+export function getLatestActivePeriod(dateStr: string, availablePeriods: string[]): string | null {
+  if (availablePeriods.length === 0) return null;
+  
+  const partsStr = dateStr.split('-');
+  if (partsStr.length !== 3) return null;
+  const year = parseInt(partsStr[0]);
+  const month = parseInt(partsStr[1]);
+  const day = parseInt(partsStr[2]);
+  
+  const currentDateInt = year * 10000 + month * 100 + day;
+  
+  let bestPeriod: string | null = null;
+  let bestActiveDateInt = -1;
+  
+  for (const p of availablePeriods) {
+    const parts = p.split('/');
+    if (parts.length !== 2) continue;
+    const pYear = parseInt(parts[0]);
+    const pMonth = parseInt(parts[1]);
+    
+    let activeDateInt = 0;
+    if (pMonth === 3) {
+      activeDateInt = pYear * 10000 + 601; // June 1
+    } else if (pMonth === 6) {
+      activeDateInt = pYear * 10000 + 901; // Sept 1
+    } else if (pMonth === 9) {
+      activeDateInt = pYear * 10000 + 1201; // Dec 1
+    } else if (pMonth === 12) {
+      activeDateInt = (pYear + 1) * 10000 + 315; // March 15 of next year
+    } else {
+      const days = pMonth === 12 ? 75 : 60;
+      const targetMonth = (pMonth + Math.floor(days / 30)) % 12 || 12;
+      const targetYear = pYear + (pMonth + Math.floor(days / 30) > 12 ? 1 : 0);
+      activeDateInt = targetYear * 10000 + targetMonth * 100 + 15;
+    }
+    
+    if (currentDateInt >= activeDateInt) {
+      if (activeDateInt > bestActiveDateInt) {
+        bestActiveDateInt = activeDateInt;
+        bestPeriod = p;
+      }
+    }
+  }
+  
+  if (bestPeriod === null) {
+    const sorted = [...availablePeriods].sort((a, b) => {
+      const partsA = a.split('/');
+      const partsB = b.split('/');
+      const valA = parseInt(partsA[0]) * 100 + parseInt(partsA[1]);
+      const valB = parseInt(partsB[0]) * 100 + parseInt(partsB[1]);
+      return valA - valB;
+    });
+    return sorted[0];
+  }
+  
+  return bestPeriod;
+}
+
+export function computePEBands(
+  ohlcv: OHLCVData[],
+  allFin: AllFinancialsResponse
+): PEBandsResult | null {
+  if (ohlcv.length === 0 || !allFin.income_stmt?.periods?.length) return null;
+
+  const periods = allFin.income_stmt.periods;
+  
+  const netIncomeRow = findRowFlex(allFin.income_stmt.data, [
+    'Ana Ortaklık Payları', 'Dönem Net Karı', 'Grubun Karı/Zararı',
+    'NET DÖNEM KARI/ZARARI (XVII+XXII)', 'Dönem Net Kar/Zararı',
+    'NET DÖNEM KARI (ZARARI)', 'NET DÖNEM KARI veya ZARARI',
+    'Dönem Net Karı veya Zararı', 'Dönem Net Kar veya Zararı',
+    'NET DÖNEM KARI VEYA ZARARI'
+  ]);
+  
+  const paidInCapitalRow = findRowFlex(allFin.balance_sheet.data, [
+    'Ödenmiş Sermaye', 'Ödenmiş Sermaye (Nominal)', 'A- Ödenmiş Sermaye', '13.1 Ödenmiş Sermaye'
+  ]);
+
+  if (!netIncomeRow || !paidInCapitalRow) return null;
+
+  const epsMap = new Map<string, number>();
+  
+  periods.forEach((p) => {
+    const netIncome = getTTMValueForRow(netIncomeRow, p, periods);
+    const paidInCapital = val(paidInCapitalRow, p);
+    
+    if (netIncome !== null && paidInCapital !== null && paidInCapital !== 0) {
+      const eps = netIncome / paidInCapital;
+      epsMap.set(p, eps);
+    }
+  });
+
+  const dailyEps: number[] = new Array(ohlcv.length).fill(0);
+  const dailyPeList: number[] = [];
+  
+  for (let i = 0; i < ohlcv.length; i++) {
+    const bar = ohlcv[i];
+    const p = getLatestActivePeriod(bar.date, periods);
+    const eps = p ? epsMap.get(p) : null;
+    
+    if (eps !== null && eps !== undefined) {
+      dailyEps[i] = eps;
+      const fiveYearsAgo = new Date();
+      fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+      const barDate = new Date(bar.date);
+      
+      if (barDate >= fiveYearsAgo && eps > 0 && bar.close > 0) {
+        dailyPeList.push(bar.close / eps);
+      }
+    } else {
+      dailyEps[i] = 0;
+    }
+  }
+
+  if (dailyPeList.length === 0) return null;
+
+  dailyPeList.sort((a, b) => a - b);
+  
+  const getPercentile = (arr: number[], pct: number): number => {
+    const idx = Math.floor(arr.length * pct);
+    return arr[Math.min(idx, arr.length - 1)];
+  };
+
+  const peMin = getPercentile(dailyPeList, 0.15); // 15th percentile
+  const peAvg = getPercentile(dailyPeList, 0.50); // 50th percentile (median)
+  const peMax = getPercentile(dailyPeList, 0.85); // 85th percentile
+
+  const lastPrice = ohlcv[ohlcv.length - 1].close;
+  const lastEps = dailyEps[dailyEps.length - 1];
+  const currentPe = lastPrice > 0 && lastEps > 0 ? lastPrice / lastEps : null;
+
+  const minBand: (number | null)[] = [];
+  const avgBand: (number | null)[] = [];
+  const maxBand: (number | null)[] = [];
+
+  for (let i = 0; i < ohlcv.length; i++) {
+    const eps = dailyEps[i];
+    if (eps && eps > 0) {
+      minBand.push(peMin * eps);
+      avgBand.push(peAvg * eps);
+      maxBand.push(peMax * eps);
+    } else {
+      minBand.push(null);
+      avgBand.push(null);
+      maxBand.push(null);
+    }
+  }
+
+  return {
+    dates: ohlcv.map(d => d.date),
+    minBand,
+    avgBand,
+    maxBand,
+    peMin,
+    peAvg,
+    peMax,
+    currentPe
+  };
+}
