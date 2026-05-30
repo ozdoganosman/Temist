@@ -478,7 +478,19 @@ export async function runClientScan(
   onProgress: (completed: number, total: number, currentSymbol: string) => void,
   forceRefresh = false
 ): Promise<ScannedStock[]> {
-  if (!forceRefresh && cachedResults && cachedResults.length > 0) {
+  const SCANNER_CODE_VERSION = 'v4_5';
+  const storedVersion = localStorage.getItem('temist_scanner_code_version');
+  
+  let actualForceRefresh = forceRefresh;
+  if (storedVersion !== SCANNER_CODE_VERSION) {
+    actualForceRefresh = true;
+    localStorage.setItem('temist_scanner_code_version', SCANNER_CODE_VERSION);
+    localStorage.removeItem('temist_scanner_scan_results_cache_v4');
+    localStorage.removeItem('temist_scanner_scan_results_timestamp_v4');
+    cachedResults = null;
+  }
+
+  if (!actualForceRefresh && cachedResults && cachedResults.length > 0) {
     return cachedResults;
   }
 
@@ -495,7 +507,7 @@ export async function runClientScan(
   const savedTimestamp = localStorage.getItem('temist_scanner_scan_results_timestamp_v4');
   const serverTimestamp = String(scanData.timestamp || 0);
 
-  if (!forceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
+  if (!actualForceRefresh && savedCache && savedTimestamp && savedTimestamp === serverTimestamp) {
     try {
       const parsed = JSON.parse(savedCache);
       if (parsed && parsed.length > 0 && parsed[0].indicators.extra && parsed[0].combinedScore !== undefined) {

@@ -30,6 +30,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -143,6 +144,7 @@ body {
   /* --- New Tab UI Classes --- */
   .mobile-app {
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
     display: flex;
     flex-direction: column;

@@ -1,6 +1,6 @@
 // Service Worker for BIST Borsa Analiz PWA
-const CACHE_NAME = 'Temist-v2';
-const DATA_CACHE = 'Temist-data-v2';
+const CACHE_NAME = 'Temist-v3';
+const DATA_CACHE = 'Temist-data-v3';
 
 // Static assets — cache-first
 const STATIC_ASSETS = [
@@ -32,6 +32,27 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith('http')) return;
   const url = new URL(event.request.url);
+
+  // HTML / navigation requests: network-first, fallback to cache
+  if (
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname === '/Temist/' ||
+    url.pathname === '/Temist/index.html'
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   // Data JSON files: network-first, fallback to cache
   if (url.pathname.includes('/data/')) {
