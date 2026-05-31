@@ -12,7 +12,7 @@ import {
 } from '../../utils/signalDetection';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
-import { buildOption, getThemeColors, getPaddingCount, getGridMargins, buildTitlesOption } from './chartBuilder';
+import { buildOption, getThemeColors, getPaddingCount, getGridMargins, getPanelTitleHTML } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
@@ -29,6 +29,7 @@ import {
   ema,
 } from '../../utils/indicators';
 import { computeAllPearsonChannels } from '../../utils/pearsonChannels';
+import { formatVolume } from '../../utils/formatters';
 import './ChartContainer.css';
 
 // Keep import reference for future use (signal scatter is already called inside buildOption)
@@ -512,6 +513,29 @@ export default function ChartContainer({
   const subPanelsRef = useRef<string[]>([]);
   const panelBottomsRef = useRef<number[]>([]);
 
+  const { subPanels, panelBottoms } = useMemo(() => {
+    const panels: string[] = [];
+    if (showRSI) panels.push('rsi');
+    if (showMACD) panels.push('macd');
+    if (showStochRSI) panels.push('stochRsi');
+    if (showOBV) panels.push('obv');
+    if (showWilliamsPasa) panels.push('williams_pasa');
+    if (showNizamiCedid) panels.push('nizami_cedid');
+    if (showCMF) panels.push('cmf');
+
+    const bottoms: number[] = [];
+    const panelHeight = 120;
+    for (let i = 0; i < panels.length; i++) {
+      bottoms.push(40 + i * (panelHeight + 10));
+    }
+    return { subPanels: panels, panelBottoms: bottoms };
+  }, [showRSI, showMACD, showStochRSI, showOBV, showWilliamsPasa, showNizamiCedid, showCMF]);
+
+  useEffect(() => {
+    subPanelsRef.current = subPanels;
+    panelBottomsRef.current = panelBottoms;
+  }, [subPanels, panelBottoms]);
+
   useEffect(() => { showRSIRef.current = showRSI; }, [showRSI]);
   useEffect(() => { showMACDRef.current = showMACD; }, [showMACD]);
   useEffect(() => { showStochRSIRef.current = showStochRSI; }, [showStochRSI]);
@@ -523,6 +547,7 @@ export default function ChartContainer({
 
   const computedIndicatorsRef = useRef<ComputedIndicators>({});
   const lastHoveredIdxRef = useRef<number | null>(null);
+  const updatePanelTitlesRef = useRef<(activeIdx: number) => void>(() => {});
 
   // Toggle visibility of individual Bollinger bands
   const [visibleBollinger, setVisibleBollinger] = useState<Set<string>>(
@@ -1133,46 +1158,14 @@ export default function ChartContainer({
             prevClose,
           });
 
-          // Update sub-panel titles dynamically on hover
-          const updatedTitles = buildTitlesOption(
-            currentDataRef.current,
-            subPanelsRef.current,
-            panelBottomsRef.current,
-            realIdx,
-            showRSIRef.current,
-            showMACDRef.current,
-            showStochRSIRef.current,
-            showOBVRef.current,
-            showWilliamsPasaRef.current,
-            showNizamiCedidRef.current,
-            showCMFRef.current,
-            signalConfigRef.current,
-            themeColorsRef.current,
-            computedIndicatorsRef.current
-          );
-          chart.setOption({ title: updatedTitles });
+          // Update sub-panel titles dynamically on hover using HTML DOM
+          updatePanelTitlesRef.current(realIdx);
         } else {
           onLegendUpdateRef.current(null);
           // Fallback titles to last bar when hovered index is invalid
           const lastIdx = currentDataRef.current.length - 1;
           if (lastIdx >= 0) {
-            const updatedTitles = buildTitlesOption(
-              currentDataRef.current,
-              subPanelsRef.current,
-              panelBottomsRef.current,
-              lastIdx,
-              showRSIRef.current,
-              showMACDRef.current,
-              showStochRSIRef.current,
-              showOBVRef.current,
-              showWilliamsPasaRef.current,
-              showNizamiCedidRef.current,
-              showCMFRef.current,
-              signalConfigRef.current,
-              themeColorsRef.current,
-              computedIndicatorsRef.current
-            );
-            chart.setOption({ title: updatedTitles });
+            updatePanelTitlesRef.current(lastIdx);
           }
         }
       }
@@ -1182,23 +1175,7 @@ export default function ChartContainer({
       lastHoveredIdxRef.current = null;
       const lastIdx = currentDataRef.current.length - 1;
       if (lastIdx >= 0) {
-        const updatedTitles = buildTitlesOption(
-          currentDataRef.current,
-          subPanelsRef.current,
-          panelBottomsRef.current,
-          lastIdx,
-          showRSIRef.current,
-          showMACDRef.current,
-          showStochRSIRef.current,
-          showOBVRef.current,
-          showWilliamsPasaRef.current,
-          showNizamiCedidRef.current,
-          showCMFRef.current,
-          signalConfigRef.current,
-          themeColorsRef.current,
-          computedIndicatorsRef.current
-        );
-        chart.setOption({ title: updatedTitles });
+        updatePanelTitlesRef.current(lastIdx);
       }
     });
 
@@ -1246,21 +1223,6 @@ export default function ChartContainer({
     currentDataRef.current = [...filtered];
     const themeColors = getThemeColors();
     themeColorsRef.current = themeColors;
-
-    const panelHeight = 120;
-    const subPanels: string[] = [];
-    if (showRSI) subPanels.push('rsi');
-    if (showMACD) subPanels.push('macd');
-    if (showStochRSI) subPanels.push('stochRsi');
-    if (showOBV) subPanels.push('obv');
-    if (showWilliamsPasa) subPanels.push('williams_pasa');
-    if (showNizamiCedid) subPanels.push('nizami_cedid');
-    if (showCMF) subPanels.push('cmf');
-
-    const panelBottoms: number[] = [];
-    for (let i = 0; i < subPanels.length; i++) {
-      panelBottoms.push(40 + i * (panelHeight + 10));
-    }
 
     subPanelsRef.current = subPanels;
     panelBottomsRef.current = panelBottoms;
@@ -1356,6 +1318,31 @@ export default function ChartContainer({
     if (filtered.length > 0) {
       lastBarRef.current = { ...filtered[filtered.length - 1] };
     }
+
+    const updatePanelTitles = (activeIdx: number) => {
+      const tc = themeColors;
+      const computed = computedIndicatorsRef.current;
+      const sigConfig = signalConfig;
+      const filteredData = filtered;
+
+      subPanels.forEach((panel) => {
+        const el = document.getElementById(`subpanel-title-${panel}`);
+        if (el) {
+          el.innerHTML = getPanelTitleHTML(
+            panel,
+            activeIdx,
+            filteredData,
+            computed,
+            sigConfig,
+            tc
+          );
+        }
+      });
+    };
+    updatePanelTitlesRef.current = updatePanelTitles;
+    if (filtered.length > 0) {
+      updatePanelTitles(filtered.length - 1);
+    }
   }, [
     filtered,
     symbol,
@@ -1376,6 +1363,8 @@ export default function ChartContainer({
     logScale,
     signalEvents,
     signalConfig,
+    subPanels,
+    panelBottoms,
   ]);
 
   useEffect(() => {
@@ -1388,6 +1377,23 @@ export default function ChartContainer({
         <div ref={containerRef} className="chart-container" />
         <div ref={measureOverlayRef} className="chart-measure-overlay" />
         <div ref={measureBadgeRef} className="chart-measure-badge" />
+        {subPanels.map((panel, idx) => {
+          const bottom = panelBottoms[idx] + 98;
+          const margins = getGridMargins();
+          const left = margins.left + 5;
+          return (
+            <div
+              key={panel}
+              id={`subpanel-title-${panel}`}
+              className="chart-subpanel-title"
+              style={{
+                position: 'absolute',
+                left: `${left}px`,
+                bottom: `${bottom}px`,
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* 💡 Yorumlayan Bilgi Kutusu */}

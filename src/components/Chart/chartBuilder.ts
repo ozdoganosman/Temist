@@ -1411,34 +1411,12 @@ export function buildOption(
     );
   }
 
-  const activeIdx = (hoveredIndex !== null && hoveredIndex >= 0 && hoveredIndex < filtered.length)
-    ? hoveredIndex
-    : filtered.length - 1;
-
-  const titles = buildTitlesOption(
-    filtered,
-    subPanels,
-    panelBottoms,
-    activeIdx,
-    showRSI,
-    showMACD,
-    showStochRSI,
-    showOBV,
-    showWilliamsPasa,
-    showNizamiCedid,
-    showCMF,
-    sigConfig,
-    tc,
-    computed
-  );
-
   return {
     animation: false,
     backgroundColor: tc.bg,
     grid: grids,
     xAxis: xAxes as echarts.EChartsOption['xAxis'],
     yAxis: yAxes as echarts.EChartsOption['yAxis'],
-    title: titles,
     dataZoom: [
       {
         type: 'inside',
@@ -1991,3 +1969,207 @@ export function buildTitlesOption(
 
   return titles;
 }
+
+export function getPanelTitleHTML(
+  panel: string,
+  activeIdx: number,
+  filtered: OHLCVData[],
+  computed: ComputedIndicators,
+  sigConfig: SignalConfig | undefined,
+  tc: ThemeColors
+): string {
+  if (!filtered || filtered.length === 0 || activeIdx < 0 || activeIdx >= filtered.length) {
+    return '';
+  }
+
+  const closes = filtered.map((d) => d.close);
+  const highs = filtered.map((d) => d.high);
+  const lows = filtered.map((d) => d.low);
+  const vols = filtered.map((d) => d.volume);
+
+  if (panel === 'rsi' && filtered.length > 15) {
+    const period = sigConfig?.rsi?.period ?? 14;
+    let val: number | null = null;
+    if (computed.rsi && computed.rsi[activeIdx] !== undefined) {
+      val = computed.rsi[activeIdx];
+    } else {
+      val = computeRSI(closes, period).rsi[activeIdx];
+    }
+    const valStr = val !== null && val !== undefined ? val.toFixed(2) : '--';
+    return `<span style="color: #E040FB; font-weight: bold; margin-right: 8px;">RSI(${period})</span>` +
+           `<span style="color: ${tc.tooltipText};">RSI: ${valStr}</span>`;
+  }
+  
+  if (panel === 'macd' && filtered.length > 35) {
+    const fast = sigConfig?.macd?.fast ?? 12;
+    const slow = sigConfig?.macd?.slow ?? 26;
+    const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
+    
+    let macdVal: number | null = null;
+    let sigVal: number | null = null;
+    let histVal: number | null = null;
+    
+    if (computed.macd) {
+      macdVal = computed.macd.macd[activeIdx];
+      sigVal = computed.macd.signal[activeIdx];
+      histVal = computed.macd.histogram[activeIdx];
+    } else {
+      const res = computeMACD(closes, fast, slow, sigPeriod);
+      macdVal = res.macd[activeIdx];
+      sigVal = res.signal[activeIdx];
+      histVal = res.histogram[activeIdx];
+    }
+    
+    const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
+    const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
+    const hStr = histVal !== null && histVal !== undefined ? histVal.toFixed(2) : '--';
+
+    let histColor = tc.tooltipText;
+    if (histVal !== null && histVal !== undefined) {
+      histColor = histVal >= 0 ? '#26A69A' : '#FF5252';
+    }
+    
+    return `<span style="color: #2196F3; font-weight: bold; margin-right: 8px;">MACD(${fast}, ${slow}, ${sigPeriod})</span>` +
+           `<span style="color: #2196F3; margin-right: 8px;">MACD: ${mStr}</span>` +
+           `<span style="color: #FF6D00; margin-right: 8px;">Sinyal: ${sStr}</span>` +
+           `<span style="color: ${histColor};">Hist: ${hStr}</span>`;
+  }
+  
+  if (panel === 'stochRsi' && filtered.length > 30) {
+    const rsiP = sigConfig?.stochRsi?.rsiPeriod ?? 14;
+    const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
+    const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
+    const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
+    
+    let kVal: number | null = null;
+    let dVal: number | null = null;
+    
+    if (computed.stochRsi) {
+      kVal = computed.stochRsi.k[activeIdx];
+      dVal = computed.stochRsi.d[activeIdx];
+    } else {
+      const res = computeStochRSI(closes, rsiP, stochP, kS, dS);
+      kVal = res.k[activeIdx];
+      dVal = res.d[activeIdx];
+    }
+    
+    const kStr = kVal !== null && kVal !== undefined ? kVal.toFixed(2) : '--';
+    const dStr = dVal !== null && dVal !== undefined ? dVal.toFixed(2) : '--';
+    
+    return `<span style="color: #2196F3; font-weight: bold; margin-right: 8px;">Stoch RSI(${rsiP}, ${stochP}, ${kS}, ${dS})</span>` +
+           `<span style="color: #2196F3; margin-right: 8px;">%K: ${kStr}</span>` +
+           `<span style="color: #FF6D00;">%D: ${dStr}</span>`;
+  }
+  
+  if (panel === 'obv' && filtered.length > 20) {
+    const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
+    
+    let obvVal: number | null = null;
+    let obvEmaVal: number | null = null;
+    
+    if (computed.obv) {
+      obvVal = computed.obv.obv[activeIdx];
+      obvEmaVal = computed.obv.obvEma[activeIdx];
+    } else {
+      const res = computeOBV(closes, vols, emaPeriod);
+      obvVal = res.obv[activeIdx];
+      obvEmaVal = res.obvEma[activeIdx];
+    }
+    
+    const oStr = obvVal !== null && obvVal !== undefined ? formatVolume(obvVal) : '--';
+    const oeStr = obvEmaVal !== null && obvEmaVal !== undefined ? formatVolume(obvEmaVal) : '--';
+    
+    return `<span style="color: #26a69a; font-weight: bold; margin-right: 8px;">OBV</span>` +
+           `<span style="color: #26a69a; margin-right: 8px;">OBV: ${oStr}</span>` +
+           `<span style="color: #FF6D00;">EMA(${emaPeriod}): ${oeStr}</span>`;
+  }
+  
+  if (panel === 'williams_pasa' && filtered.length > 260) {
+    const length = sigConfig?.williamsPasa?.length ?? 260;
+    const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;
+    
+    let rVal: number | null = null;
+    let emaVal: number | null = null;
+    
+    if (computed.williamsPasa) {
+      rVal = computed.williamsPasa.percentR[activeIdx];
+      emaVal = computed.williamsPasa.emaWil[activeIdx];
+    } else {
+      const res = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+      rVal = res.percentR[activeIdx];
+      emaVal = res.emaWil[activeIdx];
+    }
+    
+    const rStr = rVal !== null && rVal !== undefined ? rVal.toFixed(2) : '--';
+    const eStr = emaVal !== null && emaVal !== undefined ? emaVal.toFixed(2) : '--';
+    
+    return `<span style="color: #7E57C2; font-weight: bold; margin-right: 8px;">Williams Paşa %R(${length})</span>` +
+           `<span style="color: #7E57C2; margin-right: 8px;">%R: ${rStr}</span>` +
+           `<span style="color: #FF9800;">EMA(${emaLen}): ${eStr}</span>`;
+  }
+  
+  if (panel === 'nizami_cedid' && filtered.length > 260) {
+    const fast = sigConfig?.nizamiCedid?.fast ?? 120;
+    const slow = sigConfig?.nizamiCedid?.slow ?? 260;
+    const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
+    const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
+    
+    let macdVal: number | null = null;
+    let sigVal: number | null = null;
+    let emacdVal: number | null = null;
+    
+    if (computed.nizamiCedid) {
+      macdVal = computed.nizamiCedid.macd[activeIdx];
+      sigVal = computed.nizamiCedid.signal[activeIdx];
+      emacdVal = computed.nizamiCedid.emacd[activeIdx];
+    } else {
+      const res = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
+      macdVal = res.macd[activeIdx];
+      sigVal = res.signal[activeIdx];
+      emacdVal = res.emacd[activeIdx];
+    }
+    
+    const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
+    const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
+    const eStr = emacdVal !== null && emacdVal !== undefined ? emacdVal.toFixed(2) : '--';
+    
+    return `<span style="color: #2196F3; font-weight: bold; margin-right: 8px;">Nizami Cedid</span>` +
+           `<span style="color: #2196F3; margin-right: 8px;">MACD: ${mStr}</span>` +
+           `<span style="color: #FF6D00; margin-right: 8px;">Sinyal: ${sStr}</span>` +
+           `<span style="color: #4CAF50;">eMACD: ${eStr}</span>`;
+  }
+  
+  if (panel === 'cmf' && filtered.length > 20) {
+    let cmfVal: number | null = null;
+    let e34Val: number | null = null;
+    let e68Val: number | null = null;
+    let e130Val: number | null = null;
+    
+    if (computed.cmf) {
+      cmfVal = computed.cmf.cmf[activeIdx];
+      e34Val = computed.cmf.ema34[activeIdx];
+      e68Val = computed.cmf.ema68[activeIdx];
+      e130Val = computed.cmf.ema130[activeIdx];
+    } else {
+      const cmfResult = computeCMF(highs, lows, closes, vols, 20);
+      cmfVal = cmfResult.cmf[activeIdx];
+      e34Val = ema(cmfResult.cmf, 34)[activeIdx];
+      e68Val = ema(cmfResult.cmf, 68)[activeIdx];
+      e130Val = ema(cmfResult.cmf, 130)[activeIdx];
+    }
+    
+    const cVal = cmfVal !== null && cmfVal !== undefined ? cmfVal.toFixed(4) : '--';
+    const e34Str = e34Val !== null && e34Val !== undefined ? e34Val.toFixed(4) : '--';
+    const e68Str = e68Val !== null && e68Val !== undefined ? e68Val.toFixed(4) : '--';
+    const e130Str = e130Val !== null && e130Val !== undefined ? e130Val.toFixed(4) : '--';
+    
+    return `<span style="color: #9c27b0; font-weight: bold; margin-right: 8px;">CMF(20)</span>` +
+           `<span style="color: #9c27b0; margin-right: 8px;">CMF: ${cVal}</span>` +
+           `<span style="color: #FF9800; margin-right: 8px;">EMA(34): ${e34Str}</span>` +
+           `<span style="color: #e91e63; margin-right: 8px;">EMA(68): ${e68Str}</span>` +
+           `<span style="color: #00e5ff;">EMA(130): ${e130Str}</span>`;
+  }
+
+  return '';
+}
+
