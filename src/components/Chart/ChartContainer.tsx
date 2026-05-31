@@ -971,6 +971,7 @@ export default function ChartContainer({
           saveDrawings(updated);
           setActiveTool('pointer');
         } else {
+          activeDrawingRef.current = newDrawing;
           setActiveDrawing(newDrawing);
         }
 
@@ -1034,11 +1035,13 @@ export default function ChartContainer({
           return;
         }
 
-        setActiveDrawing({
+        const updated = {
           ...activeDrawingRef.current,
           endBarIdx: currentBarIdx,
           endPrice: currentPrice
-        });
+        };
+        activeDrawingRef.current = updated;
+        setActiveDrawing(updated);
         e.preventDefault();
         return;
       }
@@ -1146,6 +1149,7 @@ export default function ChartContainer({
       if (activeDrawingRef.current) {
         const updated = [...drawingsRef.current, activeDrawingRef.current];
         saveDrawings(updated);
+        activeDrawingRef.current = null;
         setActiveDrawing(null);
         setActiveTool('pointer');
         return;
@@ -1279,6 +1283,7 @@ export default function ChartContainer({
             saveDrawings(updated);
             setActiveTool('pointer');
           } else {
+            activeDrawingRef.current = newDrawing;
             setActiveDrawing(newDrawing);
           }
 
@@ -1321,11 +1326,13 @@ export default function ChartContainer({
             return;
           }
 
-          setActiveDrawing({
+          const updated = {
             ...activeDrawingRef.current,
             endBarIdx: currentBarIdx,
             endPrice: currentPrice
-          });
+          };
+          activeDrawingRef.current = updated;
+          setActiveDrawing(updated);
           if (e.cancelable) e.preventDefault();
           return;
         }
@@ -1340,6 +1347,7 @@ export default function ChartContainer({
       if (activeDrawingRef.current) {
         const updated = [...drawingsRef.current, activeDrawingRef.current];
         saveDrawings(updated);
+        activeDrawingRef.current = null;
         setActiveDrawing(null);
         setActiveTool('pointer');
         return;
@@ -1374,6 +1382,7 @@ export default function ChartContainer({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (activeDrawingRef.current) {
+          activeDrawingRef.current = null;
           setActiveDrawing(null);
           setActiveTool('pointer');
         }
