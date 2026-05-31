@@ -3,7 +3,6 @@ import * as echarts from 'echarts';
 import type { Interval, LegendData } from './types';
 import type { OHLCVData, AllFinancialsResponse } from '../../api/borsaApi';
 import { fetchAllFinancials } from '../../api/borsaApi';
-import { computePEBands } from '../../utils/computeFinancialMetrics';
 import type { BollingerOverlayResult } from '../../utils/regressionChannels';
 import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import {
@@ -89,7 +88,6 @@ interface ChartContainerProps {
   showNizamiCedid?: boolean;
   showEMAOverlay?: boolean;
   showPearsonChannels?: boolean;
-  showPEBands?: boolean;
   showSignals?: boolean;
   signalConfig?: SignalConfig;
   logScale?: boolean;
@@ -112,7 +110,6 @@ export default function ChartContainer({
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
-  showPEBands = false,
   showSignals = false,
   signalConfig,
   logScale = false,
@@ -129,31 +126,6 @@ export default function ChartContainer({
   useEffect(() => {
     localStorage.setItem('temist_chart_commentary_open', String(commentaryOpen));
   }, [commentaryOpen]);
-
-  const [allFin, setAllFin] = useState<AllFinancialsResponse | null>(null);
-
-  useEffect(() => {
-    if (!showPEBands) {
-      setAllFin(null);
-      return;
-    }
-    let cancelled = false;
-    fetchAllFinancials(symbol)
-      .then((res) => {
-        if (!cancelled) setAllFin(res);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch financials for P/E bands:', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [symbol, showPEBands]);
-
-  const peBandsResult = useMemo(() => {
-    if (!showPEBands || !allFin) return null;
-    return computePEBands(filtered, allFin);
-  }, [filtered, allFin, showPEBands]);
 
   // ── Commentary generation ──
   const commentaries = useMemo(() => {
@@ -460,38 +432,7 @@ export default function ChartContainer({
       }
     }
 
-    // 12. Historical P/E Bands
-    if (showPEBands && peBandsResult) {
-      const minVal = peBandsResult.minBand[n - 1];
-      const avgVal = peBandsResult.avgBand[n - 1];
-      const maxVal = peBandsResult.maxBand[n - 1];
-      
-      if (minVal !== null && avgVal !== null && maxVal !== null) {
-        let location = 'Dengeli';
-        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-        let comment = '';
-        
-        if (lastPrice < minVal) {
-          location = 'Tarihsel Ucuz';
-          signal = 'bullish';
-          comment = `Hisse fiyatı (${lastPrice.toFixed(2)} TL), tarihsel F/K değerlemesinin en ucuz %15'lik sınırının (${minVal.toFixed(2)} TL) altındadır. Güncel F/K: ${peBandsResult.currentPe?.toFixed(2) ?? '--'} (Tarihsel Ucuz Limit: ${peBandsResult.peMin.toFixed(2)}). Bu durum hissenin tarihsel çarpanlarına göre son derece ucuz seviyelerde olduğunu teyit eder.`;
-        } else if (lastPrice > maxVal) {
-          location = 'Tarihsel Pahalı';
-          signal = 'bearish';
-          comment = `Hisse fiyatı (${lastPrice.toFixed(2)} TL), tarihsel F/K değerlemesinin en pahalı %15'lik sınırının (${maxVal.toFixed(2)} TL) üzerindedir. Güncel F/K: ${peBandsResult.currentPe?.toFixed(2) ?? '--'} (Tarihsel Pahalı Limit: ${peBandsResult.peMax.toFixed(2)}). Bu durum hissenin tarihsel çarpanlarına göre primli seyrettiğini teyit eder.`;
-        } else {
-          location = 'Adil Değer';
-          signal = 'neutral';
-          comment = `Hisse fiyatı (${lastPrice.toFixed(2)} TL) tarihsel F/K bantları arasında dengeli seyrediyor. Güncel F/K: ${peBandsResult.currentPe?.toFixed(2) ?? '--'} (Tarihsel Ortalama: ${peBandsResult.peAvg.toFixed(2)}). Fiyat, Ucuz Limit (${minVal.toFixed(2)} TL) ile Pahalı Limit (${maxVal.toFixed(2)} TL) arasındaki makul alandadır.`;
-        }
-        items.push({
-          title: 'Tarihsel F/K Değerleme Bantları',
-          valueText: location,
-          signal,
-          comment,
-        });
-      }
-    }
+
 
     return items;
   }, [
@@ -507,8 +448,6 @@ export default function ChartContainer({
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
-    showPEBands,
-    peBandsResult,
   ]);
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
@@ -1198,8 +1137,6 @@ export default function ChartContainer({
       showNizamiCedid,
       showEMAOverlay,
       showPearsonChannels,
-      showPEBands,
-      peBandsResult,
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -1229,8 +1166,6 @@ export default function ChartContainer({
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
-    showPEBands,
-    peBandsResult,
     logScale,
     signalEvents,
     signalConfig,

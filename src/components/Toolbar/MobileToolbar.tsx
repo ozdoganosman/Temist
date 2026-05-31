@@ -36,8 +36,6 @@ interface MobileToolbarProps {
   showEMAOverlay: boolean;
   onTogglePearsonChannels: () => void;
   showPearsonChannels: boolean;
-  onTogglePEBands: () => void;
-  showPEBands: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -183,8 +181,6 @@ export default function MobileToolbar({
   onToggleEMAOverlay,
   showPearsonChannels,
   onTogglePearsonChannels,
-  showPEBands,
-  onTogglePEBands,
   isLandscape = false,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -257,9 +253,6 @@ export default function MobileToolbar({
               </button>
               <button className={`mt-scroll-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
                 3ChanPers
-              </button>
-              <button className={`mt-scroll-btn ${showPEBands ? 'active' : ''}`} onClick={onTogglePEBands}>
-                F/K Bant
               </button>
             </div>
           </div>
