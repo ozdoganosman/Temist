@@ -83,6 +83,7 @@ export function useToolbarProps() {
     isWatched,
     toggleSymbol,
     removeSymbol,
+    moveSymbol,
   } = useWatchlist();
   const isMobile = useIsMobile();
   const { data, loading } = useHistoryData(symbol, interval);
@@ -247,6 +248,7 @@ export function useToolbarProps() {
     onToggleWatchlist: () => setWatchlistOpen((v: boolean) => !v),
     isCurrentSymbolWatched: isWatched(symbol),
     onToggleCurrentSymbolWatch: () => toggleSymbol(symbol),
+    onMoveSymbol: moveSymbol,
     dataTimestamp,
   };
 
@@ -306,5 +308,6 @@ export function useToolbarProps() {
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
+    moveSymbol,
   };
 }

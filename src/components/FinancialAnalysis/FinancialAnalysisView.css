@@ -276,3 +276,273 @@
     min-height: 220px;
   }
 }
+
+/* ── Sector Comparison Dashboard & Table Styles ── */
+
+.sector-tag {
+  background: rgba(41, 98, 255, 0.1);
+  color: #2962ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid rgba(41, 98, 255, 0.2);
+}
+
+.sector-comparison-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.sector-comparison-layout {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.sector-chart-pane {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.radar-legend-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+  background: var(--bg-primary);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--border-primary);
+  line-height: 1.4;
+}
+
+.sector-scorecard-pane {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.scorecard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-primary);
+  padding-bottom: 8px;
+}
+
+.scorecard-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.scorecard-summary-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.score-val {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.score-bar-bg {
+  width: 50px;
+  height: 6px;
+  background: var(--border-primary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.scorecard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.scorecard-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.scorecard-item:hover {
+  border-color: rgba(41, 98, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.scorecard-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.metric-compare-values {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.val-divider {
+  color: var(--border-primary);
+}
+
+.scorecard-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.status-badge.badge-positive {
+  background: rgba(38, 166, 154, 0.12);
+  color: #26a69a;
+  border: 1px solid rgba(38, 166, 154, 0.2);
+}
+
+.status-badge.badge-negative {
+  background: rgba(239, 83, 80, 0.12);
+  color: #ef5350;
+  border: 1px solid rgba(239, 83, 80, 0.2);
+}
+
+.status-badge.badge-neutral {
+  background: rgba(138, 142, 150, 0.12);
+  color: #8a8e96;
+  border: 1px solid rgba(138, 142, 150, 0.2);
+}
+
+.rank-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* Peers Table Styles */
+.sector-peers-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.sector-peers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+
+.sector-peers-table th, 
+.sector-peers-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.sector-peers-table th {
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+
+.sector-peers-table th:hover {
+  background: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.sector-peers-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.sector-peers-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sector-peers-table tr.self-row {
+  background: rgba(41, 98, 255, 0.05);
+}
+
+.sector-peers-table tr.self-row:hover {
+  background: rgba(41, 98, 255, 0.08);
+}
+
+.sector-peers-table tr.self-row td {
+  color: #2962ff;
+  font-weight: 500;
+}
+
+.self-tag {
+  background: #2962ff;
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+/* responsive overrides */
+@media (max-width: 1024px) {
+  .sector-comparison-layout {
+    grid-template-columns: 1fr;
+  }
+  .sector-scorecard-pane {
+    margin-top: 10px;
+  }
+}
+

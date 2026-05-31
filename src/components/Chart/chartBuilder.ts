@@ -487,6 +487,9 @@ export function buildOption(
   computed?: ComputedIndicators,
   panelHeights?: Record<string, number>,
   drawings?: ChartDrawing[],
+  selectedDrawingId?: string | null,
+  zoomStartValue?: number | null,
+  zoomEndValue?: number | null,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -524,6 +527,48 @@ export function buildOption(
     regimeAreas = computeEMARegimeAreas(closes, rawDates, padded.offset, total);
   }
 
+  const markLineData: any[] = [];
+  if (lastClose !== null) {
+    markLineData.push({
+      yAxis: lastClose,
+      lineStyle: { color: lastPriceColor, type: 'dashed', width: 1 },
+      label: {
+        show: true,
+        position: 'end',
+        formatter: () => formatPrice(lastClose),
+        backgroundColor: lastPriceColor,
+        color: '#fff',
+        fontSize: 10,
+        padding: [2, 4],
+        borderRadius: 2,
+      },
+    });
+  }
+
+  if (drawings && drawings.length > 0) {
+    drawings.forEach((d) => {
+      if (d.type === 'horizontal') {
+        const isSelected = d.id === selectedDrawingId;
+        const color = isSelected ? '#ff9800' : '#26a69a';
+        const width = isSelected ? 3 : 2;
+        markLineData.push({
+          yAxis: d.startPrice,
+          lineStyle: { color: color, type: 'solid', width: width },
+          label: {
+            show: true,
+            position: 'end',
+            formatter: () => formatPrice(d.startPrice),
+            backgroundColor: color,
+            color: '#fff',
+            fontSize: 10,
+            padding: [2, 4],
+            borderRadius: 2,
+          },
+        });
+      }
+    });
+  }
+
   const mainSeries: echarts.SeriesOption = {
     name: symbol,
     type: 'candlestick' as const,
@@ -538,25 +583,11 @@ export function buildOption(
       silent: true,
       data: regimeAreas,
     } : undefined,
-    markLine:
-      lastClose !== null
-        ? {
-            silent: true,
-            symbol: 'none',
-            lineStyle: { color: lastPriceColor, type: 'dashed', width: 1 },
-            label: {
-              show: true,
-              position: 'end',
-              formatter: () => formatPrice(lastClose),
-              backgroundColor: lastPriceColor,
-              color: '#fff',
-              fontSize: 10,
-              padding: [2, 4],
-              borderRadius: 2,
-            },
-            data: [{ yAxis: lastClose }],
-          }
-        : undefined,
+    markLine: markLineData.length > 0 ? {
+      silent: true,
+      symbol: 'none',
+      data: markLineData,
+    } : undefined,
   };
 
   const maxVol = filtered.reduce((m, d) => Math.max(m, d.volume), 0);
@@ -822,8 +853,8 @@ export function buildOption(
         id: 'y-axis-cmf',
         gridIndex: gridIdx,
         position: 'right',
-        min: -1,
-        max: 1,
+        min: -0.5,
+        max: 0.5,
         splitNumber: 2,
         splitLine: { lineStyle: { color: tc.border } },
         axisLine: { lineStyle: { color: tc.border } },
@@ -1367,7 +1398,49 @@ export function buildOption(
     const ema130Padded = [...padNull, ...cmfSrc.ema130, ...padNull];
     const ema260Padded = [...padNull, ...cmfSrc.ema260, ...padNull];
 
+    // Split CMF into positive and negative sets for transparent area gradients
+    const cmfPos = cmfPadded.map((v) => (v !== null && v > 0 ? v : 0));
+    const cmfNeg = cmfPadded.map((v) => (v !== null && v < 0 ? v : 0));
+
     subSeries.push(
+      {
+        name: 'CMF Pos Area',
+        type: 'line',
+        data: cmfPos,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(38, 166, 154, 0.25)' },
+            { offset: 1, color: 'rgba(38, 166, 154, 0.01)' }
+          ])
+        },
+        z: 2,
+        clip: true,
+        sampling: 'average',
+        tooltip: { show: false },
+      },
+      {
+        name: 'CMF Neg Area',
+        type: 'line',
+        data: cmfNeg,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { width: 0 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(239, 83, 80, 0.01)' },
+            { offset: 1, color: 'rgba(239, 83, 80, 0.25)' }
+          ])
+        },
+        z: 2,
+        clip: true,
+        sampling: 'average',
+        tooltip: { show: false },
+      },
       {
         name: 'CMF (20)',
         type: 'line',
@@ -1376,7 +1449,7 @@ export function buildOption(
         yAxisIndex: cmfYIdx,
         showSymbol: false,
         lineStyle: { color: '#9c27b0', width: 2 },
-        z: 5,
+        z: 3,
         clip: true,
         sampling: 'average',
         tooltip: { show: false },
@@ -1396,7 +1469,7 @@ export function buildOption(
             },
             {
               yAxis: 0,
-              lineStyle: { color: 'rgba(255,255,255,0.15)', type: 'solid' as const, width: 1 },
+              lineStyle: { color: tc.border, type: 'solid' as const, width: 1.2 },
             },
           ],
         },
@@ -1409,7 +1482,7 @@ export function buildOption(
         yAxisIndex: cmfYIdx,
         showSymbol: false,
         lineStyle: { color: '#FF9800', width: 1.2 },
-        z: 5,
+        z: 4,
         clip: true,
         sampling: 'average',
         tooltip: { show: false },
@@ -1422,7 +1495,7 @@ export function buildOption(
         yAxisIndex: cmfYIdx,
         showSymbol: false,
         lineStyle: { color: '#00e5ff', width: 1.2 },
-        z: 5,
+        z: 4,
         clip: true,
         sampling: 'average',
         tooltip: { show: false },
@@ -1466,12 +1539,18 @@ export function buildOption(
           }
         }
 
+        const isSelected = item.id === selectedDrawingId;
+
         if (item.type === 'trend' && item.endPrice !== undefined) {
           const endCoord = api.coord([endIdx, item.endPrice]);
           if (!endCoord) return null;
           const endX = endCoord[0];
           const endY = endCoord[1];
-          return {
+
+          const lineColor = isSelected ? '#ff9800' : '#2962ff';
+          const lineWidth = isSelected ? 3 : 2;
+
+          const lineObj = {
             type: 'line',
             shape: {
               x1: startX,
@@ -1480,27 +1559,39 @@ export function buildOption(
               y2: endY
             },
             style: {
-              stroke: '#2962ff',
-              lineWidth: 2
+              stroke: lineColor,
+              lineWidth: lineWidth
             }
           };
+
+          if (isSelected) {
+            return {
+              type: 'group',
+              children: [
+                lineObj,
+                {
+                  type: 'circle',
+                  shape: { cx: startX, cy: startY, r: 5 },
+                  style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
+                },
+                {
+                  type: 'circle',
+                  shape: { cx: endX, cy: endY, r: 5 },
+                  style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
+                }
+              ]
+            };
+          }
+          return lineObj;
         } else if (item.type === 'horizontal') {
-          const gridWidth = params.coordSys.width;
-          const gridX = params.coordSys.x;
-          return {
-            type: 'line',
-            shape: {
-              x1: gridX,
-              y1: startY,
-              x2: gridX + gridWidth,
-              y2: startY
-            },
-            style: {
-              stroke: '#26a69a',
-              lineWidth: 2,
-              lineDash: [4, 4]
-            }
-          };
+          if (isSelected) {
+            return {
+              type: 'circle',
+              shape: { cx: startX, cy: startY, r: 5 },
+              style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
+            };
+          }
+          return null;
         } else if (item.type === 'fibonacci' && item.endPrice !== undefined) {
           const gridWidth = params.coordSys.width;
           const gridX = params.coordSys.x;
@@ -1524,8 +1615,8 @@ export function buildOption(
                 y2: y
               },
               style: {
-                stroke: lvl === 0 || lvl === 1 ? '#ef5350' : '#8a8e96',
-                lineWidth: lvl === 0 || lvl === 1 ? 1.5 : 1,
+                stroke: isSelected ? '#ff9800' : (lvl === 0 || lvl === 1 ? '#ef5350' : '#8a8e96'),
+                lineWidth: isSelected ? 2 : (lvl === 0 || lvl === 1 ? 1.5 : 1),
                 lineDash: lvl === 0 || lvl === 1 ? undefined : [3, 3]
               }
             });
@@ -1536,11 +1627,34 @@ export function buildOption(
               y: y - 10,
               style: {
                 text: `Fib ${(lvl * 100).toFixed(1)}% (${lvlPrice.toFixed(2)})`,
-                fill: isDark ? '#8a8e96' : '#555555',
-                font: '9px sans-serif'
+                fill: isSelected ? '#ff9800' : (isDark ? '#8a8e96' : '#555555'),
+                font: isSelected ? 'bold 10px sans-serif' : '9px sans-serif'
               }
             });
           });
+
+          if (isSelected) {
+            const endCoord = api.coord([endIdx, item.endPrice]);
+            if (endCoord) {
+              const endX = endCoord[0];
+              const endY = endCoord[1];
+              children.push({
+                type: 'line',
+                shape: { x1: startX, y1: startY, x2: endX, y2: endY },
+                style: { stroke: '#ff9800', lineWidth: 1.5, lineDash: [4, 4] }
+              });
+              children.push({
+                type: 'circle',
+                shape: { cx: startX, cy: startY, r: 5 },
+                style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
+              });
+              children.push({
+                type: 'circle',
+                shape: { cx: endX, cy: endY, r: 5 },
+                style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
+              });
+            }
+          }
           
           return {
             type: 'group',
@@ -1564,8 +1678,10 @@ export function buildOption(
         type: 'inside',
         filterMode: 'none',
         xAxisIndex: allXAxisIndices,
-        start: zoomStart,
-        end: zoomEnd,
+        start: (zoomStartValue !== undefined && zoomStartValue !== null) ? undefined : zoomStart,
+        end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
+        startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
+        endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
         zoomOnMouseWheel: true,
         moveOnMouseMove: false,
         moveOnMouseWheel: false,
@@ -1575,8 +1691,10 @@ export function buildOption(
         type: 'slider',
         filterMode: 'none',
         xAxisIndex: allXAxisIndices,
-        start: zoomStart,
-        end: zoomEnd,
+        start: (zoomStartValue !== undefined && zoomStartValue !== null) ? undefined : zoomStart,
+        end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
+        startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
+        endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
         bottom: 8,
         height: 20,
         borderColor: tc.border,

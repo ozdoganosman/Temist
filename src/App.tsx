@@ -80,6 +80,7 @@ function AppContent() {
     watchlistOpen,
     setWatchlistOpen,
     removeSymbol,
+    moveSymbol,
   } = useToolbarProps();
 
   const [mobileTab, setMobileTab] = useState<'chart' | 'financials'>('chart');
@@ -324,6 +325,7 @@ function AppContent() {
             onAddList={addList}
             onRemoveList={removeList}
             onRenameList={renameList}
+            onMoveSymbol={moveSymbol}
             onClose={() => setWatchlistOpen(false)}
           />
         )}

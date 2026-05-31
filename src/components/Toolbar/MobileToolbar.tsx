@@ -54,6 +54,7 @@ interface MobileToolbarProps {
   onAddList: (name: string) => void;
   onRemoveList: (listId: string) => void;
   onRenameList: (listId: string, name: string) => void;
+  onMoveSymbol?: (fromListId: string, toListId: string, symbol: string, toIndex: number) => void;
   activeMobileTab?: 'chart' | 'financials';
   onMobileTabChange?: (tab: 'chart' | 'financials') => void;
   isLandscape?: boolean;
@@ -186,6 +187,7 @@ export default function MobileToolbar({
   showCMF,
   onToggleCMF,
   isLandscape = false,
+  onMoveSymbol,
 }: MobileToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -324,6 +326,7 @@ export default function MobileToolbar({
                 onAddList={onAddList}
                 onRemoveList={onRemoveList}
                 onRenameList={onRenameList}
+                onMoveSymbol={onMoveSymbol}
                 onClose={() => setMenuOpen(false)}
               />
             </div>

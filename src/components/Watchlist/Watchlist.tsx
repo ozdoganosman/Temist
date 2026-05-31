@@ -16,6 +16,7 @@ interface WatchlistProps {
   onAddList: (name: string) => void;
   onRemoveList: (listId: string) => void;
   onRenameList: (listId: string, name: string) => void;
+  onMoveSymbol?: (fromListId: string, toListId: string, symbol: string, toIndex: number) => void;
   onClose: () => void;
 }
 
@@ -60,6 +61,7 @@ export default function Watchlist({
   onAddList,
   onRemoveList,
   onRenameList,
+  onMoveSymbol,
   onClose,
 }: WatchlistProps) {
   const { t } = useTranslation();
@@ -67,6 +69,60 @@ export default function Watchlist({
   // Search states for adding stocks to list
   const [activeSearchListId, setActiveSearchListId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+
+  // Drag and drop states for reordering
+  const [draggedItem, setDraggedItem] = useState<{ listId: string; symbol: string; index: number } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ listId: string; symbol: string; index: number; position: 'top' | 'bottom' } | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, listId: string, symbol: string, index: number) => {
+    setDraggedItem({ listId, symbol, index });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify([symbol]));
+    e.dataTransfer.setData('application/temist-watchlist-drag', JSON.stringify({ sourceListId: listId, symbol, index }));
+  };
+
+  const handleDragOver = (e: React.DragEvent, listId: string, symbol: string, index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItem) return;
+
+    if (draggedItem.listId === listId && draggedItem.symbol === symbol) {
+      setDragOverItem(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    const position = relativeY < rect.height / 2 ? 'top' : 'bottom';
+
+    setDragOverItem({ listId, symbol, index, position });
+  };
+
+  const handleDragLeave = () => {
+    setDragOverItem(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDragOverItem(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, listId: string, symbol: string, index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverItem(null);
+    if (!draggedItem) return;
+
+    if (onMoveSymbol) {
+      let targetIdx = index;
+      if (dragOverItem?.position === 'bottom') {
+        targetIdx = index + 1;
+      }
+      onMoveSymbol(draggedItem.listId, listId, draggedItem.symbol, targetIdx);
+    }
+
+    setDraggedItem(null);
+  };
 
   // Editing list name states
   const [editingListId, setEditingListId] = useState<string | null>(null);
@@ -213,6 +269,24 @@ export default function Watchlist({
               onDrop={(e) => {
                 e.preventDefault();
                 e.currentTarget.classList.remove('drag-over');
+                
+                const wlDragData = e.dataTransfer.getData('application/temist-watchlist-drag');
+                if (wlDragData) {
+                  try {
+                    const parsed = JSON.parse(wlDragData);
+                    if (parsed && parsed.sourceListId && parsed.symbol) {
+                      if (onMoveSymbol) {
+                        const targetList = lists.find(l => l.id === list.id);
+                        const targetIdx = targetList ? targetList.symbols.length : 0;
+                        onMoveSymbol(parsed.sourceListId, list.id, parsed.symbol, targetIdx);
+                      }
+                      return;
+                    }
+                  } catch (err) {
+                    console.error('Failed to parse watchlist drag data:', err);
+                  }
+                }
+
                 try {
                   const dataStr = e.dataTransfer.getData('text/plain');
                   const symbols = JSON.parse(dataStr);
@@ -352,40 +426,46 @@ export default function Watchlist({
                       Bu liste boş. + tuşuyla hisse ekleyin.
                     </div>
                   ) : (
-                    list.symbols.map((sym) => (
-                      <div
-                        key={sym}
-                        className={`watchlist-item ${sym === currentSymbol ? 'active' : ''}`}
-                        onClick={() => onSymbolClick(sym)}
-                      >
-                        <div className="watchlist-item-info">
-                          <div className="watchlist-item-symbol">{sym}</div>
-                          <div className="watchlist-item-name">{getDisplayName(sym)}</div>
-                          <div className="watchlist-item-scores">
-                            <span className="score-pill combined" title="Birleşik Puan">
-                              B: {scores.get(sym) ? scores.get(sym)!.combined.toFixed(0) : '--'}
-                            </span>
-                            <span className="score-pill fundamental" title="Temel Puan">
-                              Tem: {scores.get(sym) ? scores.get(sym)!.fundamental.toFixed(1) : '--'}
-                            </span>
-                            <span className="score-pill technical" title="Teknik Puan">
-                              Tek: {scores.get(sym) ? scores.get(sym)!.technical.toFixed(0) : '--'}
-                            </span>
-                          </div>
-                        </div>
-                        <PriceCell data={prices.get(sym)} />
-                        <button
-                          className="watchlist-remove-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveFromList(list.id, sym);
-                          }}
-                          title="Listeden Kaldır"
+                    list.symbols.map((sym, idx) => {
+                      const isDragOver = dragOverItem?.listId === list.id && dragOverItem?.symbol === sym;
+                      const dragOverClass = isDragOver ? `drag-over-${dragOverItem.position}` : '';
+                      const isDragging = draggedItem?.listId === list.id && draggedItem?.symbol === sym;
+
+                      return (
+                        <div
+                          key={sym}
+                          className={`watchlist-item ${sym === currentSymbol ? 'active' : ''} ${dragOverClass} ${isDragging ? 'dragging' : ''}`}
+                          onClick={() => onSymbolClick(sym)}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, list.id, sym, idx)}
+                          onDragOver={(e) => handleDragOver(e, list.id, sym, idx)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, list.id, sym, idx)}
+                          onDragEnd={handleDragEnd}
                         >
-                          ✕
-                        </button>
-                      </div>
-                    ))
+                          <div className="watchlist-item-info">
+                            <div className="watchlist-item-symbol">{sym}</div>
+                            <div className="watchlist-item-name">{getDisplayName(sym)}</div>
+                            <div className="watchlist-item-scores">
+                              <span className="score-pill technical" title="Teknik Puan">
+                                Teknik: {scores.get(sym) ? scores.get(sym)!.technical.toFixed(0) : '--'}
+                              </span>
+                            </div>
+                          </div>
+                          <PriceCell data={prices.get(sym)} />
+                          <button
+                            className="watchlist-remove-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRemoveFromList(list.id, sym);
+                            }}
+                            title="Listeden Kaldır"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}

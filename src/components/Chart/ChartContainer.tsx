@@ -507,6 +507,7 @@ export default function ChartContainer({
   const [activeTool, setActiveTool] = useState<ActiveDrawingTool>('pointer');
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
   const [activeDrawing, setActiveDrawing] = useState<ChartDrawing | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
 
   // Sync state refs to prevent stale closure in ECharts event handlers
   const activeToolRef = useRef(activeTool);
@@ -524,6 +525,11 @@ export default function ChartContainer({
     activeDrawingRef.current = activeDrawing;
   }, [activeDrawing]);
 
+  const selectedDrawingIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedDrawingIdRef.current = selectedDrawingId;
+  }, [selectedDrawingId]);
+
   // Load drawings from localStorage
   useEffect(() => {
     try {
@@ -535,6 +541,7 @@ export default function ChartContainer({
     }
     setActiveTool('pointer');
     setActiveDrawing(null);
+    setSelectedDrawingId(null);
   }, [symbol]);
 
   const saveDrawings = (newDrawings: ChartDrawing[]) => {
@@ -731,6 +738,133 @@ export default function ChartContainer({
     let measureStartPrice = 0;
     let measureStartBarIdx = 0;
 
+    interface DragDrawingState {
+      drawingId: string;
+      mode: 'move' | 'resize-start' | 'resize-end';
+      startDrawing: ChartDrawing;
+      clickX: number;
+      clickY: number;
+      startPixelStart: [number, number];
+      startPixelEnd: [number, number];
+    }
+    const dragDrawingRef = { current: null as DragDrawingState | null };
+
+    const detectDrawingHit = (localX: number, localY: number): { drawing: ChartDrawing; mode: 'move' | 'resize-start' | 'resize-end'; startPixel: [number, number]; endPixel: [number, number] } | null => {
+      const xAxisData = chart.getOption()?.xAxis?.[0]?.data as string[] | undefined;
+      const drawingsList = drawingsRef.current;
+
+      const dist2d = (p1: [number, number], p2: [number, number]) => {
+        return Math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2);
+      };
+
+      const distToSegment = (p: [number, number], a: [number, number], b: [number, number]) => {
+        const l2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+        if (l2 === 0) return dist2d(p, a);
+        let t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return dist2d(p, [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+      };
+
+      for (let i = drawingsList.length - 1; i >= 0; i--) {
+        const d = drawingsList[i];
+        
+        let startIdx = d.startBarIdx;
+        if (d.startDate && xAxisData) {
+          const idx = xAxisData.indexOf(d.startDate);
+          if (idx !== -1) startIdx = idx;
+        }
+        
+        let endIdx = d.endBarIdx !== undefined ? d.endBarIdx : startIdx;
+        if (d.endDate && xAxisData) {
+          const idx = xAxisData.indexOf(d.endDate);
+          if (idx !== -1) endIdx = idx;
+        }
+
+        let startPixel: [number, number];
+        let endPixel: [number, number];
+        try {
+          const pStart = chart.convertToPixel({ gridIndex: 0 }, [startIdx, d.startPrice]);
+          if (!pStart || isNaN(pStart[0]) || isNaN(pStart[1])) continue;
+          startPixel = pStart as [number, number];
+
+          if (d.endPrice !== undefined) {
+            const pEnd = chart.convertToPixel({ gridIndex: 0 }, [endIdx, d.endPrice]);
+            if (!pEnd || isNaN(pEnd[0]) || isNaN(pEnd[1])) continue;
+            endPixel = pEnd as [number, number];
+          } else {
+            endPixel = [...startPixel];
+          }
+        } catch (err) {
+          continue;
+        }
+
+        const dStart = dist2d([localX, localY], startPixel);
+        if (dStart < 12) {
+          return { drawing: d, mode: 'resize-start', startPixel, endPixel };
+        }
+
+        if (d.endPrice !== undefined) {
+          const dEnd = dist2d([localX, localY], endPixel);
+          if (dEnd < 12) {
+            return { drawing: d, mode: 'resize-end', startPixel, endPixel };
+          }
+        }
+
+        let hit = false;
+        if (d.type === 'trend') {
+          if (d.endPrice !== undefined) {
+            const dLine = distToSegment([localX, localY], startPixel, endPixel);
+            if (dLine < 12) hit = true;
+          }
+        } else if (d.type === 'horizontal') {
+          const opt = chart.getOption() as any;
+          const margins = getGridMargins();
+          const rect = containerRef.current!.getBoundingClientRect();
+          const gridLeft = margins.left;
+          const gridWidth = rect.width - margins.left - margins.right;
+          
+          if (localX >= gridLeft && localX <= gridLeft + gridWidth) {
+            if (Math.abs(localY - startPixel[1]) < 12) {
+              hit = true;
+            }
+          }
+        } else if (d.type === 'fibonacci') {
+          if (d.endPrice !== undefined) {
+            if (distToSegment([localX, localY], startPixel, endPixel) < 12) {
+              hit = true;
+            } else {
+              const priceDiff = d.endPrice - d.startPrice;
+              const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+              const margins = getGridMargins();
+              const rect = containerRef.current!.getBoundingClientRect();
+              const gridLeft = margins.left;
+              const gridWidth = rect.width - margins.left - margins.right;
+
+              if (localX >= gridLeft && localX <= gridLeft + gridWidth) {
+                for (const lvl of levels) {
+                  const lvlPrice = d.startPrice + priceDiff * lvl;
+                  try {
+                    const lvlPixel = chart.convertToPixel({ gridIndex: 0 }, [startIdx, lvlPrice]);
+                    if (lvlPixel && !isNaN(lvlPixel[1]) && Math.abs(localY - lvlPixel[1]) < 12) {
+                      hit = true;
+                      break;
+                    }
+                  } catch (err) {
+                    // ignore
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (hit) {
+          return { drawing: d, mode: 'move', startPixel, endPixel };
+        }
+      }
+      return null;
+    };
+
     const getBarDate = (idx: number): string => {
       const option = chart.getOption();
       const xAxisData = option?.xAxis?.[0]?.data;
@@ -751,13 +885,14 @@ export default function ChartContainer({
     };
     const SLIDER_ZONE_HEIGHT = 34;
     const onHoverMove = (e: MouseEvent) => {
-      if (!containerRef.current || dragging || dragOnPriceAxis || isMeasuring) return;
+      if (!containerRef.current || dragging || dragOnPriceAxis || isMeasuring || dragDrawingRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
       const gridRight = rect.right - margins.right;
       const gridLeft = rect.left + margins.left;
       const distFromBottom = rect.bottom - e.clientY;
       const clickY = e.clientY - rect.top;
+      const clickX = e.clientX - rect.left;
 
       if (distFromBottom > SLIDER_ZONE_HEIGHT && (e.clientX > gridRight || e.clientX < gridLeft)) {
         const opt = chart.getOption() as any;
@@ -772,6 +907,17 @@ export default function ChartContainer({
         }
         if (overGrid) {
           setCursorOnAll('ns-resize');
+        } else {
+          setCursorOnAll('');
+        }
+      } else if (activeToolRef.current === 'pointer') {
+        const hitInfo = detectDrawingHit(clickX, clickY);
+        if (hitInfo) {
+          if (hitInfo.mode === 'move') {
+            setCursorOnAll('move');
+          } else {
+            setCursorOnAll('pointer');
+          }
         } else {
           setCursorOnAll('');
         }
@@ -979,18 +1125,36 @@ export default function ChartContainer({
           endDate: startDate,
         };
 
-        if (newDrawing.type === 'horizontal') {
-          const updated = [...drawingsRef.current, newDrawing];
-          saveDrawings(updated);
-          setActiveTool('pointer');
-        } else {
-          activeDrawingRef.current = newDrawing;
-          setActiveDrawing(newDrawing);
-        }
+        activeDrawingRef.current = newDrawing;
+        setActiveDrawing(newDrawing);
 
         e.stopPropagation();
         e.preventDefault();
         return;
+      }
+
+      // Pointer mode: check hit to select or drag drawing
+      const rect = containerRef.current!.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
+      const hitInfo = detectDrawingHit(localX, localY);
+
+      if (hitInfo) {
+        setSelectedDrawingId(hitInfo.drawing.id);
+        dragDrawingRef.current = {
+          drawingId: hitInfo.drawing.id,
+          mode: hitInfo.mode,
+          startDrawing: { ...hitInfo.drawing },
+          clickX: e.clientX,
+          clickY: e.clientY,
+          startPixelStart: hitInfo.startPixel,
+          startPixelEnd: hitInfo.endPixel,
+        };
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      } else {
+        setSelectedDrawingId(null);
       }
 
       if (e.shiftKey) {
@@ -1035,6 +1199,64 @@ export default function ChartContainer({
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (dragDrawingRef.current) {
+        const drag = dragDrawingRef.current;
+        const dx = e.clientX - drag.clickX;
+        const dy = e.clientY - drag.clickY;
+
+        let newStartPixel: [number, number] = [drag.startPixelStart[0] + dx, drag.startPixelStart[1] + dy];
+        let newEndPixel: [number, number] = [drag.startPixelEnd[0] + dx, drag.startPixelEnd[1] + dy];
+
+        if (drag.mode === 'resize-start') {
+          newStartPixel = [drag.startPixelStart[0] + dx, drag.startPixelStart[1] + dy];
+          newEndPixel = drag.startPixelEnd;
+        } else if (drag.mode === 'resize-end') {
+          newStartPixel = drag.startPixelStart;
+          newEndPixel = [drag.startPixelEnd[0] + dx, drag.startPixelEnd[1] + dy];
+        }
+
+        let newStartPrice = drag.startDrawing.startPrice;
+        let newStartBarIdx = drag.startDrawing.startBarIdx;
+        try {
+          newStartPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, newStartPixel[1]);
+          newStartBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, newStartPixel[0]));
+        } catch (err) {
+          // ignore
+        }
+
+        let newEndPrice = drag.startDrawing.endPrice;
+        let newEndBarIdx = drag.startDrawing.endBarIdx;
+        if (drag.startDrawing.endPrice !== undefined) {
+          try {
+            newEndPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, newEndPixel[1]);
+            newEndBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, newEndPixel[0]));
+          } catch (err) {
+            // ignore
+          }
+        }
+
+        const newStartDate = getBarDate(newStartBarIdx);
+        const newEndDate = newEndBarIdx !== undefined ? getBarDate(newEndBarIdx) : undefined;
+
+        const updatedDrawing: ChartDrawing = {
+          ...drag.startDrawing,
+          startBarIdx: newStartBarIdx,
+          startPrice: newStartPrice,
+          startDate: newStartDate || drag.startDrawing.startDate,
+          endBarIdx: newEndBarIdx,
+          endPrice: newEndPrice,
+          endDate: newEndDate || drag.startDrawing.endDate,
+        };
+
+        const updated = drawingsRef.current.map((d) =>
+          d.id === drag.drawingId ? updatedDrawing : d
+        );
+        drawingsRef.current = updated;
+        setDrawings(updated);
+        e.preventDefault();
+        return;
+      }
+
       if (activeDrawingRef.current) {
         const rect = containerRef.current!.getBoundingClientRect();
         const localCurrentX = e.clientX - rect.left;
@@ -1050,12 +1272,25 @@ export default function ChartContainer({
         }
 
         const endDate = getBarDate(currentBarIdx);
-        const updated = {
-          ...activeDrawingRef.current,
-          endBarIdx: currentBarIdx,
-          endPrice: currentPrice,
-          endDate,
-        };
+        let updated: ChartDrawing;
+        if (activeDrawingRef.current.type === 'horizontal') {
+          updated = {
+            ...activeDrawingRef.current,
+            startPrice: currentPrice,
+            startBarIdx: currentBarIdx,
+            startDate: getBarDate(currentBarIdx) || activeDrawingRef.current.startDate,
+            endPrice: currentPrice,
+            endBarIdx: currentBarIdx,
+            endDate: getBarDate(currentBarIdx) || activeDrawingRef.current.endDate,
+          };
+        } else {
+          updated = {
+            ...activeDrawingRef.current,
+            endBarIdx: currentBarIdx,
+            endPrice: currentPrice,
+            endDate,
+          };
+        }
         activeDrawingRef.current = updated;
         setActiveDrawing(updated);
         e.preventDefault();
@@ -1162,12 +1397,20 @@ export default function ChartContainer({
     };
 
     const onMouseUp = () => {
+      if (dragDrawingRef.current) {
+        saveDrawings(drawingsRef.current);
+        dragDrawingRef.current = null;
+        return;
+      }
       if (activeDrawingRef.current) {
         const updated = [...drawingsRef.current, activeDrawingRef.current];
         saveDrawings(updated);
         activeDrawingRef.current = null;
         setActiveDrawing(null);
         setActiveTool('pointer');
+        if (updated.length > 0) {
+          setSelectedDrawingId(updated[updated.length - 1].id);
+        }
         return;
       }
       if (isMeasuring) {
@@ -1298,18 +1541,36 @@ export default function ChartContainer({
             endDate: startDate,
           };
 
-          if (newDrawing.type === 'horizontal') {
-            const updated = [...drawingsRef.current, newDrawing];
-            saveDrawings(updated);
-            setActiveTool('pointer');
-          } else {
-            activeDrawingRef.current = newDrawing;
-            setActiveDrawing(newDrawing);
-          }
+          activeDrawingRef.current = newDrawing;
+          setActiveDrawing(newDrawing);
 
           e.stopPropagation();
           if (e.cancelable) e.preventDefault();
           return;
+        }
+
+        // Pointer mode touch: check hit
+        const rect = containerRef.current!.getBoundingClientRect();
+        const localX = touch.clientX - rect.left;
+        const localY = touch.clientY - rect.top;
+        const hitInfo = detectDrawingHit(localX, localY);
+
+        if (hitInfo) {
+          setSelectedDrawingId(hitInfo.drawing.id);
+          dragDrawingRef.current = {
+            drawingId: hitInfo.drawing.id,
+            mode: hitInfo.mode,
+            startDrawing: { ...hitInfo.drawing },
+            clickX: touch.clientX,
+            clickY: touch.clientY,
+            startPixelStart: hitInfo.startPixel,
+            startPixelEnd: hitInfo.endPixel,
+          };
+          e.stopPropagation();
+          if (e.cancelable) e.preventDefault();
+          return;
+        } else {
+          setSelectedDrawingId(null);
         }
 
         const now = Date.now();
@@ -1333,6 +1594,64 @@ export default function ChartContainer({
       if (e.touches.length === 1) {
         const touch = e.touches[0];
 
+        if (dragDrawingRef.current) {
+          const drag = dragDrawingRef.current;
+          const dx = touch.clientX - drag.clickX;
+          const dy = touch.clientY - drag.clickY;
+
+          let newStartPixel: [number, number] = [drag.startPixelStart[0] + dx, drag.startPixelStart[1] + dy];
+          let newEndPixel: [number, number] = [drag.startPixelEnd[0] + dx, drag.startPixelEnd[1] + dy];
+
+          if (drag.mode === 'resize-start') {
+            newStartPixel = [drag.startPixelStart[0] + dx, drag.startPixelStart[1] + dy];
+            newEndPixel = drag.startPixelEnd;
+          } else if (drag.mode === 'resize-end') {
+            newStartPixel = drag.startPixelStart;
+            newEndPixel = [drag.startPixelEnd[0] + dx, drag.startPixelEnd[1] + dy];
+          }
+
+          let newStartPrice = drag.startDrawing.startPrice;
+          let newStartBarIdx = drag.startDrawing.startBarIdx;
+          try {
+            newStartPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, newStartPixel[1]);
+            newStartBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, newStartPixel[0]));
+          } catch (err) {
+            // ignore
+          }
+
+          let newEndPrice = drag.startDrawing.endPrice;
+          let newEndBarIdx = drag.startDrawing.endBarIdx;
+          if (drag.startDrawing.endPrice !== undefined) {
+            try {
+              newEndPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, newEndPixel[1]);
+              newEndBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, newEndPixel[0]));
+            } catch (err) {
+              // ignore
+            }
+          }
+
+          const newStartDate = getBarDate(newStartBarIdx);
+          const newEndDate = newEndBarIdx !== undefined ? getBarDate(newEndBarIdx) : undefined;
+
+          const updatedDrawing: ChartDrawing = {
+            ...drag.startDrawing,
+            startBarIdx: newStartBarIdx,
+            startPrice: newStartPrice,
+            startDate: newStartDate || drag.startDrawing.startDate,
+            endBarIdx: newEndBarIdx,
+            endPrice: newEndPrice,
+            endDate: newEndDate || drag.startDrawing.endDate,
+          };
+
+          const updated = drawingsRef.current.map((d) =>
+            d.id === drag.drawingId ? updatedDrawing : d
+          );
+          drawingsRef.current = updated;
+          setDrawings(updated);
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
         if (activeDrawingRef.current) {
           const rect = containerRef.current!.getBoundingClientRect();
           const localCurrentX = touch.clientX - rect.left;
@@ -1348,12 +1667,25 @@ export default function ChartContainer({
           }
 
           const endDate = getBarDate(currentBarIdx);
-          const updated = {
-            ...activeDrawingRef.current,
-            endBarIdx: currentBarIdx,
-            endPrice: currentPrice,
-            endDate,
-          };
+          let updated: ChartDrawing;
+          if (activeDrawingRef.current.type === 'horizontal') {
+            updated = {
+              ...activeDrawingRef.current,
+              startPrice: currentPrice,
+              startBarIdx: currentBarIdx,
+              startDate: getBarDate(currentBarIdx) || activeDrawingRef.current.startDate,
+              endPrice: currentPrice,
+              endBarIdx: currentBarIdx,
+              endDate: getBarDate(currentBarIdx) || activeDrawingRef.current.endDate,
+            };
+          } else {
+            updated = {
+              ...activeDrawingRef.current,
+              endBarIdx: currentBarIdx,
+              endPrice: currentPrice,
+              endDate,
+            };
+          }
           activeDrawingRef.current = updated;
           setActiveDrawing(updated);
           if (e.cancelable) e.preventDefault();
@@ -1367,12 +1699,20 @@ export default function ChartContainer({
     };
 
     const onTouchEnd = () => {
+      if (dragDrawingRef.current) {
+        saveDrawings(drawingsRef.current);
+        dragDrawingRef.current = null;
+        return;
+      }
       if (activeDrawingRef.current) {
         const updated = [...drawingsRef.current, activeDrawingRef.current];
         saveDrawings(updated);
         activeDrawingRef.current = null;
         setActiveDrawing(null);
         setActiveTool('pointer');
+        if (updated.length > 0) {
+          setSelectedDrawingId(updated[updated.length - 1].id);
+        }
         return;
       }
       handleDragEnd();
@@ -1408,6 +1748,21 @@ export default function ChartContainer({
           activeDrawingRef.current = null;
           setActiveDrawing(null);
           setActiveTool('pointer');
+        } else if (selectedDrawingIdRef.current) {
+          setSelectedDrawingId(null);
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        const target = e.target as HTMLElement | null;
+        const isInput = target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
+        );
+        if (!isInput && selectedDrawingIdRef.current) {
+          const updated = drawingsRef.current.filter((d) => d.id !== selectedDrawingIdRef.current);
+          saveDrawings(updated);
+          setSelectedDrawingId(null);
+          e.preventDefault();
         }
       }
     };
@@ -1473,7 +1828,36 @@ export default function ChartContainer({
       }
     });
 
+    let zoomSaveTimeout: any = null;
+    chart.on('dataZoom', () => {
+      if (zoomSaveTimeout) {
+        clearTimeout(zoomSaveTimeout);
+      }
+      zoomSaveTimeout = setTimeout(() => {
+        const opt = chart.getOption() as any;
+        if (opt?.dataZoom && opt.dataZoom.length > 0) {
+          const dz = opt.dataZoom[0];
+          const startValue = dz.startValue;
+          const endValue = dz.endValue;
+          const xAxisDataLen = opt.xAxis?.[0]?.data?.length;
+          if (startValue !== undefined && startValue !== null && endValue !== undefined && endValue !== null && xAxisDataLen) {
+            const visibleBarCount = endValue - startValue;
+            const offsetFromEnd = xAxisDataLen - 1 - endValue;
+            try {
+              localStorage.setItem('temist_chart_visible_bar_count', String(visibleBarCount));
+              localStorage.setItem('temist_chart_zoom_offset_from_end', String(offsetFromEnd));
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+      }, 200);
+    });
+
     return () => {
+      if (zoomSaveTimeout) {
+        clearTimeout(zoomSaveTimeout);
+      }
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('touchmove', onTouchMove);
@@ -1492,7 +1876,7 @@ export default function ChartContainer({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Track previous data identity to decide whether to preserve zoom
+  // Track previous data identity
   const prevDataLenRef = useRef<number>(0);
   const prevSymbolRef = useRef<string>(symbol);
 
@@ -1501,16 +1885,74 @@ export default function ChartContainer({
     const chart = chartInstanceRef.current;
     if (!chart) return;
 
-    const dataChanged = filtered.length !== prevDataLenRef.current || symbol !== prevSymbolRef.current;
-    let savedZoom: { start: number; end: number } | null = null;
-    if (!dataChanged) {
-      const opt = chart.getOption() as { dataZoom?: Array<{ start?: number; end?: number }> } | undefined;
-      if (opt?.dataZoom && opt.dataZoom.length > 0) {
-        savedZoom = {
-          start: opt.dataZoom[0].start ?? 0,
-          end: opt.dataZoom[0].end ?? 100,
-        };
+    const symbolChanged = prevSymbolRef.current !== symbol;
+
+    let visibleBarCount: number | null = null;
+    let offsetFromEnd: number | null = null;
+
+    const opt = chart.getOption() as any;
+    if (opt?.dataZoom && opt.dataZoom.length > 0 && opt.dataZoom[0].startValue !== undefined && opt.dataZoom[0].startValue !== null) {
+      const dz = opt.dataZoom[0];
+      const startVal = dz.startValue;
+      const endVal = dz.endValue;
+      const xAxisDataLen = opt.xAxis?.[0]?.data?.length;
+      if (startVal !== undefined && endVal !== undefined && xAxisDataLen) {
+        visibleBarCount = endVal - startVal;
+        offsetFromEnd = xAxisDataLen - 1 - endVal;
       }
+    }
+
+    if (visibleBarCount === null || offsetFromEnd === null) {
+      try {
+        const savedCount = localStorage.getItem('temist_chart_visible_bar_count');
+        const savedOffset = localStorage.getItem('temist_chart_zoom_offset_from_end');
+        if (savedCount !== null && savedOffset !== null) {
+          visibleBarCount = parseInt(savedCount, 10);
+          offsetFromEnd = parseInt(savedOffset, 10);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const pad = getPaddingCount(filtered.length, isIntraday(interval));
+    const total = pad + filtered.length + pad;
+
+    if (symbolChanged) {
+      const rightPadBars = 120;
+      const dataEnd = pad + filtered.length;
+      const visibleEnd = Math.min(dataEnd + rightPadBars, total);
+      const defaultOffset = total - visibleEnd;
+      offsetFromEnd = defaultOffset;
+    }
+
+    let zoomStartVal: number | null = null;
+    let zoomEndVal: number | null = null;
+
+    if (visibleBarCount !== null && offsetFromEnd !== null) {
+      if (visibleBarCount < 10) {
+        visibleBarCount = 10;
+      }
+      if (visibleBarCount > total) {
+        visibleBarCount = total;
+      }
+
+      if (offsetFromEnd < 0) {
+        offsetFromEnd = 0;
+      }
+      if (offsetFromEnd > total - 10) {
+        offsetFromEnd = total - 10;
+      }
+
+      let endIdx = total - 1 - offsetFromEnd;
+      let startIdx = endIdx - visibleBarCount;
+      if (startIdx < 0) {
+        startIdx = 0;
+        endIdx = Math.min(total - 1, startIdx + visibleBarCount);
+      }
+
+      zoomStartVal = startIdx;
+      zoomEndVal = endIdx;
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;
@@ -1599,15 +2041,11 @@ export default function ChartContainer({
       null,
       computed,
       panelHeights,
-      activeDrawing ? [...drawings, activeDrawing] : drawings
+      activeDrawing ? [...drawings, activeDrawing] : drawings,
+      selectedDrawingId,
+      zoomStartVal,
+      zoomEndVal
     );
-
-    if (savedZoom && Array.isArray(newOption.dataZoom)) {
-      for (const dz of newOption.dataZoom as Array<{ start?: number; end?: number }>) {
-        dz.start = savedZoom.start;
-        dz.end = savedZoom.end;
-      }
-    }
 
     chart.setOption(newOption, true);
     if (filtered.length > 0) {
@@ -1664,6 +2102,7 @@ export default function ChartContainer({
     theme,
     drawings,
     activeDrawing,
+    selectedDrawingId,
   ]);
 
   useEffect(() => {

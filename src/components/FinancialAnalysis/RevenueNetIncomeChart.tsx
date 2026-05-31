@@ -49,7 +49,7 @@ export default function RevenueNetIncomeChart({ data }: Props) {
           },
         },
         legend: { type: 'scroll', top: 4, right: 12, textStyle: { color: t.titleColor, fontSize: 10 }, itemWidth: 12, itemHeight: 10 },
-        grid: { left: 60, right: 15, top: 25, bottom: 24 },
+        grid: { left: 55, right: 55, top: 25, bottom: 24 },
         xAxis: {
           type: 'category',
           data: data.map((d) => d.label),
@@ -57,25 +57,44 @@ export default function RevenueNetIncomeChart({ data }: Props) {
           axisLine: { lineStyle: { color: t.axisLineColor } },
           axisTick: { show: false },
         },
-        yAxis: {
-          type: 'value',
-          axisLabel: {
-            color: t.textColor,
-            fontSize: 9,
-            formatter: (v: number) => {
-              const a = Math.abs(v);
-              if (a >= 1e9) return (v / 1e9).toFixed(0) + 'B';
-              if (a >= 1e6) return (v / 1e6).toFixed(0) + 'M';
-              return String(v);
+        yAxis: [
+          {
+            type: 'value',
+            axisLabel: {
+              color: '#2962FF',
+              fontSize: 9,
+              formatter: (v: number) => {
+                const a = Math.abs(v);
+                if (a >= 1e9) return (v / 1e9).toFixed(0) + 'B';
+                if (a >= 1e6) return (v / 1e6).toFixed(0) + 'M';
+                return String(v);
+              },
             },
+            splitLine: { lineStyle: { color: t.splitLineColor } },
+            axisLine: { lineStyle: { color: t.axisLineColor } },
           },
-          splitLine: { lineStyle: { color: t.splitLineColor } },
-          axisLine: { lineStyle: { color: t.axisLineColor } },
-        },
+          {
+            type: 'value',
+            position: 'right',
+            splitLine: { show: false },
+            axisLabel: {
+              color: '#26a69a',
+              fontSize: 9,
+              formatter: (v: number) => {
+                const a = Math.abs(v);
+                if (a >= 1e9) return (v / 1e9).toFixed(0) + 'B';
+                if (a >= 1e6) return (v / 1e6).toFixed(0) + 'M';
+                return String(v);
+              },
+            },
+            axisLine: { lineStyle: { color: t.axisLineColor } },
+          }
+        ],
         series: [
           {
             name: 'Hasılat',
             type: 'bar',
+            yAxisIndex: 0,
             data: data.map((d) => d.revenue),
             itemStyle: { color: '#2962FF' },
             barMaxWidth: 28,
@@ -83,6 +102,7 @@ export default function RevenueNetIncomeChart({ data }: Props) {
           {
             name: 'Net Kâr',
             type: 'line',
+            yAxisIndex: 1,
             data: data.map((d) => d.netIncome),
             itemStyle: { color: '#26a69a' },
             lineStyle: { width: 2 },

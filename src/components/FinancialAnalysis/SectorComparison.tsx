@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getStockSector } from '../../utils/sectorMap';
 import { fetchScanResults, fetchAllFinancials } from '../../api/borsaApi';
-import type { SymbolInfo, AllFinancialsResponse } from '../../api/borsaApi';
+import type { SymbolInfo } from '../../api/borsaApi';
 import { computeKPIs } from '../../utils/computeFinancialMetrics';
 import type { FinancialKPIs } from '../../utils/computeFinancialMetrics';
 
@@ -24,15 +24,20 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
   const { t } = useTranslation();
   const { theme } = useTheme();
   
-  const [activeTab, setActiveTab] = useState<'radar' | 'bar'>('radar');
+  const [activeTab, setActiveTab] = useState<'radar' | 'peers' | 'bar'>('radar');
   const [activeMetric, setActiveMetric] = useState<'fk' | 'pddd' | 'roe' | 'margin' | 'debt'>('fk');
   
   const [peers, setPeers] = useState<PeerData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstance = useRef<echarts.ECharts | null>(null);
+  const [sortField, setSortField] = useState<string>('symbol');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+
+  const radarRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const radarInstance = useRef<echarts.ECharts | null>(null);
+  const barInstance = useRef<echarts.ECharts | null>(null);
 
   // Map symbols array to a dictionary
   const symbolNames = useMemo(() => {
@@ -168,7 +173,169 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
     };
   }, [symbol, symbolNames, kpis, peers]);
 
-  // Normalize helper for Radar chart (clamps to [0, 1] range where higher is better)
+  // Calculate ranks
+  const rankings = useMemo(() => {
+    if (!allComparisonData) return null;
+    const { list } = allComparisonData;
+
+    const calculateMetricRank = (
+      metricKey: 'fk' | 'pddd' | 'roe' | 'netKarMarji' | 'borcOzkaynak',
+      ascending: boolean,
+      isValid: (val: any) => boolean
+    ) => {
+      const validList = list
+        .map(item => ({
+          symbol: item.symbol,
+          val: item.kpis[metricKey]
+        }))
+        .filter(item => isValid(item.val));
+
+      validList.sort((a, b) => {
+        if (a.val === b.val) return 0;
+        if (ascending) {
+          return (a.val as number) - (b.val as number);
+        } else {
+          return (b.val as number) - (a.val as number);
+        }
+      });
+
+      const rankMap: Record<string, { rank: number; total: number }> = {};
+      validList.forEach((item, index) => {
+        rankMap[item.symbol] = {
+          rank: index + 1,
+          total: validList.length
+        };
+      });
+
+      return rankMap;
+    };
+
+    const fkRanks = calculateMetricRank('fk', true, val => val !== null && val > 0);
+    const pdddRanks = calculateMetricRank('pddd', true, val => val !== null && val > 0);
+    const roeRanks = calculateMetricRank('roe', false, val => val !== null);
+    const marginRanks = calculateMetricRank('netKarMarji', false, val => val !== null);
+    const debtRanks = calculateMetricRank('borcOzkaynak', true, val => val !== null);
+
+    return {
+      fk: fkRanks,
+      pddd: pdddRanks,
+      roe: roeRanks,
+      margin: marginRanks,
+      debt: debtRanks
+    };
+  }, [allComparisonData]);
+
+  // Scorecard data
+  const scorecard = useMemo(() => {
+    if (!allComparisonData || !rankings) return null;
+    const { sectorAvg } = allComparisonData;
+
+    const getVerdict = (
+      key: 'fk' | 'pddd' | 'roe' | 'margin' | 'debt',
+      val: number | null,
+      avg: number | null
+    ) => {
+      if (val === null || avg === null) return { text: '-', type: 'neutral' };
+      switch (key) {
+        case 'fk':
+          return val < avg 
+            ? { text: 'Sektörden Ucuz', type: 'positive' }
+            : { text: 'Sektörden Pahalı', type: 'negative' };
+        case 'pddd':
+          return val < avg 
+            ? { text: 'Sektörden Ucuz', type: 'positive' }
+            : { text: 'Sektörden Pahalı', type: 'negative' };
+        case 'roe':
+          return val > avg 
+            ? { text: 'Sektör Üstü Kâr', type: 'positive' }
+            : { text: 'Sektör Altı Kâr', type: 'negative' };
+        case 'margin':
+          return val > avg 
+            ? { text: 'Sektör Üstü Marj', type: 'positive' }
+            : { text: 'Sektör Altı Marj', type: 'negative' };
+        case 'debt':
+          return val < avg 
+            ? { text: 'Daha Düşük Borç', type: 'positive' }
+            : { text: 'Daha Yüksek Borç', type: 'negative' };
+        default:
+          return { text: '-', type: 'neutral' };
+      }
+    };
+
+    const getRankStr = (rankObj: Record<string, { rank: number; total: number }> | undefined) => {
+      if (!rankObj || !rankObj[symbol]) return '-';
+      return `${rankObj[symbol].rank} / ${rankObj[symbol].total}`;
+    };
+
+    const checkBetter = (type: string) => {
+      return type === 'positive';
+    };
+
+    const items = [
+      {
+        key: 'fk' as const,
+        label: 'F/K Oranı',
+        val: kpis.fk,
+        avg: sectorAvg.fk,
+        valStr: kpis.fk ? kpis.fk.toFixed(1) + 'x' : '-',
+        avgStr: sectorAvg.fk ? sectorAvg.fk.toFixed(1) + 'x' : '-',
+        rankStr: getRankStr(rankings.fk),
+        verdict: getVerdict('fk', kpis.fk, sectorAvg.fk)
+      },
+      {
+        key: 'pddd' as const,
+        label: 'PD/DD Oranı',
+        val: kpis.pddd,
+        avg: sectorAvg.pddd,
+        valStr: kpis.pddd ? kpis.pddd.toFixed(2) + 'x' : '-',
+        avgStr: sectorAvg.pddd ? sectorAvg.pddd.toFixed(2) + 'x' : '-',
+        rankStr: getRankStr(rankings.pddd),
+        verdict: getVerdict('pddd', kpis.pddd, sectorAvg.pddd)
+      },
+      {
+        key: 'roe' as const,
+        label: 'Özsermaye Kârlılığı (ROE)',
+        val: kpis.roe,
+        avg: sectorAvg.roe,
+        valStr: kpis.roe ? kpis.roe.toFixed(1) + '%' : '-',
+        avgStr: sectorAvg.roe ? sectorAvg.roe.toFixed(1) + '%' : '-',
+        rankStr: getRankStr(rankings.roe),
+        verdict: getVerdict('roe', kpis.roe, sectorAvg.roe)
+      },
+      {
+        key: 'margin' as const,
+        label: 'Net Kâr Marjı',
+        val: kpis.netKarMarji,
+        avg: sectorAvg.netKarMarji,
+        valStr: kpis.netKarMarji ? kpis.netKarMarji.toFixed(1) + '%' : '-',
+        avgStr: sectorAvg.netKarMarji ? sectorAvg.netKarMarji.toFixed(1) + '%' : '-',
+        rankStr: getRankStr(rankings.margin),
+        verdict: getVerdict('margin', kpis.netKarMarji, sectorAvg.netKarMarji)
+      },
+      {
+        key: 'debt' as const,
+        label: 'Borç / Özkaynak',
+        val: kpis.borcOzkaynak,
+        avg: sectorAvg.borcOzkaynak,
+        valStr: kpis.borcOzkaynak ? kpis.borcOzkaynak.toFixed(2) + 'x' : '-',
+        avgStr: sectorAvg.borcOzkaynak ? sectorAvg.borcOzkaynak.toFixed(2) + 'x' : '-',
+        rankStr: getRankStr(rankings.debt),
+        verdict: getVerdict('debt', kpis.borcOzkaynak, sectorAvg.borcOzkaynak)
+      }
+    ];
+
+    const positiveCount = items.filter(item => checkBetter(item.verdict.type)).length;
+    const totalCount = items.filter(item => item.val !== null).length;
+
+    return {
+      items,
+      score: `${positiveCount} / ${totalCount}`,
+      positiveCount,
+      totalCount
+    };
+  }, [allComparisonData, rankings, symbol, kpis]);
+
+  // Normalized helper for Radar chart (clamps to [0, 1] range where higher is better)
   const radarData = useMemo(() => {
     if (!allComparisonData) return null;
     const { sectorAvg } = allComparisonData;
@@ -177,12 +344,10 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
       if (val === null || isNaN(val)) return 0.1; // fallback baseline
       switch (type) {
         case 'fk': {
-          // Inverse F/K: Earnings Yield. Higher yield is better.
           const yieldVal = 1 / val;
           return Math.max(0.1, Math.min(1, yieldVal / 0.2)); // scaled so F/K <= 5 is 1.0
         }
         case 'pddd': {
-          // Inverse PD/DD. Higher book yield is better.
           const bookYield = 1 / val;
           return Math.max(0.1, Math.min(1, bookYield)); // scaled so PD/DD <= 1 is 1.0
         }
@@ -191,7 +356,6 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
         case 'margin':
           return Math.max(0.1, Math.min(1, val / 30)); // scaled so margin >= 30% is 1.0
         case 'debt':
-          // 1 / (1 + Debt/Equity). Higher score = less debt relative to equity.
           return Math.max(0.1, Math.min(1, 1 / (1 + val))); 
       }
     };
@@ -214,32 +378,29 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
     };
   }, [allComparisonData, kpis]);
 
-  // Initialize and update ECharts
+  // --- Radar Chart Effect ---
   useEffect(() => {
-    if (!chartRef.current || loading || !allComparisonData) return;
+    if (!radarRef.current || loading || !allComparisonData || !radarData) return;
 
-    if (!chartInstance.current) {
-      chartInstance.current = echarts.init(chartRef.current);
+    if (!radarInstance.current) {
+      radarInstance.current = echarts.init(radarRef.current);
     }
 
     const isDark = theme === 'dark';
     const textColor = isDark ? '#8a8e96' : '#555555';
-    const gridColor = isDark ? '#1a1e2e' : '#eaeaea';
-    const tooltipBg = isDark ? '#1e222d' : '#ffffff';
-    const tooltipBorder = isDark ? '#2a2e3e' : '#d0d0d0';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+    const axisLabelColor = isDark ? '#a0a5b0' : '#444444';
+    const tooltipBg = isDark ? '#141824' : '#ffffff';
+    const tooltipBorder = isDark ? '#2e3546' : '#d0d0d0';
     const tooltipText = isDark ? '#e0e3eb' : '#1a1a2e';
 
-    let option: echarts.EChartsOption = {};
-
-    if (activeTab === 'radar' && radarData) {
-      option = {
+    const radarOption: echarts.EChartsOption = {
         tooltip: {
           trigger: 'item',
           backgroundColor: tooltipBg,
           borderColor: tooltipBorder,
           textStyle: { color: tooltipText, fontSize: 11 },
           formatter: (params: any) => {
-            // Label custom mapping to actual values
             const actualValues = params.name === symbol 
               ? [
                   kpis.fk ? kpis.fk.toFixed(1) + 'x' : '-',
@@ -258,9 +419,9 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
             return `<b>${params.name}</b><br/>
                     F/K Oranı: ${actualValues[0]}<br/>
                     PD/DD Oranı: ${actualValues[1]}<br/>
-                    ROE (%): ${actualValues[2]}<br/>
+                    Özsermaye Kârlılığı: ${actualValues[2]}<br/>
                     Net Kâr Marjı: ${actualValues[3]}<br/>
-                    Borç/Özkaynak: ${actualValues[4]}`;
+                    Borç / Özkaynak: ${actualValues[4]}`;
           }
         },
         legend: {
@@ -269,24 +430,27 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
           bottom: 0,
         },
         radar: {
+          center: ['50%', '48%'],
+          radius: '72%',
           indicator: [
-            { name: 'F/K Oranı (Ters)', max: 1 },
-            { name: 'PD/DD Oranı (Ters)', max: 1 },
-            { name: 'ROE (%)', max: 1 },
-            { name: 'Net Kâr Marjı (%)', max: 1 },
-            { name: 'Özkaynak Gücü (Ters Borç)', max: 1 },
+            { name: 'F/K Oranı', max: 1 },
+            { name: 'PD/DD Oranı', max: 1 },
+            { name: 'Özsermaye Kârlılığı', max: 1 },
+            { name: 'Net Kâr Marjı', max: 1 },
+            { name: 'Borçsuzluk Seviyesi', max: 1 },
           ],
           splitArea: {
             show: true,
             areaStyle: {
               color: isDark
-                ? ['rgba(20,24,36,0.3)', 'rgba(15,19,32,0.15)']
-                : ['rgba(245,245,245,0.6)', 'rgba(255,255,255,0.9)'],
+                ? ['rgba(255,255,255,0.015)', 'rgba(255,255,255,0.005)']
+                : ['rgba(0,0,0,0.01)', 'rgba(0,0,0,0.02)'],
             },
           },
           axisName: {
-            color: textColor,
-            fontSize: 9,
+            color: axisLabelColor,
+            fontSize: 10,
+            fontWeight: 600,
           },
           axisLine: {
             lineStyle: { color: gridColor },
@@ -304,120 +468,203 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
                 value: radarData.myScores,
                 name: symbol,
                 itemStyle: { color: '#2962ff' },
-                areaStyle: { color: 'rgba(41,98,255,0.15)' },
+                lineStyle: { width: 2.5 },
+                areaStyle: {
+                  color: new echarts.graphic.RadialGradient(0.5, 0.5, 0.5, [
+                    { offset: 0, color: 'rgba(41, 98, 255, 0.05)' },
+                    { offset: 1, color: 'rgba(41, 98, 255, 0.22)' }
+                  ])
+                },
               },
               {
                 value: radarData.avgScores,
                 name: 'Sektörel Ortalama',
                 itemStyle: { color: '#26a69a' },
-                areaStyle: { color: 'rgba(38,166,154,0.1)' },
+                lineStyle: { width: 1.5, type: 'dashed' },
+                areaStyle: {
+                  color: new echarts.graphic.RadialGradient(0.5, 0.5, 0.5, [
+                    { offset: 0, color: 'rgba(38, 166, 154, 0.02)' },
+                    { offset: 1, color: 'rgba(38, 166, 154, 0.12)' }
+                  ])
+                },
               },
             ],
           },
         ],
-      };
-    } else if (activeTab === 'bar') {
-      // Grouped peer columns comparison
-      const dataset = allComparisonData.list.map((item) => {
-        let val: number | null = 0;
-        if (activeMetric === 'fk') val = item.kpis.fk;
-        else if (activeMetric === 'pddd') val = item.kpis.pddd;
-        else if (activeMetric === 'roe') val = item.kpis.roe;
-        else if (activeMetric === 'margin') val = item.kpis.netKarMarji;
-        else if (activeMetric === 'debt') val = item.kpis.borcOzkaynak;
+    };
 
-        return {
-          name: item.symbol,
-          val: val || 0,
-          isSelf: item.symbol === symbol,
-        };
-      });
+    radarInstance.current.setOption(radarOption, true);
+    radarInstance.current.resize();
 
-      const metricLabel = {
-        fk: 'F/K Oranı (x)',
-        pddd: 'PD/DD Oranı (x)',
-        roe: 'ROE (%)',
-        margin: 'Net Kâr Marjı (%)',
-        debt: 'Borç / Özkaynak (x)',
-      }[activeMetric];
+    const handleResize = () => { radarInstance.current?.resize(); };
+    window.addEventListener('resize', handleResize);
+    return () => { window.removeEventListener('resize', handleResize); };
+  }, [loading, allComparisonData, radarData, theme, symbol, kpis]);
 
-      option = {
-        tooltip: {
-          trigger: 'axis',
-          backgroundColor: tooltipBg,
-          borderColor: tooltipBorder,
-          textStyle: { color: tooltipText, fontSize: 11 },
-          formatter: (params: any) => {
-            const p = params[0];
-            return `<b>${p.name}</b><br/>${metricLabel}: <b>${p.value.toFixed(2)}</b>`;
-          }
-        },
-        grid: { left: 50, right: 15, top: 30, bottom: 30 },
-        xAxis: {
-          type: 'category',
-          data: dataset.map((d) => d.name),
-          axisLabel: { color: textColor, fontSize: 9 },
-          axisLine: { lineStyle: { color: gridColor } },
-        },
-        yAxis: {
-          type: 'value',
-          axisLabel: { color: textColor, fontSize: 9 },
-          splitLine: { lineStyle: { color: gridColor } },
-        },
-        series: [
-          {
-            name: metricLabel,
-            type: 'bar',
-            data: dataset.map((d) => ({
-              value: d.val,
-              itemStyle: {
-                color: d.isSelf ? '#2962ff' : '#26a69a',
-                borderRadius: [4, 4, 0, 0]
-              },
-            })),
-            barMaxWidth: 30,
-            label: {
-              show: true,
-              position: 'top',
-              color: textColor,
-              fontSize: 9,
-              formatter: (params: any) => params.value.toFixed(1),
-            },
-          },
-        ],
-      };
+  // --- Bar Chart Effect ---
+  useEffect(() => {
+    if (!barRef.current || loading || !allComparisonData) return;
+
+    if (!barInstance.current) {
+      barInstance.current = echarts.init(barRef.current);
     }
 
-    chartInstance.current.setOption(option, true);
+    const isDark = theme === 'dark';
+    const textColor = isDark ? '#8a8e96' : '#555555';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+    const tooltipBg = isDark ? '#141824' : '#ffffff';
+    const tooltipBorder = isDark ? '#2e3546' : '#d0d0d0';
+    const tooltipText = isDark ? '#e0e3eb' : '#1a1a2e';
 
-    const handleResize = () => {
-      chartInstance.current?.resize();
+    const dataset = allComparisonData.list.map((item) => {
+      let val: number | null = 0;
+      if (activeMetric === 'fk') val = item.kpis.fk;
+      else if (activeMetric === 'pddd') val = item.kpis.pddd;
+      else if (activeMetric === 'roe') val = item.kpis.roe;
+      else if (activeMetric === 'margin') val = item.kpis.netKarMarji;
+      else if (activeMetric === 'debt') val = item.kpis.borcOzkaynak;
+      return { name: item.symbol, val: val || 0, isSelf: item.symbol === symbol };
+    });
+
+    const metricLabel = {
+      fk: 'F/K Oranı (x)',
+      pddd: 'PD/DD Oranı (x)',
+      roe: 'ROE (%)',
+      margin: 'Net Kâr Marjı (%)',
+      debt: 'Borç / Özkaynak (x)',
+    }[activeMetric];
+
+    const barOption: echarts.EChartsOption = {
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: tooltipBg,
+        borderColor: tooltipBorder,
+        textStyle: { color: tooltipText, fontSize: 11 },
+        formatter: (params: any) => {
+          const p = params[0];
+          return `<b>${p.name}</b><br/>${metricLabel}: <b>${p.value.toFixed(2)}</b>`;
+        }
+      },
+      grid: { left: 45, right: 15, top: 30, bottom: 35 },
+      xAxis: {
+        type: 'category',
+        data: dataset.map((d) => d.name),
+        axisLabel: { color: textColor, fontSize: 9 },
+        axisLine: { lineStyle: { color: gridColor } },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: textColor, fontSize: 9 },
+        splitLine: { lineStyle: { color: gridColor } },
+      },
+      series: [
+        {
+          name: metricLabel,
+          type: 'bar',
+          data: dataset.map((d) => ({
+            value: d.val,
+            itemStyle: { color: d.isSelf ? '#2962ff' : '#26a69a', borderRadius: [4, 4, 0, 0] },
+          })),
+          barMaxWidth: 26,
+          label: {
+            show: true,
+            position: 'top',
+            color: textColor,
+            fontSize: 9,
+            formatter: (params: any) => params.value.toFixed(1),
+          },
+        },
+      ],
     };
 
+    barInstance.current.setOption(barOption, true);
+    barInstance.current.resize();
+
+    const handleResize = () => { barInstance.current?.resize(); };
     window.addEventListener('resize', handleResize);
+    return () => { window.removeEventListener('resize', handleResize); };
+  }, [activeMetric, loading, allComparisonData, theme, symbol]);
 
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [activeTab, activeMetric, loading, allComparisonData, radarData, theme, symbol, kpis]);
+  // Resize chart when tab becomes visible
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeTab === 'radar') radarInstance.current?.resize();
+      else if (activeTab === 'bar') barInstance.current?.resize();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
 
-  // Clean up chart instance on unmount
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      if (chartInstance.current) {
-        chartInstance.current.dispose();
-        chartInstance.current = null;
-      }
+      radarInstance.current?.dispose();
+      barInstance.current?.dispose();
     };
   }, []);
 
+  // Sorted list for Peers Table
+  const sortedPeersList = useMemo(() => {
+    if (!allComparisonData) return [];
+    const { list } = allComparisonData;
+    const result = [...list];
+
+    result.sort((a, b) => {
+      let valA: any;
+      let valB: any;
+
+      if (sortField === 'symbol') {
+        valA = a.symbol;
+        valB = b.symbol;
+      } else {
+        const kpiKey = {
+          fk: 'fk',
+          pddd: 'pddd',
+          roe: 'roe',
+          margin: 'netKarMarji',
+          debt: 'borcOzkaynak'
+        }[sortField] as keyof FinancialKPIs;
+
+        valA = a.kpis[kpiKey];
+        valB = b.kpis[kpiKey];
+      }
+
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [allComparisonData, sortField, sortAsc]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) return '↕️';
+    return sortAsc ? '🔼' : '🔽';
+  };
+
   return (
     <div className="fa-chart-card sector-comparison-card" style={{ gridColumn: 'span 2' }}>
-      <div className="fa-chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px' }}>
-        <span>Sektörel Karşılaştırma Matrisi ({currentSector})</span>
+      <div className="fa-chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
+        <span style={{ fontSize: '13px', fontWeight: 700 }}>
+          Sektörel Karşılaştırma Matrisi <span className="sector-tag">{currentSector}</span>
+        </span>
         <div className="fa-toggle" style={{ margin: 0 }}>
           <button className={`fa-toggle-btn ${activeTab === 'radar' ? 'active' : ''}`} onClick={() => setActiveTab('radar')}>
-            🕸️ Radar Grafik
+            🕸️ Radar Analizi
+          </button>
+          <button className={`fa-toggle-btn ${activeTab === 'peers' ? 'active' : ''}`} onClick={() => setActiveTab('peers')}>
+            📋 Akran Listesi
           </button>
           <button className={`fa-toggle-btn ${activeTab === 'bar' ? 'active' : ''}`} onClick={() => setActiveTab('bar')}>
             📊 Akran Kıyaslama
@@ -425,43 +672,159 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
         </div>
       </div>
       
-      <div className="fa-chart-body" style={{ display: 'flex', flexDirection: 'column', height: '360px', padding: '12px' }}>
+      <div className="fa-chart-body sector-comparison-body" style={{ minHeight: '390px', padding: '14px' }}>
         {loading && (
-          <div className="fin-loading" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="fin-loading" style={{ height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="fa-loading-spinner" style={{ marginRight: '10px', width: '20px', height: '20px' }} />
             Akran verileri yükleniyor...
           </div>
         )}
         {error && <div className="fin-error">{error}</div>}
         
         {!loading && !error && peers.length === 0 && (
-          <div className="fin-empty" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="fin-empty" style={{ height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             Bu sektör için kıyaslama verisi bulunamadı.
           </div>
         )}
 
         {!loading && !error && peers.length > 0 && (
           <>
-            {activeTab === 'bar' && (
-              <div className="bar-metric-selector" style={{ display: 'flex', gap: '4px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            {/* Radar + Scorecard — always in DOM, hidden when not active */}
+            <div style={{ display: activeTab === 'radar' ? 'block' : 'none' }}>
+              {scorecard && (
+                <div className="sector-comparison-layout">
+                  {/* Left Side: Radar Chart */}
+                  <div className="sector-chart-pane">
+                    <div ref={radarRef} style={{ width: '100%', height: '320px' }} />
+                    <div className="radar-legend-info">
+                      💡 Grafikte dış çembere yakınlık olumlu performansı (düşük çarpanlar, yüksek kârlılık) temsil eder.
+                    </div>
+                  </div>
+
+                  {/* Right Side: Scorecard Dashboard */}
+                  <div className="sector-scorecard-pane">
+                    <div className="scorecard-header">
+                      <span className="scorecard-title">Sektörel Karne</span>
+                      <div className="scorecard-summary-score">
+                        Skor: <span className="score-val">{scorecard.score}</span>
+                        <div className="score-bar-bg">
+                          <div 
+                            className="score-bar-fill" 
+                            style={{ 
+                              width: `${(scorecard.positiveCount / scorecard.totalCount) * 100}%`,
+                              backgroundColor: scorecard.positiveCount >= 3 ? '#26a69a' : '#ff9800'
+                            }} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="scorecard-list">
+                      {scorecard.items.map((item) => (
+                        <div key={item.key} className="scorecard-item">
+                          <div className="scorecard-item-left">
+                            <span className="metric-name">{item.label}</span>
+                            <div className="metric-compare-values">
+                              <span>Hisse: <b>{item.valStr}</b></span>
+                              <span className="val-divider">|</span>
+                              <span>Ort: <b>{item.avgStr}</b></span>
+                            </div>
+                          </div>
+                          <div className="scorecard-item-right">
+                            <span className={`status-badge badge-${item.verdict.type}`}>
+                              {item.verdict.text}
+                            </span>
+                            <span className="rank-badge" title="Sektör Sıralaması">
+                              🥇 {item.rankStr}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {activeTab === 'peers' && (
+              <div className="sector-peers-table-container">
+                <table className="sector-peers-table">
+                  <thead>
+                    <tr>
+                      <th onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>
+                        Hisse {getSortIcon('symbol')}
+                      </th>
+                      <th onClick={() => handleSort('fk')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                        F/K Oranı {getSortIcon('fk')}
+                      </th>
+                      <th onClick={() => handleSort('pddd')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                        PD/DD Oranı {getSortIcon('pddd')}
+                      </th>
+                      <th onClick={() => handleSort('roe')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                        Özsermaye Kâr. (ROE) {getSortIcon('roe')}
+                      </th>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                        Net Kâr Marjı {getSortIcon('margin')}
+                      </th>
+                      <th onClick={() => handleSort('debt')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                        Borç / Özkaynak {getSortIcon('debt')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPeersList.map((item) => {
+                      const isSelf = item.symbol === symbol;
+                      return (
+                        <tr key={item.symbol} className={isSelf ? 'self-row' : ''}>
+                          <td style={{ fontWeight: 600 }}>
+                            {item.symbol} 
+                            {isSelf && <span className="self-tag">Seçili</span>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.kpis.fk ? item.kpis.fk.toFixed(1) + 'x' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.kpis.pddd ? item.kpis.pddd.toFixed(2) + 'x' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.kpis.roe !== null ? item.kpis.roe.toFixed(1) + '%' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.kpis.netKarMarji !== null ? item.kpis.netKarMarji.toFixed(1) + '%' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.kpis.borcOzkaynak !== null ? item.kpis.borcOzkaynak.toFixed(2) + 'x' : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Bar Chart — always in DOM, hidden when not active */}
+            <div style={{ display: activeTab === 'bar' ? 'flex' : 'none', flexDirection: 'column', height: '330px' }}>
+              <div className="bar-metric-selector" style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
                 {(['fk', 'pddd', 'roe', 'margin', 'debt'] as const).map((m) => (
                   <button
                     key={m}
                     className={`fin-tab ${activeMetric === m ? 'active' : ''}`}
                     onClick={() => setActiveMetric(m)}
-                    style={{ fontSize: '10px', padding: '3px 8px' }}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px' }}
                   >
                     {{
-                      fk: 'F/K',
-                      pddd: 'PD/DD',
-                      roe: 'ROE',
+                      fk: 'F/K Oranı',
+                      pddd: 'PD/DD Oranı',
+                      roe: 'Özsermaye Kârlılığı',
                       margin: 'Net Kâr Marjı',
-                      debt: 'Borç/Özkaynak',
+                      debt: 'Borç / Özkaynak',
                     }[m]}
                   </button>
                 ))}
               </div>
-            )}
-            <div ref={chartRef} style={{ flex: 1, width: '100%' }} />
+              <div ref={barRef} style={{ flex: 1, width: '100%', minHeight: '260px' }} />
+            </div>
           </>
         )}
       </div>

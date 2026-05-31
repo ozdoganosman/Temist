@@ -410,4 +410,18 @@
   border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
+/* Watchlist Drag & Drop Reordering Styles */
+.watchlist-item.dragging {
+  opacity: 0.4;
+  background: var(--highlight-bg);
+}
+
+.watchlist-item.drag-over-top {
+  border-top: 2px solid var(--accent, #2563eb);
+}
+
+.watchlist-item.drag-over-bottom {
+  border-bottom: 2px solid var(--accent, #2563eb);
+}
+
 

@@ -132,6 +132,25 @@ export function useWatchlist() {
     saveLists(lists.map(l => ({ ...l, symbols: l.symbols.filter(s => s !== symbol) })));
   }, [lists, saveLists]);
 
+  const moveSymbol = useCallback((fromListId: string, toListId: string, symbol: string, toIndex: number) => {
+    saveLists(lists.map(l => {
+      if (l.id === fromListId && l.id === toListId) {
+        const nextSymbols = l.symbols.filter(s => s !== symbol);
+        nextSymbols.splice(toIndex, 0, symbol);
+        return { ...l, symbols: nextSymbols };
+      }
+      if (l.id === fromListId) {
+        return { ...l, symbols: l.symbols.filter(s => s !== symbol) };
+      }
+      if (l.id === toListId) {
+        const nextSymbols = l.symbols.filter(s => s !== symbol);
+        nextSymbols.splice(toIndex, 0, symbol);
+        return { ...l, symbols: nextSymbols };
+      }
+      return l;
+    }));
+  }, [lists, saveLists]);
+
   return {
     lists,
     addList,
@@ -144,5 +163,6 @@ export function useWatchlist() {
     isWatched: isWatchedInAnyList,
     toggleSymbol,
     removeSymbol,
+    moveSymbol,
   };
 }
