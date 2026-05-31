@@ -5,6 +5,7 @@ import RevenueNetIncomeChart from './RevenueNetIncomeChart';
 import ProfitabilityMarginsChart from './ProfitabilityMarginsChart';
 import BalanceSheetChart from './BalanceSheetChart';
 import CashFlowChart from './CashFlowChart';
+import SectorComparison from './SectorComparison';
 import { fetchAllFinancials } from '../../api/borsaApi';
 import type { AllFinancialsResponse, SymbolInfo, OHLCVData } from '../../api/borsaApi';
 import {
@@ -211,6 +212,7 @@ export default function FinancialAnalysisView({ symbol, symbols, data, onSymbolC
                 <CashFlowChart data={cashFlowData} />
               </div>
             </div>
+            <SectorComparison symbol={symbol} symbols={symbols} kpis={kpis} />
           </div>
 
           {/* Financial Tables */}

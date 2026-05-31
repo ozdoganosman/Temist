@@ -20,3 +20,15 @@ export interface LegendData {
   time: string;
   prevClose: number;
 }
+
+export type ActiveDrawingTool = 'pointer' | 'trend' | 'horizontal' | 'fibonacci';
+
+export interface ChartDrawing {
+  id: string;
+  type: 'trend' | 'horizontal' | 'fibonacci';
+  startBarIdx: number;
+  startPrice: number;
+  endBarIdx?: number;
+  endPrice?: number;
+}
+

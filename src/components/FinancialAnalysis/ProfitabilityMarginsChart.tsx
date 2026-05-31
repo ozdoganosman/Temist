@@ -2,12 +2,14 @@ import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { MarginPoint } from '../../utils/computeFinancialMetrics';
 import { getChartTheme } from '../../utils/chartTheme';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface Props {
   data: MarginPoint[];
 }
 
 export default function ProfitabilityMarginsChart({ data }: Props) {
+  const { theme } = useTheme();
   const ref = useRef<HTMLDivElement>(null);
   const inst = useRef<echarts.ECharts | null>(null);
 
@@ -87,7 +89,7 @@ export default function ProfitabilityMarginsChart({ data }: Props) {
       },
       true,
     );
-  }, [data]);
+  }, [data, theme]);
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
 }

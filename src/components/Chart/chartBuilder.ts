@@ -1,6 +1,6 @@
 import * as echarts from 'echarts';
 import type { OHLCVData } from '../../api/borsaApi';
-import type { Interval } from './types';
+import type { Interval, ChartDrawing } from './types';
 import { isIntraday } from './types';
 import { formatPrice, formatVolume } from '../../utils/formatters';
 import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
@@ -486,6 +486,7 @@ export function buildOption(
   hoveredIndex: number | null = null,
   computed?: ComputedIndicators,
   panelHeights?: Record<string, number>,
+  drawings?: ChartDrawing[],
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -1429,6 +1430,113 @@ export function buildOption(
     );
   }
 
+  const drawingsSeries: echarts.SeriesOption[] = [];
+  if (drawings && drawings.length > 0) {
+    const isDark = tc.bg !== '#ffffff';
+    drawingsSeries.push({
+      name: 'Çizimler',
+      type: 'custom',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      z: 30,
+      data: drawings,
+      silent: true,
+      renderItem: (params: any, api: any) => {
+        const item = drawings[params.dataIndex];
+        if (!item) return null;
+
+        const startCoord = api.coord([item.startBarIdx, item.startPrice]);
+        if (!startCoord) return null;
+        const startX = startCoord[0];
+        const startY = startCoord[1];
+
+        if (item.type === 'trend' && item.endBarIdx !== undefined && item.endPrice !== undefined) {
+          const endCoord = api.coord([item.endBarIdx, item.endPrice]);
+          if (!endCoord) return null;
+          const endX = endCoord[0];
+          const endY = endCoord[1];
+          return {
+            type: 'line',
+            shape: {
+              x1: startX,
+              y1: startY,
+              x2: endX,
+              y2: endY
+            },
+            style: {
+              stroke: '#2962ff',
+              lineWidth: 2
+            }
+          };
+        } else if (item.type === 'horizontal') {
+          const gridWidth = params.coordSys.width;
+          const gridX = params.coordSys.x;
+          return {
+            type: 'line',
+            shape: {
+              x1: gridX,
+              y1: startY,
+              x2: gridX + gridWidth,
+              y2: startY
+            },
+            style: {
+              stroke: '#26a69a',
+              lineWidth: 2,
+              lineDash: [4, 4]
+            }
+          };
+        } else if (item.type === 'fibonacci' && item.endBarIdx !== undefined && item.endPrice !== undefined) {
+          const gridWidth = params.coordSys.width;
+          const gridX = params.coordSys.x;
+          
+          const priceDiff = item.endPrice - item.startPrice;
+          const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          
+          const children: any[] = [];
+          levels.forEach((lvl) => {
+            const lvlPrice = item.startPrice + priceDiff * lvl;
+            const lvlCoord = api.coord([item.startBarIdx, lvlPrice]);
+            if (!lvlCoord) return;
+            const y = lvlCoord[1];
+            
+            children.push({
+              type: 'line',
+              shape: {
+                x1: gridX,
+                y1: y,
+                x2: gridX + gridWidth,
+                y2: y
+              },
+              style: {
+                stroke: lvl === 0 || lvl === 1 ? '#ef5350' : '#8a8e96',
+                lineWidth: lvl === 0 || lvl === 1 ? 1.5 : 1,
+                lineDash: lvl === 0 || lvl === 1 ? undefined : [3, 3]
+              }
+            });
+
+            children.push({
+              type: 'text',
+              x: gridX + 5,
+              y: y - 10,
+              style: {
+                text: `Fib ${(lvl * 100).toFixed(1)}% (${lvlPrice.toFixed(2)})`,
+                fill: isDark ? '#8a8e96' : '#555555',
+                font: '9px sans-serif'
+              }
+            });
+          });
+          
+          return {
+            type: 'group',
+            children
+          };
+        }
+
+        return null;
+      }
+    });
+  }
+
   return {
     animation: false,
     backgroundColor: tc.bg,
@@ -1800,6 +1908,7 @@ export function buildOption(
       ...emaSeries,
       ...pearsonSeries,
       ...subSeries,
+      ...drawingsSeries,
     ],
   };
 }

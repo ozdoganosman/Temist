@@ -1,8 +1,4 @@
-/**
- * Application-level context for indicator visibility.
- * Reduces prop drilling through Toolbar and other components.
- */
-import { createContext, useContext, useReducer, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useState, useEffect, type ReactNode } from 'react';
 
 // ── State ──
 interface IndicatorState {
@@ -57,19 +53,39 @@ function indicatorReducer(state: IndicatorState, action: IndicatorAction): Indic
 // ── Context ──
 interface AppContextValue extends IndicatorState {
   toggle: (key: ToggleKey) => void;
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(indicatorReducer, initialState);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('temist_theme');
+    return saved === 'light' || saved === 'dark' ? saved : 'dark';
+  });
 
   const toggle = useCallback((key: ToggleKey) => {
     dispatch({ type: 'TOGGLE', key });
   }, []);
 
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('temist_theme', next);
+      document.documentElement.setAttribute('data-theme', next);
+      return next;
+    });
+  }, []);
+
+  // Update HTML attribute on mount and changes
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
   return (
-    <AppContext.Provider value={{ ...state, toggle }}>
+    <AppContext.Provider value={{ ...state, toggle, theme, toggleTheme }}>
       {children}
     </AppContext.Provider>
   );

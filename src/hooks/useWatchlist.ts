@@ -20,7 +20,9 @@ export function useWatchlist() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     // Migrate old watchlist if exists
@@ -32,7 +34,9 @@ export function useWatchlist() {
         if (Array.isArray(parsedOld) && parsedOld.length > 0) {
           initialSymbols = parsedOld;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     const defaultLists: WatchlistCategory[] = [

@@ -164,7 +164,7 @@ export const evaluateRule = (stock: ScannedStock, rule: RuleConfig, finData?: an
 
   // Scale Nizami Cedid values for display percentage parity (so typing 1 means 1%)
   let scaledLeft = leftVal;
-  let scaledRight = rightVal;
+  const scaledRight = rightVal;
   if (rule.rightType === 'number' && modId === 'nc' && ['value', 'macd', 'macdSignal', 'emacd'].includes(leftDef.field)) {
     scaledLeft = leftVal * 100;
   }

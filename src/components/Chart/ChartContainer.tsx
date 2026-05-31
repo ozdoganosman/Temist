@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as echarts from 'echarts';
-import type { Interval, LegendData } from './types';
+import type { Interval, LegendData, ActiveDrawingTool, ChartDrawing } from './types';
 import type { OHLCVData, AllFinancialsResponse } from '../../api/borsaApi';
 import { fetchAllFinancials } from '../../api/borsaApi';
 import type { BollingerOverlayResult } from '../../utils/regressionChannels';
@@ -30,6 +30,8 @@ import {
 } from '../../utils/indicators';
 import { computeAllPearsonChannels } from '../../utils/pearsonChannels';
 import { formatVolume } from '../../utils/formatters';
+import { useTheme } from '../../contexts/ThemeContext';
+import DrawingToolbar from './DrawingToolbar';
 import './ChartContainer.css';
 
 // Keep import reference for future use (signal scatter is already called inside buildOption)
@@ -120,6 +122,7 @@ export default function ChartContainer({
   logScale = false,
   showCommentary = true,
 }: ChartContainerProps) {
+  const { theme } = useTheme();
   const filtered = data;
   const containerRef = useRef<HTMLDivElement>(null);
   const measureOverlayRef = useRef<HTMLDivElement>(null);
@@ -500,6 +503,58 @@ export default function ChartContainer({
   useEffect(() => {
     onLegendUpdateRef.current = onLegendUpdate;
   }, [onLegendUpdate]);
+
+  const [activeTool, setActiveTool] = useState<ActiveDrawingTool>('pointer');
+  const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
+  const [activeDrawing, setActiveDrawing] = useState<ChartDrawing | null>(null);
+
+  // Sync state refs to prevent stale closure in ECharts event handlers
+  const activeToolRef = useRef(activeTool);
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+
+  const drawingsRef = useRef(drawings);
+  useEffect(() => {
+    drawingsRef.current = drawings;
+  }, [drawings]);
+
+  const activeDrawingRef = useRef(activeDrawing);
+  useEffect(() => {
+    activeDrawingRef.current = activeDrawing;
+  }, [activeDrawing]);
+
+  // Load drawings from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`temist_drawings_${symbol}`);
+      setDrawings(saved ? JSON.parse(saved) : []);
+    } catch (e) {
+      console.error(e);
+      setDrawings([]);
+    }
+    setActiveTool('pointer');
+    setActiveDrawing(null);
+  }, [symbol]);
+
+  const saveDrawings = (newDrawings: ChartDrawing[]) => {
+    setDrawings(newDrawings);
+    try {
+      localStorage.setItem(`temist_drawings_${symbol}`, JSON.stringify(newDrawings));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const clearDrawings = () => {
+    setDrawings([]);
+    setActiveDrawing(null);
+    try {
+      localStorage.removeItem(`temist_drawings_${symbol}`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const showRSIRef = useRef(showRSI);
   const showMACDRef = useRef(showMACD);
@@ -886,6 +941,43 @@ export default function ChartContainer({
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
+
+      if (activeToolRef.current !== 'pointer') {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
+
+        let startPrice = 0;
+        let startBarIdx = 0;
+        try {
+          startPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localY);
+          startBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localX));
+        } catch (err) {
+          console.error(err);
+          return;
+        }
+
+        const newDrawing: ChartDrawing = {
+          id: String(Date.now()),
+          type: activeToolRef.current === 'trend' ? 'trend' : activeToolRef.current === 'horizontal' ? 'horizontal' : 'fibonacci',
+          startBarIdx,
+          startPrice,
+          endBarIdx: startBarIdx,
+          endPrice: startPrice
+        };
+
+        if (newDrawing.type === 'horizontal') {
+          const updated = [...drawingsRef.current, newDrawing];
+          saveDrawings(updated);
+          setActiveTool('pointer');
+        } else {
+          setActiveDrawing(newDrawing);
+        }
+
+        e.preventDefault();
+        return;
+      }
+
       if (e.shiftKey) {
         // Shift key is held down: start measurement instead of panning
         isMeasuring = true;
@@ -928,6 +1020,29 @@ export default function ChartContainer({
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (activeDrawingRef.current) {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const localCurrentX = e.clientX - rect.left;
+        const localCurrentY = e.clientY - rect.top;
+
+        let currentPrice = 0;
+        let currentBarIdx = 0;
+        try {
+          currentPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localCurrentY);
+          currentBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localCurrentX));
+        } catch (err) {
+          return;
+        }
+
+        setActiveDrawing({
+          ...activeDrawingRef.current,
+          endBarIdx: currentBarIdx,
+          endPrice: currentPrice
+        });
+        e.preventDefault();
+        return;
+      }
+
       if (isMeasuring) {
         const rect = containerRef.current!.getBoundingClientRect();
         const currentX = e.clientX;
@@ -1028,6 +1143,13 @@ export default function ChartContainer({
     };
 
     const onMouseUp = () => {
+      if (activeDrawingRef.current) {
+        const updated = [...drawingsRef.current, activeDrawingRef.current];
+        saveDrawings(updated);
+        setActiveDrawing(null);
+        setActiveTool('pointer');
+        return;
+      }
       if (isMeasuring) {
         isMeasuring = false;
         if (measureOverlayRef.current) measureOverlayRef.current.style.display = 'none';
@@ -1127,9 +1249,45 @@ export default function ChartContainer({
     let lastTapTime = 0;
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
+        const touch = e.touches[0];
+
+        if (activeToolRef.current !== 'pointer') {
+          const rect = containerRef.current!.getBoundingClientRect();
+          const localX = touch.clientX - rect.left;
+          const localY = touch.clientY - rect.top;
+
+          let startPrice = 0;
+          let startBarIdx = 0;
+          try {
+            startPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localY);
+            startBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localX));
+          } catch (err) {
+            return;
+          }
+
+          const newDrawing: ChartDrawing = {
+            id: String(Date.now()),
+            type: activeToolRef.current === 'trend' ? 'trend' : activeToolRef.current === 'horizontal' ? 'horizontal' : 'fibonacci',
+            startBarIdx,
+            startPrice,
+            endBarIdx: startBarIdx,
+            endPrice: startPrice
+          };
+
+          if (newDrawing.type === 'horizontal') {
+            const updated = [...drawingsRef.current, newDrawing];
+            saveDrawings(updated);
+            setActiveTool('pointer');
+          } else {
+            setActiveDrawing(newDrawing);
+          }
+
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
         const now = Date.now();
         const tapDelay = now - lastTapTime;
-        const touch = e.touches[0];
 
         if (tapDelay < 300) {
           handleDblClickLike(touch.clientX, touch.clientY);
@@ -1148,6 +1306,30 @@ export default function ChartContainer({
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         const touch = e.touches[0];
+
+        if (activeDrawingRef.current) {
+          const rect = containerRef.current!.getBoundingClientRect();
+          const localCurrentX = touch.clientX - rect.left;
+          const localCurrentY = touch.clientY - rect.top;
+
+          let currentPrice = 0;
+          let currentBarIdx = 0;
+          try {
+            currentPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localCurrentY);
+            currentBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localCurrentX));
+          } catch (err) {
+            return;
+          }
+
+          setActiveDrawing({
+            ...activeDrawingRef.current,
+            endBarIdx: currentBarIdx,
+            endPrice: currentPrice
+          });
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
         handleDragMove(touch.clientX, touch.clientY, () => {
           if (e.cancelable) e.preventDefault();
         });
@@ -1155,6 +1337,13 @@ export default function ChartContainer({
     };
 
     const onTouchEnd = () => {
+      if (activeDrawingRef.current) {
+        const updated = [...drawingsRef.current, activeDrawingRef.current];
+        saveDrawings(updated);
+        setActiveDrawing(null);
+        setActiveTool('pointer');
+        return;
+      }
       handleDragEnd();
     };
 
@@ -1181,6 +1370,16 @@ export default function ChartContainer({
       }
     };
     window.addEventListener('keyup', handleKeyUp);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (activeDrawingRef.current) {
+          setActiveDrawing(null);
+          setActiveTool('pointer');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
 
     const handleVisibilityChange = () => {
       if (isMeasuring) {
@@ -1253,6 +1452,7 @@ export default function ChartContainer({
       el.removeEventListener('mousemove', onHoverMove);
       el.removeEventListener('dblclick', onDblClick);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       ro.disconnect();
       chart.dispose();
@@ -1366,7 +1566,8 @@ export default function ChartContainer({
       cmfResult,
       null,
       computed,
-      panelHeights
+      panelHeights,
+      activeDrawing ? [...drawings, activeDrawing] : drawings
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -1428,6 +1629,9 @@ export default function ChartContainer({
     subPanels,
     panelBottoms,
     panelHeights,
+    theme,
+    drawings,
+    activeDrawing,
   ]);
 
   useEffect(() => {
@@ -1437,7 +1641,12 @@ export default function ChartContainer({
   return (
     <div className="chart-outer-container" style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="chart-inner-container" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        <div ref={containerRef} className="chart-container" />
+        <DrawingToolbar
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          onClearAll={clearDrawings}
+        />
+        <div ref={containerRef} className={`chart-container ${activeTool !== 'pointer' ? 'drawing-active' : ''}`} />
         <div ref={measureOverlayRef} className="chart-measure-overlay" />
         <div ref={measureBadgeRef} className="chart-measure-badge" />
         {subPanels.map((panel, idx) => {

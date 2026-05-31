@@ -180,3 +180,74 @@
     font-size: 10px;
   }
 }
+
+/* Expanded Interactive Financial Row Styles */
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.row-expander {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform 0.25s ease;
+  width: 10px;
+  text-align: center;
+}
+
+.clickable-row:hover .row-expander {
+  color: var(--text-primary);
+}
+
+.expanded-row-chart {
+  background-color: var(--bg-secondary) !important;
+}
+
+.expanded-row-chart td {
+  padding: 0 !important;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.mini-chart-container {
+  padding: 16px 20px;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, rgba(20,24,36,0.2) 0%, rgba(10,14,23,0.5) 100%);
+}
+
+.mini-chart-wrapper {
+  margin: 0 auto;
+  max-width: 700px;
+}
+
+.chart-dot-label {
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.chart-dot-group:hover .chart-dot-label {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.chart-dot-group circle {
+  cursor: pointer;
+  transition: r 0.2s ease;
+}
+
+.chart-dot-group:hover circle {
+  r: 6;
+}
+
+.mini-chart-no-data {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
