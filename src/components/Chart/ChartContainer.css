@@ -358,3 +358,22 @@
   z-index: 10;
   user-select: none;
 }
+
+.chart-subpanel-resizer {
+  display: flex;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.chart-subpanel-resizer-line {
+  width: 100%;
+  height: 1px;
+  background-color: transparent;
+  transition: background-color 0.2s, height 0.2s;
+}
+
+.chart-subpanel-resizer:hover .chart-subpanel-resizer-line,
+.chart-subpanel-resizer.active .chart-subpanel-resizer-line {
+  background-color: rgba(59, 130, 246, 0.7);
+  height: 2px;
+}

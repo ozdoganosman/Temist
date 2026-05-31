@@ -485,6 +485,7 @@ export function buildOption(
   cmfResult: CMFResult | null = null,
   hoveredIndex: number | null = null,
   computed?: ComputedIndicators,
+  panelHeights?: Record<string, number>,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -561,7 +562,7 @@ export function buildOption(
   const volAxisMax = maxVol * 10;
 
   // --- Dynamic panel layout ---
-  const panelHeight = 120;
+  const panelHeightsMap = panelHeights || {};
   const subPanels: string[] = [];
   if (showRSI) subPanels.push('rsi');
   if (showMACD) subPanels.push('macd');
@@ -573,15 +574,19 @@ export function buildOption(
   const hasSubPanels = subPanels.length > 0;
 
   const panelBottoms: number[] = [];
+  let currentBottom = 40;
   for (let i = 0; i < subPanels.length; i++) {
-    panelBottoms.push(40 + i * (panelHeight + 10));
+    panelBottoms.push(currentBottom);
+    const h = panelHeightsMap[subPanels[i]] ?? 120;
+    currentBottom += h + 10;
   }
-  const mainBottom = hasSubPanels ? panelBottoms[panelBottoms.length - 1] + panelHeight + 20 : 50;
+  const mainBottom = hasSubPanels ? currentBottom + 10 : 50;
 
   const margins = getGridMargins();
   const grids: echarts.GridComponentOption[] = [{ left: margins.left, right: margins.right, top: 20, bottom: mainBottom, containLabel: false }];
   for (let i = 0; i < subPanels.length; i++) {
-    grids.push({ left: margins.left, right: margins.right, bottom: panelBottoms[i], height: panelHeight, containLabel: false });
+    const h = panelHeightsMap[subPanels[i]] ?? 120;
+    grids.push({ left: margins.left, right: margins.right, bottom: panelBottoms[i], height: h, containLabel: false });
   }
 
   const allXAxisIndices = Array.from({ length: 1 + subPanels.length }, (_, i) => i);

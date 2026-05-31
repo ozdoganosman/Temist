@@ -513,6 +513,60 @@ export default function ChartContainer({
   const subPanelsRef = useRef<string[]>([]);
   const panelBottomsRef = useRef<number[]>([]);
 
+  const [panelHeights, setPanelHeights] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('temist_panel_heights');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return {
+      rsi: 120,
+      macd: 120,
+      stochRsi: 120,
+      obv: 120,
+      williams_pasa: 120,
+      nizami_cedid: 120,
+      cmf: 120,
+    };
+  });
+
+  const [activeResizer, setActiveResizer] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('temist_panel_heights', JSON.stringify(panelHeights));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [panelHeights]);
+
+  const handleSplitterMouseDown = (panel: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setActiveResizer(panel);
+    const startY = e.clientY;
+    const startHeight = panelHeights[panel] ?? 120;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dy = startY - moveEvent.clientY;
+      const newHeight = Math.max(50, Math.min(400, startHeight + dy));
+      
+      setPanelHeights((prev) => ({
+        ...prev,
+        [panel]: newHeight,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setActiveResizer(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const { subPanels, panelBottoms } = useMemo(() => {
     const panels: string[] = [];
     if (showRSI) panels.push('rsi');
@@ -524,12 +578,14 @@ export default function ChartContainer({
     if (showCMF) panels.push('cmf');
 
     const bottoms: number[] = [];
-    const panelHeight = 120;
+    let currentBottom = 40;
     for (let i = 0; i < panels.length; i++) {
-      bottoms.push(40 + i * (panelHeight + 10));
+      bottoms.push(currentBottom);
+      const h = panelHeights[panels[i]] ?? 120;
+      currentBottom += h + 10;
     }
     return { subPanels: panels, panelBottoms: bottoms };
-  }, [showRSI, showMACD, showStochRSI, showOBV, showWilliamsPasa, showNizamiCedid, showCMF]);
+  }, [showRSI, showMACD, showStochRSI, showOBV, showWilliamsPasa, showNizamiCedid, showCMF, panelHeights]);
 
   useEffect(() => {
     subPanelsRef.current = subPanels;
@@ -1309,7 +1365,8 @@ export default function ChartContainer({
       showCMF,
       cmfResult,
       null,
-      computed
+      computed,
+      panelHeights
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -1370,6 +1427,7 @@ export default function ChartContainer({
     signalConfig,
     subPanels,
     panelBottoms,
+    panelHeights,
   ]);
 
   useEffect(() => {
@@ -1383,7 +1441,8 @@ export default function ChartContainer({
         <div ref={measureOverlayRef} className="chart-measure-overlay" />
         <div ref={measureBadgeRef} className="chart-measure-badge" />
         {subPanels.map((panel, idx) => {
-          const bottom = panelBottoms[idx] + 98;
+          const h = panelHeights[panel] ?? 120;
+          const bottom = panelBottoms[idx] + h - 22;
           const margins = getGridMargins();
           const left = margins.left + 5;
           return (
@@ -1397,6 +1456,28 @@ export default function ChartContainer({
                 bottom: `${bottom}px`,
               }}
             />
+          );
+        })}
+        {subPanels.map((panel, idx) => {
+          const h = panelHeights[panel] ?? 120;
+          const margins = getGridMargins();
+          return (
+            <div
+              key={`resizer-${panel}`}
+              className={`chart-subpanel-resizer ${activeResizer === panel ? 'active' : ''}`}
+              style={{
+                position: 'absolute',
+                left: `${margins.left}px`,
+                right: `${margins.right}px`,
+                bottom: `${panelBottoms[idx] + h - 4}px`,
+                height: '8px',
+                cursor: 'ns-resize',
+                zIndex: 15,
+              }}
+              onMouseDown={(e) => handleSplitterMouseDown(panel, e)}
+            >
+              <div className="chart-subpanel-resizer-line" />
+            </div>
           );
         })}
       </div>
