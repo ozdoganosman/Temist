@@ -1222,32 +1222,8 @@ export function buildOption(
     const macdPadded = [...padNull, ...ncResult.macd, ...padNull];
     const signalPadded = [...padNull, ...ncResult.signal, ...padNull];
     const emacdPadded = [...padNull, ...ncResult.emacd, ...padNull];
-    const deltaPadded = [...padNull, ...ncResult.delta, ...padNull];
-
-    // Colored delta histogram
-    const deltaColored = deltaPadded.map((val: number | null, idx: number) => {
-      if (val === null) return { value: null };
-      const prev = idx > 0 ? deltaPadded[idx - 1] : null;
-      let color: string;
-      if (val >= 0) {
-        color = prev !== null && prev < val ? '#26A69A' : '#B2DFDB';
-      } else {
-        color = prev !== null && prev < val ? '#FFCDD2' : '#FF5252';
-      }
-      return { value: val, itemStyle: { color } };
-    });
 
     subSeries.push(
-      {
-        name: 'Nizami Cedid Delta',
-        type: 'bar',
-        data: deltaColored,
-        xAxisIndex: ncGridIdx,
-        yAxisIndex: ncYIdx,
-        barWidth: '60%',
-        z: 1,
-        tooltip: { show: false },
-      },
       {
         name: 'NC MACD',
         type: 'line',
