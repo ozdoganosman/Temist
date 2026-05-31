@@ -30,5 +30,7 @@ export interface ChartDrawing {
   startPrice: number;
   endBarIdx?: number;
   endPrice?: number;
+  startDate?: string;
+  endDate?: string;
 }
 

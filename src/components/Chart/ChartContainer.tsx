@@ -731,6 +731,15 @@ export default function ChartContainer({
     let measureStartPrice = 0;
     let measureStartBarIdx = 0;
 
+    const getBarDate = (idx: number): string => {
+      const option = chart.getOption();
+      const xAxisData = option?.xAxis?.[0]?.data;
+      if (Array.isArray(xAxisData) && idx >= 0 && idx < xAxisData.length) {
+        return String(xAxisData[idx]);
+      }
+      return '';
+    };
+
     // Cursor change on hover over axis areas
     const setCursorOnAll = (cursor: string) => {
       if (!containerRef.current) return;
@@ -957,13 +966,17 @@ export default function ChartContainer({
           return;
         }
 
+        const startDate = getBarDate(startBarIdx);
+
         const newDrawing: ChartDrawing = {
           id: String(Date.now()),
           type: activeToolRef.current === 'trend' ? 'trend' : activeToolRef.current === 'horizontal' ? 'horizontal' : 'fibonacci',
           startBarIdx,
           startPrice,
           endBarIdx: startBarIdx,
-          endPrice: startPrice
+          endPrice: startPrice,
+          startDate,
+          endDate: startDate,
         };
 
         if (newDrawing.type === 'horizontal') {
@@ -1036,10 +1049,12 @@ export default function ChartContainer({
           return;
         }
 
+        const endDate = getBarDate(currentBarIdx);
         const updated = {
           ...activeDrawingRef.current,
           endBarIdx: currentBarIdx,
-          endPrice: currentPrice
+          endPrice: currentPrice,
+          endDate,
         };
         activeDrawingRef.current = updated;
         setActiveDrawing(updated);
@@ -1270,13 +1285,17 @@ export default function ChartContainer({
             return;
           }
 
+          const startDate = getBarDate(startBarIdx);
+
           const newDrawing: ChartDrawing = {
             id: String(Date.now()),
             type: activeToolRef.current === 'trend' ? 'trend' : activeToolRef.current === 'horizontal' ? 'horizontal' : 'fibonacci',
             startBarIdx,
             startPrice,
             endBarIdx: startBarIdx,
-            endPrice: startPrice
+            endPrice: startPrice,
+            startDate,
+            endDate: startDate,
           };
 
           if (newDrawing.type === 'horizontal') {
@@ -1328,10 +1347,12 @@ export default function ChartContainer({
             return;
           }
 
+          const endDate = getBarDate(currentBarIdx);
           const updated = {
             ...activeDrawingRef.current,
             endBarIdx: currentBarIdx,
-            endPrice: currentPrice
+            endPrice: currentPrice,
+            endDate,
           };
           activeDrawingRef.current = updated;
           setActiveDrawing(updated);

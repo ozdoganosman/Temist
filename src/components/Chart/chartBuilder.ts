@@ -1445,13 +1445,29 @@ export function buildOption(
         const item = drawings[params.dataIndex];
         if (!item) return null;
 
-        const startCoord = api.coord([item.startBarIdx, item.startPrice]);
+        let startIdx = item.startBarIdx;
+        if (item.startDate) {
+          const idx = dates.indexOf(item.startDate);
+          if (idx !== -1) {
+            startIdx = idx;
+          }
+        }
+
+        const startCoord = api.coord([startIdx, item.startPrice]);
         if (!startCoord) return null;
         const startX = startCoord[0];
         const startY = startCoord[1];
 
-        if (item.type === 'trend' && item.endBarIdx !== undefined && item.endPrice !== undefined) {
-          const endCoord = api.coord([item.endBarIdx, item.endPrice]);
+        let endIdx = item.endBarIdx !== undefined ? item.endBarIdx : startIdx;
+        if (item.endDate) {
+          const idx = dates.indexOf(item.endDate);
+          if (idx !== -1) {
+            endIdx = idx;
+          }
+        }
+
+        if (item.type === 'trend' && item.endPrice !== undefined) {
+          const endCoord = api.coord([endIdx, item.endPrice]);
           if (!endCoord) return null;
           const endX = endCoord[0];
           const endY = endCoord[1];
@@ -1485,7 +1501,7 @@ export function buildOption(
               lineDash: [4, 4]
             }
           };
-        } else if (item.type === 'fibonacci' && item.endBarIdx !== undefined && item.endPrice !== undefined) {
+        } else if (item.type === 'fibonacci' && item.endPrice !== undefined) {
           const gridWidth = params.coordSys.width;
           const gridX = params.coordSys.x;
           
@@ -1495,7 +1511,7 @@ export function buildOption(
           const children: any[] = [];
           levels.forEach((lvl) => {
             const lvlPrice = item.startPrice + priceDiff * lvl;
-            const lvlCoord = api.coord([item.startBarIdx, lvlPrice]);
+            const lvlCoord = api.coord([startIdx, lvlPrice]);
             if (!lvlCoord) return;
             const y = lvlCoord[1];
             
