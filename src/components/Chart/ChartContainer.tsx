@@ -975,6 +975,7 @@ export default function ChartContainer({
           setActiveDrawing(newDrawing);
         }
 
+        e.stopPropagation();
         e.preventDefault();
         return;
       }
@@ -1287,6 +1288,7 @@ export default function ChartContainer({
             setActiveDrawing(newDrawing);
           }
 
+          e.stopPropagation();
           if (e.cancelable) e.preventDefault();
           return;
         }
@@ -1356,8 +1358,8 @@ export default function ChartContainer({
     };
 
     const el = containerRef.current;
-    el.addEventListener('mousedown', onMouseDown);
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('mousedown', onMouseDown, true);
+    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
     el.addEventListener('mousemove', onHoverMove);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('touchmove', onTouchMove, { passive: false });
