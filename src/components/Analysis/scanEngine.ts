@@ -541,8 +541,8 @@ export async function runClientScan(
     onProgress(Math.min(i + BATCH_SIZE, total), total, batch[batch.length - 1]);
   }
 
-  // Sort by combined score descending (putting high-quality tech + fund stocks at the top)
-  results.sort((a, b) => b.combinedScore - a.combinedScore);
+  // Sort by overall score descending (putting high-quality tech stocks at the top)
+  results.sort((a, b) => b.overallScore - a.overallScore);
 
   cachedResults = results;
   cachedTimestamp = Date.now();

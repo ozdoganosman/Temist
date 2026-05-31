@@ -17,7 +17,7 @@ interface Props {
   onAddList?: (name: string, initialSymbols?: string[]) => void;
 }
 
-type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'combinedScore' | 'fundamentalScore' | 'piotroskiScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson';
+type SortKey = 'symbol' | 'close' | 'changePercent' | 'overallScore' | 'williamsPasa' | 'nizamiCedid' | 'emaRibbon' | 'pearson';
 
 export interface StockFinancialData {
   netProfit: number | null;
@@ -560,7 +560,7 @@ export default function MarketAnalysis({
   // Sorting for Smart Scanner
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     const saved = localStorage.getItem('temist_scanner_sort_key');
-    return saved ? (saved as SortKey) : 'combinedScore';
+    return saved && ['symbol', 'close', 'changePercent', 'overallScore', 'williamsPasa', 'nizamiCedid', 'emaRibbon', 'pearson'].includes(saved) ? (saved as SortKey) : 'overallScore';
   });
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
     const saved = localStorage.getItem('temist_scanner_sort_dir');
@@ -1242,7 +1242,7 @@ export default function MarketAnalysis({
         symbol: s.symbol,
         close: s.close,
         changePercent: s.changePercent,
-        combinedScore: s.combinedScore,
+        overallScore: s.overallScore,
         marketCap: fin ? fin.piyasaDegeri || 0 : 0
       } as HeatmapItem;
     });
@@ -1625,7 +1625,7 @@ export default function MarketAnalysis({
                         className="heatmap-color-dropdown"
                       >
                         <option value="change">Günlük Değişim (%)</option>
-                        <option value="score">Birleşik Puan</option>
+                        <option value="score">Teknik Skor</option>
                       </select>
                     </div>
                   )}
@@ -1669,15 +1669,7 @@ export default function MarketAnalysis({
                         <th onClick={() => handleSort('overallScore')} className="sortable text-center">
                           Teknik {sortKey === 'overallScore' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th onClick={() => handleSort('fundamentalScore')} className="sortable text-center">
-                          Temel Sağlık {sortKey === 'fundamentalScore' && (sortDirection === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th onClick={() => handleSort('piotroskiScore')} className="sortable text-center">
-                          Piotroski {sortKey === 'piotroskiScore' && (sortDirection === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th onClick={() => handleSort('combinedScore')} className="sortable score-th">
-                          Birleşik Puan {sortKey === 'combinedScore' && (sortDirection === 'asc' ? '▲' : '▼')}
-                        </th>
+
                         <th onClick={() => handleSort('williamsPasa')} className="sortable text-center">
                           WP {sortKey === 'williamsPasa' && (sortDirection === 'asc' ? '▲' : '▼')}
                         </th>
@@ -1729,9 +1721,9 @@ export default function MarketAnalysis({
                               📈
                             </button>
                             <span>{stock.symbol}</span>
-                            {stock.combinedScore >= 80 && (
-                              <span className="neon-pulse-dot" title="Yüksek Skor (Birleşik Güç)" />
-                            )}
+                             {stock.overallScore >= 70 && (
+                               <span className="neon-pulse-dot" title="Yüksek Skor (Teknik)" />
+                             )}
                           </td>
                           <td className="text-right font-mono">{stock.close.toFixed(2)}</td>
                           <td className={`text-right font-mono font-semibold ${stock.changePercent > 0 ? 'text-bullish' : stock.changePercent < 0 ? 'text-bearish' : 'text-neutral'}`}>
@@ -1739,26 +1731,6 @@ export default function MarketAnalysis({
                           </td>
                           <td className="text-center font-mono font-semibold" style={{ color: getScoreColor(stock.overallScore) }}>
                             {stock.overallScore}
-                          </td>
-                          <td className="text-center font-mono font-semibold" style={{ color: '#06b6d4' }}>
-                            {stock.fundamentalScore}/10
-                          </td>
-                          <td className="text-center font-mono font-semibold" style={{ color: '#f97316' }}>
-                            {stock.piotroskiScore}/9
-                          </td>
-                          <td className="score-td">
-                            <div className="overall-score-bar-wrap">
-                              <span className="score-number-label">{stock.combinedScore}</span>
-                              <div className="score-bar-bg">
-                                <div
-                                  className="score-bar-fill"
-                                  style={{
-                                    width: `${stock.combinedScore}%`,
-                                    backgroundColor: getScoreColor(stock.combinedScore),
-                                  }}
-                                />
-                              </div>
-                            </div>
                           </td>
                         {/* 5 Indicator status columns */}
                         <td className="text-center">
@@ -1790,7 +1762,7 @@ export default function MarketAnalysis({
                     ))}
                     {filteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={12} className="no-results-cell">
+                        <td colSpan={9} className="no-results-cell">
                           Arama kriterlerine uygun hisse bulunamadı.
                         </td>
                       </tr>
@@ -2093,7 +2065,7 @@ export default function MarketAnalysis({
                           className="heatmap-color-dropdown"
                         >
                           <option value="change">Günlük Değişim (%)</option>
-                          <option value="score">Birleşik Puan</option>
+                          <option value="score">Teknik Skor</option>
                         </select>
                       </div>
                     )}

@@ -6,7 +6,7 @@ export interface HeatmapItem {
   symbol: string;
   close: number;
   changePercent: number;
-  combinedScore: number;
+  overallScore: number;
   marketCap: number;
 }
 
@@ -51,7 +51,7 @@ export default function ScanHeatmap({ data, onSelectStock, colorBy }: Props) {
       const sizeValue = item.marketCap && item.marketCap > 0 ? item.marketCap : 200_000_000;
       
       // Determine what value we are coloring by (visualMap targets the first value in value array)
-      const colorValue = colorBy === 'change' ? item.changePercent : item.combinedScore;
+      const colorValue = colorBy === 'change' ? item.changePercent : item.overallScore;
 
       return {
         name: item.symbol,
@@ -60,13 +60,13 @@ export default function ScanHeatmap({ data, onSelectStock, colorBy }: Props) {
         symbol: item.symbol,
         close: item.close,
         changePercent: item.changePercent,
-        combinedScore: item.combinedScore,
+        overallScore: item.overallScore,
         marketCap: item.marketCap,
         label: {
           show: true,
           formatter: () => {
             const pct = item.changePercent >= 0 ? `+${item.changePercent.toFixed(1)}%` : `${item.changePercent.toFixed(1)}%`;
-            return `${item.symbol}\n${pct}\nSkor: ${item.combinedScore}`;
+            return `${item.symbol}\n${pct}\nTeknik: ${item.overallScore}`;
           },
           fontSize: 11,
           fontWeight: 'bold',
@@ -129,7 +129,7 @@ export default function ScanHeatmap({ data, onSelectStock, colorBy }: Props) {
             `<div style="font-weight: bold; margin-bottom: 5px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 3px;">${item.symbol}</div>`,
             `Fiyat: <span style="font-family: monospace; font-weight: bold; color: #fff;">${item.close.toFixed(2)} ₺</span><br/>`,
             `Günlük Değişim: <span style="font-family: monospace; font-weight: bold; color: ${item.changePercent >= 0 ? '#10b981' : '#ef4444'}">${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%</span><br/>`,
-            `Birleşik Skor: <span style="font-family: monospace; font-weight: bold; color: #60a5fa">${item.combinedScore} / 100</span><br/>`,
+            `Teknik Skor: <span style="font-family: monospace; font-weight: bold; color: #60a5fa">${item.overallScore} / 100</span><br/>`,
             `Piyasa Değeri: <span style="font-family: monospace; color: #9aa0b0;">${mcapText}</span>`,
             `<div style="font-size: 10px; color: #888; margin-top: 8px; font-style: italic;">Detaylar için tıklayın</div>`
           ].join('');
