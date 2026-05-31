@@ -1808,6 +1808,7 @@ export function buildTitlesOption(
   showCMF: boolean,
   sigConfig?: SignalConfig,
   themeColors?: ThemeColors,
+  computed?: ComputedIndicators,
 ): echarts.TitleComponentOption[] {
   if (!filtered || filtered.length === 0 || activeIdx < 0 || activeIdx >= filtered.length) {
     return [];
