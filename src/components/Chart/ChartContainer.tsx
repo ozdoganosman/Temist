@@ -24,6 +24,7 @@ import {
   computeWilliamsPasa,
   computeNizamiCedid,
   computeBollingerBands,
+  computeCMF,
   ema,
 } from '../../utils/indicators';
 import { computeAllPearsonChannels } from '../../utils/pearsonChannels';
@@ -88,6 +89,7 @@ interface ChartContainerProps {
   showNizamiCedid?: boolean;
   showEMAOverlay?: boolean;
   showPearsonChannels?: boolean;
+  showCMF?: boolean;
   showSignals?: boolean;
   signalConfig?: SignalConfig;
   logScale?: boolean;
@@ -110,6 +112,7 @@ export default function ChartContainer({
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
+  showCMF = false,
   showSignals = false,
   signalConfig,
   logScale = false,
@@ -434,6 +437,35 @@ export default function ChartContainer({
 
 
 
+    // 12. Chaikin Money Flow (CMF)
+    if (showCMF && n >= 20) {
+      const cmfRes = computeCMF(highs, lows, closes, volumes, 20);
+      const cmfVal = cmfRes.cmf[n - 1];
+      if (cmfVal !== null) {
+        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+        let comment = '';
+        if (cmfVal > 0.20) {
+          signal = 'bullish';
+          comment = `CMF değeri pozitif ve aşırı alım bölgesinde (${cmfVal.toFixed(2)}). Kurumsal para girişi ve birikim (accumulation) son derece güçlüdür, yükseliş trendini destekler.`;
+        } else if (cmfVal < -0.20) {
+          signal = 'bearish';
+          comment = `CMF değeri negatif ve aşırı satım bölgesinde (${cmfVal.toFixed(2)}). Kurumsal para çıkışı ve dağıtım (distribution) son derece baskındır, düşüş eğilimini teyit eder.`;
+        } else if (cmfVal > 0) {
+          signal = 'bullish';
+          comment = `CMF pozitif alanda dengeli seyrediyor (${cmfVal.toFixed(2)}). Hissede hafif bir para girişi ve alıcı iştahı mevcuttur.`;
+        } else {
+          signal = 'bearish';
+          comment = `CMF negatif alanda dengeli seyrediyor (${cmfVal.toFixed(2)}). Hissede hafif bir para çıkışı ve satıcı baskısı mevcuttur.`;
+        }
+        items.push({
+          title: 'Chaikin Money Flow (20)',
+          valueText: `Değer: ${cmfVal.toFixed(2)}`,
+          signal,
+          comment,
+        });
+      }
+    }
+
     return items;
   }, [
     filtered,
@@ -448,6 +480,7 @@ export default function ChartContainer({
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
+    showCMF,
   ]);
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
@@ -1117,6 +1150,12 @@ export default function ChartContainer({
 
     currentDataRef.current = [...filtered];
     const themeColors = getThemeColors();
+    const highs = filtered.map((d) => d.high);
+    const lows = filtered.map((d) => d.low);
+    const closes = filtered.map((d) => d.close);
+    const volumes = filtered.map((d) => d.volume);
+    const cmfResult = showCMF && filtered.length > 20 ? computeCMF(highs, lows, closes, volumes, 20) : null;
+
     const newOption = buildOption(
       filtered,
       symbol,
@@ -1137,6 +1176,8 @@ export default function ChartContainer({
       showNizamiCedid,
       showEMAOverlay,
       showPearsonChannels,
+      showCMF,
+      cmfResult,
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
@@ -1166,6 +1207,7 @@ export default function ChartContainer({
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
+    showCMF,
     logScale,
     signalEvents,
     signalConfig,

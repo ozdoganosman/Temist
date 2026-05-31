@@ -35,6 +35,8 @@ interface ToolbarProps {
   showEMAOverlay: boolean;
   onTogglePearsonChannels: () => void;
   showPearsonChannels: boolean;
+  onToggleCMF: () => void;
+  showCMF: boolean;
   logScale: boolean;
   onToggleLogScale: () => void;
   activeView: ActiveView;
@@ -94,6 +96,8 @@ export default function Toolbar({
   showEMAOverlay,
   onTogglePearsonChannels,
   showPearsonChannels,
+  onToggleCMF,
+  showCMF,
   logScale,
   onToggleLogScale,
   activeView,
@@ -236,6 +240,13 @@ export default function Toolbar({
             aria-label="Pearson Kanalları goster"
           >
             3ChanPers
+          </button>
+          <button
+            className={`toolbar-btn ${showCMF ? 'active' : ''}`}
+            onClick={onToggleCMF}
+            aria-label="CMF goster"
+          >
+            CMF
           </button>
 
           <button

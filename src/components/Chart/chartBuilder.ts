@@ -17,6 +17,7 @@ import {
 } from '../../utils/indicators';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { computeAllPearsonChannels, DEFAULT_PEARSON_CONFIGS } from '../../utils/pearsonChannels';
+import type { CMFResult } from '../../utils/indicators';
 
 
 interface SignalPoint {
@@ -447,6 +448,8 @@ export function buildOption(
   showNizamiCedid = false,
   showEMAOverlay = false,
   showPearsonChannels = false,
+  showCMF = false,
+  cmfResult: CMFResult | null = null,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -531,6 +534,7 @@ export function buildOption(
   if (showOBV) subPanels.push('obv');
   if (showWilliamsPasa) subPanels.push('williams_pasa');
   if (showNizamiCedid) subPanels.push('nizami_cedid');
+  if (showCMF) subPanels.push('cmf');
   const hasSubPanels = subPanels.length > 0;
 
   const panelBottoms: number[] = [];
@@ -770,6 +774,24 @@ export function buildOption(
           type: 'line',
           lineStyle: { color: tc.pointerLine, type: 'dashed' },
           label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatIndicatorVal(Number(p.value)) },
+        },
+      } as echarts.YAXisComponentOption);
+    } else if (subPanels[i] === 'cmf') {
+      yAxes.push({
+        id: 'y-axis-cmf',
+        gridIndex: gridIdx,
+        position: 'right',
+        min: -1,
+        max: 1,
+        splitNumber: 2,
+        splitLine: { lineStyle: { color: tc.border } },
+        axisLine: { lineStyle: { color: tc.border } },
+        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => v.toFixed(2) },
+        axisPointer: {
+          show: true,
+          type: 'line',
+          lineStyle: { color: tc.pointerLine, type: 'dashed' },
+          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => Number(p.value).toFixed(2) },
         },
       } as echarts.YAXisComponentOption);
     }
@@ -1265,6 +1287,47 @@ export function buildOption(
         z: 2,
         silent: true,
         tooltip: { show: false },
+      }
+    );
+  }
+
+  // Chaikin Money Flow (CMF) sub panel
+  if (showCMF && cmfResult && filtered.length > 20) {
+    const cmfGridIdx = subPanels.indexOf('cmf') + 1;
+    const cmfYIdx = panelYAxisIdx['cmf'];
+    const cmfPadded = [...padNull, ...cmfResult.cmf, ...padNull];
+
+    subSeries.push(
+      {
+        name: 'CMF (20)',
+        type: 'line',
+        data: cmfPadded,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#9c27b0', width: 2 },
+        z: 5,
+        tooltip: { show: false },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [
+            {
+              yAxis: 0.20,
+              lineStyle: { color: 'rgba(38,166,154,0.6)', type: 'dashed' as const, width: 1 },
+              label: { show: true, position: 'insideEndTop' as const, formatter: '0.20', fontSize: 9, color: '#26a69a' },
+            },
+            {
+              yAxis: -0.20,
+              lineStyle: { color: 'rgba(239,83,80,0.6)', type: 'dashed' as const, width: 1 },
+              label: { show: true, position: 'insideEndBottom' as const, formatter: '-0.20', fontSize: 9, color: '#ef5350' },
+            },
+            {
+              yAxis: 0,
+              lineStyle: { color: 'rgba(255,255,255,0.15)', type: 'solid' as const, width: 1 },
+            },
+          ],
+        },
       }
     );
   }

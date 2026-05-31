@@ -18,6 +18,7 @@ interface IndicatorState {
   showEMAOverlay: boolean;
   showPearsonChannels: boolean;
   showFinancials: boolean;
+  showCMF: boolean;
   logScale: boolean;
 }
 
@@ -38,6 +39,7 @@ const initialState: IndicatorState = {
   showEMAOverlay: false,
   showPearsonChannels: false,
   showFinancials: false,
+  showCMF: false,
   logScale: false,
 };
 

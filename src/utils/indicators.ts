@@ -655,3 +655,56 @@ export function computeNizamiCedid(
   };
 }
 
+// ── 12. Chaikin Money Flow (CMF) ──────────────────────────
+
+export interface CMFResult {
+  cmf: (number | null)[];
+}
+
+export function computeCMF(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  period = 20
+): CMFResult {
+  const n = closes.length;
+  const cmf: (number | null)[] = new Array(n).fill(null);
+
+  if (n < period) return { cmf };
+
+  // Money Flow Volume (MFV) and Volume arrays
+  const mfv: number[] = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const h = highs[i];
+    const l = lows[i];
+    const c = closes[i];
+    const v = volumes[i];
+
+    const range = h - l;
+    if (range === 0) {
+      mfv[i] = 0;
+    } else {
+      const multiplier = ((c - l) - (h - c)) / range;
+      mfv[i] = multiplier * v;
+    }
+  }
+
+  // Calculate rolling CMF values
+  for (let i = period - 1; i < n; i++) {
+    let sumMFV = 0;
+    let sumVol = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      sumMFV += mfv[j];
+      sumVol += volumes[j];
+    }
+    if (sumVol > 0) {
+      cmf[i] = sumMFV / sumVol;
+    } else {
+      cmf[i] = 0;
+    }
+  }
+
+  return { cmf };
+}
+

@@ -9,6 +9,7 @@ import {
   computeSuperTrend,
   computeIchimoku,
   computeOBV,
+  computeCMF,
 } from './indicators';
 
 describe('ema', () => {
@@ -143,5 +144,26 @@ describe('computeOBV', () => {
     const result = computeOBV(closes, volumes);
     expect(result.obv).toHaveLength(n);
     expect(result.obvEma).toHaveLength(n);
+  });
+});
+
+describe('computeCMF', () => {
+  it('returns CMF values within bounds [-1, 1]', () => {
+    const n = 50;
+    const highs = Array.from({ length: n }, () => 105);
+    const lows = Array.from({ length: n }, () => 95);
+    const closes = Array.from({ length: n }, () => 100);
+    const volumes = Array.from({ length: n }, () => 1000);
+    
+    const result = computeCMF(highs, lows, closes, volumes, 20);
+    expect(result.cmf).toHaveLength(n);
+    // Before period, should be null
+    for (let i = 0; i < 19; i++) {
+      expect(result.cmf[i]).toBeNull();
+    }
+    // After period, should be a number (specifically 0 since close 100 is exactly in middle of 95-105 range)
+    for (let i = 19; i < n; i++) {
+      expect(result.cmf[i]).toBe(0);
+    }
   });
 });

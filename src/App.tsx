@@ -64,6 +64,7 @@ function AppContent() {
     showNizamiCedid,
     showEMAOverlay,
     showPearsonChannels,
+    showCMF,
     showFinancials,
     logScale,
     finHeight,
@@ -93,6 +94,8 @@ function AppContent() {
       onToggleNizamiCedid,
       onToggleEMAOverlay,
       onTogglePearsonChannels,
+      onToggleCMF,
+      showCMF,
       onToggleBollinger,
       onToggleRSI,
       onToggleMACD,
@@ -179,6 +182,9 @@ function AppContent() {
                           <button className={`mqt-btn ${showPearsonChannels ? 'active' : ''}`} onClick={onTogglePearsonChannels}>
                             3ChanPers
                           </button>
+                          <button className={`mqt-btn ${showCMF ? 'active' : ''}`} onClick={onToggleCMF}>
+                            CMF
+                          </button>
                         </div>
                       </div>
                     )}
@@ -212,6 +218,7 @@ function AppContent() {
                             showNizamiCedid={showNizamiCedid}
                             showEMAOverlay={showEMAOverlay}
                             showPearsonChannels={showPearsonChannels}
+                            showCMF={showCMF}
                             logScale={logScale}
                           />
                         </ErrorBoundary>
@@ -353,6 +360,7 @@ function AppContent() {
                       showNizamiCedid={showNizamiCedid}
                       showEMAOverlay={showEMAOverlay}
                       showPearsonChannels={showPearsonChannels}
+                      showCMF={showCMF}
                       logScale={logScale}
                     />
                   </ErrorBoundary>

@@ -51,6 +51,7 @@ export function useToolbarProps() {
     showEMAOverlay,
     showPearsonChannels,
     showFinancials,
+    showCMF,
     logScale,
     toggle,
   } = useAppContext();
@@ -236,6 +237,8 @@ export function useToolbarProps() {
     showEMAOverlay,
     onTogglePearsonChannels: () => toggle('showPearsonChannels'),
     showPearsonChannels,
+    onToggleCMF: () => toggle('showCMF'),
+    showCMF,
     logScale,
     onToggleLogScale: () => toggle('logScale'),
     activeView,
@@ -283,6 +286,7 @@ export function useToolbarProps() {
     showEMAOverlay,
     showPearsonChannels,
     showFinancials,
+    showCMF,
     logScale,
 
     // panels
