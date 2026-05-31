@@ -14,6 +14,7 @@ import {
   computeWilliamsPasa,
   computeNizamiCedid,
   ema,
+  computeCMF,
 } from '../../utils/indicators';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { computeAllPearsonChannels, DEFAULT_PEARSON_CONFIGS } from '../../utils/pearsonChannels';
@@ -450,6 +451,7 @@ export function buildOption(
   showPearsonChannels = false,
   showCMF = false,
   cmfResult: CMFResult | null = null,
+  hoveredIndex: number | null = null,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -1361,12 +1363,33 @@ export function buildOption(
     );
   }
 
+  const activeIdx = (hoveredIndex !== null && hoveredIndex >= 0 && hoveredIndex < filtered.length)
+    ? hoveredIndex
+    : filtered.length - 1;
+
+  const titles = buildTitlesOption(
+    filtered,
+    subPanels,
+    panelBottoms,
+    activeIdx,
+    showRSI,
+    showMACD,
+    showStochRSI,
+    showOBV,
+    showWilliamsPasa,
+    showNizamiCedid,
+    showCMF,
+    sigConfig,
+    tc
+  );
+
   return {
     animation: false,
     backgroundColor: tc.bg,
     grid: grids,
     xAxis: xAxes as echarts.EChartsOption['xAxis'],
     yAxis: yAxes as echarts.EChartsOption['yAxis'],
+    title: titles,
     dataZoom: [
       {
         type: 'inside',
@@ -1720,4 +1743,190 @@ export function buildOption(
       ...subSeries,
     ],
   };
+}
+
+export function buildTitlesOption(
+  filtered: OHLCVData[],
+  subPanels: string[],
+  panelBottoms: number[],
+  activeIdx: number,
+  showRSI: boolean,
+  showMACD: boolean,
+  showStochRSI: boolean,
+  showOBV: boolean,
+  showWilliamsPasa: boolean,
+  showNizamiCedid: boolean,
+  showCMF: boolean,
+  sigConfig?: SignalConfig,
+  themeColors?: ThemeColors,
+): echarts.TitleComponentOption[] {
+  if (!filtered || filtered.length === 0 || activeIdx < 0 || activeIdx >= filtered.length) {
+    return [];
+  }
+
+  const tc = themeColors ?? getThemeColors();
+  const titles: echarts.TitleComponentOption[] = [];
+  const margins = getGridMargins();
+  const titleLeft = margins.left + 5;
+
+  const closes = filtered.map((d) => d.close);
+  const highs = filtered.map((d) => d.high);
+  const lows = filtered.map((d) => d.low);
+  const vols = filtered.map((d) => d.volume);
+
+  subPanels.forEach((panel, i) => {
+    const bottom = panelBottoms[i] + 98; // grid height is 120, grid top is bottom+120. Positioning text at bottom+98 leaves 22px height from the top.
+    let text = '';
+    let rich: Record<string, any> = {};
+
+    if (panel === 'rsi' && showRSI && filtered.length > 15) {
+      const period = sigConfig?.rsi?.period ?? 14;
+      const rsiResult = computeRSI(closes, period);
+      const val = rsiResult.rsi[activeIdx];
+      const valStr = val !== null && val !== undefined ? val.toFixed(2) : '--';
+      text = `{name|RSI(${period})}  {val|RSI: ${valStr}}`;
+      rich = {
+        name: { color: '#E040FB', fontWeight: 'bold', fontSize: 11 },
+        val: { color: tc.tooltipText, fontSize: 11 },
+      };
+    }
+    else if (panel === 'macd' && showMACD && filtered.length > 35) {
+      const fast = sigConfig?.macd?.fast ?? 12;
+      const slow = sigConfig?.macd?.slow ?? 26;
+      const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
+      const macdResult = computeMACD(closes, fast, slow, sigPeriod);
+      const macdVal = macdResult.macd[activeIdx];
+      const sigVal = macdResult.signal[activeIdx];
+      const histVal = macdResult.histogram[activeIdx];
+      
+      const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
+      const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
+      const hStr = histVal !== null && histVal !== undefined ? histVal.toFixed(2) : '--';
+
+      let histColor = tc.tooltipText;
+      if (histVal !== null && histVal !== undefined) {
+        histColor = histVal >= 0 ? '#26A69A' : '#FF5252';
+      }
+      
+      text = `{name|MACD(${fast}, ${slow}, ${sigPeriod})}  {macd|MACD: ${mStr}}  {sig|Sinyal: ${sStr}}  {hist|Hist: ${hStr}}`;
+      rich = {
+        name: { color: '#2196F3', fontWeight: 'bold', fontSize: 11 },
+        macd: { color: '#2196F3', fontSize: 11 },
+        sig: { color: '#FF6D00', fontSize: 11 },
+        hist: { color: histColor, fontSize: 11 },
+      };
+    }
+    else if (panel === 'stochRsi' && showStochRSI && filtered.length > 30) {
+      const rsiP = sigConfig?.stochRsi?.rsiPeriod ?? 14;
+      const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
+      const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
+      const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
+      const srResult = computeStochRSI(closes, rsiP, stochP, kS, dS);
+      const kVal = srResult.k[activeIdx];
+      const dVal = srResult.d[activeIdx];
+      
+      const kStr = kVal !== null && kVal !== undefined ? kVal.toFixed(2) : '--';
+      const dStr = dVal !== null && dVal !== undefined ? dVal.toFixed(2) : '--';
+      
+      text = `{name|Stoch RSI(${rsiP}, ${stochP}, ${kS}, ${dS})}  {k|%K: ${kStr}}  {d|%D: ${dStr}}`;
+      rich = {
+        name: { color: '#2196F3', fontWeight: 'bold', fontSize: 11 },
+        k: { color: '#2196F3', fontSize: 11 },
+        d: { color: '#FF6D00', fontSize: 11 },
+      };
+    }
+    else if (panel === 'obv' && showOBV && filtered.length > 20) {
+      const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
+      const obvResult = computeOBV(closes, vols, emaPeriod);
+      const obvVal = obvResult.obv[activeIdx];
+      const obvEmaVal = obvResult.obvEma[activeIdx];
+      
+      const oStr = obvVal !== null && obvVal !== undefined ? formatVolume(obvVal) : '--';
+      const oeStr = obvEmaVal !== null && obvEmaVal !== undefined ? formatVolume(obvEmaVal) : '--';
+      
+      text = `{name|OBV}  {obv|OBV: ${oStr}}  {ema|EMA(${emaPeriod}): ${oeStr}}`;
+      rich = {
+        name: { color: '#26a69a', fontWeight: 'bold', fontSize: 11 },
+        obv: { color: '#26a69a', fontSize: 11 },
+        ema: { color: '#FF6D00', fontSize: 11 },
+      };
+    }
+    else if (panel === 'williams_pasa' && showWilliamsPasa && filtered.length > 260) {
+      const length = sigConfig?.williamsPasa?.length ?? 260;
+      const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;
+      const wpResult = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+      const rVal = wpResult.percentR[activeIdx];
+      const emaVal = wpResult.emaWil[activeIdx];
+      
+      const rStr = rVal !== null && rVal !== undefined ? rVal.toFixed(2) : '--';
+      const eStr = emaVal !== null && emaVal !== undefined ? emaVal.toFixed(2) : '--';
+      
+      text = `{name|Williams Paşa %R(${length})}  {val|%R: ${rStr}}  {ema|EMA(${emaLen}): ${eStr}}`;
+      rich = {
+        name: { color: '#7E57C2', fontWeight: 'bold', fontSize: 11 },
+        val: { color: '#7E57C2', fontSize: 11 },
+        ema: { color: '#FF9800', fontSize: 11 },
+      };
+    }
+    else if (panel === 'nizami_cedid' && showNizamiCedid && filtered.length > 260) {
+      const fast = sigConfig?.nizamiCedid?.fast ?? 120;
+      const slow = sigConfig?.nizamiCedid?.slow ?? 260;
+      const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
+      const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
+      const ncResult = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
+      const macdVal = ncResult.macd[activeIdx];
+      const sigVal = ncResult.signal[activeIdx];
+      const emacdVal = ncResult.emacd[activeIdx];
+      
+      const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
+      const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
+      const eStr = emacdVal !== null && emacdVal !== undefined ? emacdVal.toFixed(2) : '--';
+      
+      text = `{name|Nizami Cedid}  {macd|MACD: ${mStr}}  {sig|Sinyal: ${sStr}}  {emacd|eMACD: ${eStr}}`;
+      rich = {
+        name: { color: '#2196F3', fontWeight: 'bold', fontSize: 11 },
+        macd: { color: '#2196F3', fontSize: 11 },
+        sig: { color: '#FF6D00', fontSize: 11 },
+        emacd: { color: '#4CAF50', fontSize: 11 },
+      };
+    }
+    else if (panel === 'cmf' && showCMF && filtered.length > 20) {
+      const cmfResult = computeCMF(highs, lows, closes, vols, 20);
+      const cmfVal = cmfResult.cmf[activeIdx];
+      const ema34Cmf = ema(cmfResult.cmf, 34);
+      const ema68Cmf = ema(cmfResult.cmf, 68);
+      
+      const cVal = cmfVal !== null && cmfVal !== undefined ? cmfVal.toFixed(4) : '--';
+      const e34Val = ema34Cmf[activeIdx];
+      const e68Val = ema68Cmf[activeIdx];
+      
+      const e34Str = e34Val !== null && e34Val !== undefined ? e34Val.toFixed(4) : '--';
+      const e68Str = e68Val !== null && e68Val !== undefined ? e68Val.toFixed(4) : '--';
+      
+      text = `{name|CMF(20)}  {cmf|CMF: ${cVal}}  {ema34|EMA(34): ${e34Str}}  {ema68|EMA(68): ${e68Str}}`;
+      rich = {
+        name: { color: '#9c27b0', fontWeight: 'bold', fontSize: 11 },
+        cmf: { color: '#9c27b0', fontSize: 11 },
+        ema34: { color: '#FF9800', fontSize: 11 },
+        ema68: { color: '#e91e63', fontSize: 11 },
+      };
+    }
+
+    if (text) {
+      titles.push({
+        text,
+        bottom,
+        left: titleLeft,
+        textStyle: {
+          color: tc.tooltipText,
+          fontSize: 11,
+          fontFamily: 'sans-serif',
+          fontWeight: 'normal',
+          rich,
+        },
+      });
+    }
+  });
+
+  return titles;
 }

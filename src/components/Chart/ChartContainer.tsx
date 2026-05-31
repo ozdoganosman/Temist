@@ -12,7 +12,7 @@ import {
 } from '../../utils/signalDetection';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
-import { buildOption, getThemeColors, getPaddingCount, getGridMargins } from './chartBuilder';
+import { buildOption, getThemeColors, getPaddingCount, getGridMargins, buildTitlesOption } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
   computeRSI,
@@ -498,6 +498,27 @@ export default function ChartContainer({
   useEffect(() => {
     onLegendUpdateRef.current = onLegendUpdate;
   }, [onLegendUpdate]);
+
+  const showRSIRef = useRef(showRSI);
+  const showMACDRef = useRef(showMACD);
+  const showStochRSIRef = useRef(showStochRSI);
+  const showOBVRef = useRef(showOBV);
+  const showWilliamsPasaRef = useRef(showWilliamsPasa);
+  const showNizamiCedidRef = useRef(showNizamiCedid);
+  const showCMFRef = useRef(showCMF);
+  const signalConfigRef = useRef(signalConfig);
+  const themeColorsRef = useRef<any>(null);
+  const subPanelsRef = useRef<string[]>([]);
+  const panelBottomsRef = useRef<number[]>([]);
+
+  useEffect(() => { showRSIRef.current = showRSI; }, [showRSI]);
+  useEffect(() => { showMACDRef.current = showMACD; }, [showMACD]);
+  useEffect(() => { showStochRSIRef.current = showStochRSI; }, [showStochRSI]);
+  useEffect(() => { showOBVRef.current = showOBV; }, [showOBV]);
+  useEffect(() => { showWilliamsPasaRef.current = showWilliamsPasa; }, [showWilliamsPasa]);
+  useEffect(() => { showNizamiCedidRef.current = showNizamiCedid; }, [showNizamiCedid]);
+  useEffect(() => { showCMFRef.current = showCMF; }, [showCMF]);
+  useEffect(() => { signalConfigRef.current = signalConfig; }, [signalConfig]);
 
   // Toggle visibility of individual Bollinger bands
   const [visibleBollinger, setVisibleBollinger] = useState<Set<string>>(
@@ -1101,9 +1122,69 @@ export default function ChartContainer({
             time: bar.date,
             prevClose,
           });
+
+          // Update sub-panel titles dynamically on hover
+          const updatedTitles = buildTitlesOption(
+            currentDataRef.current,
+            subPanelsRef.current,
+            panelBottomsRef.current,
+            realIdx,
+            showRSIRef.current,
+            showMACDRef.current,
+            showStochRSIRef.current,
+            showOBVRef.current,
+            showWilliamsPasaRef.current,
+            showNizamiCedidRef.current,
+            showCMFRef.current,
+            signalConfigRef.current,
+            themeColorsRef.current
+          );
+          chart.setOption({ title: updatedTitles });
         } else {
           onLegendUpdateRef.current(null);
+          // Fallback titles to last bar when hovered index is invalid
+          const lastIdx = currentDataRef.current.length - 1;
+          if (lastIdx >= 0) {
+            const updatedTitles = buildTitlesOption(
+              currentDataRef.current,
+              subPanelsRef.current,
+              panelBottomsRef.current,
+              lastIdx,
+              showRSIRef.current,
+              showMACDRef.current,
+              showStochRSIRef.current,
+              showOBVRef.current,
+              showWilliamsPasaRef.current,
+              showNizamiCedidRef.current,
+              showCMFRef.current,
+              signalConfigRef.current,
+              themeColorsRef.current
+            );
+            chart.setOption({ title: updatedTitles });
+          }
         }
+      }
+    });
+
+    chart.on('globalout', () => {
+      const lastIdx = currentDataRef.current.length - 1;
+      if (lastIdx >= 0) {
+        const updatedTitles = buildTitlesOption(
+          currentDataRef.current,
+          subPanelsRef.current,
+          panelBottomsRef.current,
+          lastIdx,
+          showRSIRef.current,
+          showMACDRef.current,
+          showStochRSIRef.current,
+          showOBVRef.current,
+          showWilliamsPasaRef.current,
+          showNizamiCedidRef.current,
+          showCMFRef.current,
+          signalConfigRef.current,
+          themeColorsRef.current
+        );
+        chart.setOption({ title: updatedTitles });
       }
     });
 
@@ -1150,6 +1231,26 @@ export default function ChartContainer({
 
     currentDataRef.current = [...filtered];
     const themeColors = getThemeColors();
+    themeColorsRef.current = themeColors;
+
+    const panelHeight = 120;
+    const subPanels: string[] = [];
+    if (showRSI) subPanels.push('rsi');
+    if (showMACD) subPanels.push('macd');
+    if (showStochRSI) subPanels.push('stochRsi');
+    if (showOBV) subPanels.push('obv');
+    if (showWilliamsPasa) subPanels.push('williams_pasa');
+    if (showNizamiCedid) subPanels.push('nizami_cedid');
+    if (showCMF) subPanels.push('cmf');
+
+    const panelBottoms: number[] = [];
+    for (let i = 0; i < subPanels.length; i++) {
+      panelBottoms.push(40 + i * (panelHeight + 10));
+    }
+
+    subPanelsRef.current = subPanels;
+    panelBottomsRef.current = panelBottoms;
+
     const highs = filtered.map((d) => d.high);
     const lows = filtered.map((d) => d.low);
     const closes = filtered.map((d) => d.close);
