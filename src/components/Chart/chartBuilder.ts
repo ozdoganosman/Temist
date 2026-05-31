@@ -21,6 +21,37 @@ import { computeAllPearsonChannels, DEFAULT_PEARSON_CONFIGS } from '../../utils/
 import type { CMFResult } from '../../utils/indicators';
 
 
+export interface ComputedIndicators {
+  rsi?: (number | null)[];
+  macd?: {
+    macd: (number | null)[];
+    signal: (number | null)[];
+    histogram: (number | null)[];
+  };
+  stochRsi?: {
+    k: (number | null)[];
+    d: (number | null)[];
+  };
+  obv?: {
+    obv: (number | null)[];
+    obvEma: (number | null)[];
+  };
+  williamsPasa?: {
+    percentR: (number | null)[];
+    emaWil: (number | null)[];
+  };
+  nizamiCedid?: {
+    macd: (number | null)[];
+    signal: (number | null)[];
+    emacd: (number | null)[];
+  };
+  cmf?: {
+    cmf: (number | null)[];
+    ema34: (number | null)[];
+    ema68: (number | null)[];
+  };
+}
+
 interface SignalPoint {
   value: [number, number];
 }
@@ -452,6 +483,7 @@ export function buildOption(
   showCMF = false,
   cmfResult: CMFResult | null = null,
   hoveredIndex: number | null = null,
+  computed?: ComputedIndicators,
 ): echarts.EChartsOption {
   const tc = theme ?? getThemeColors();
   const intradayMode = interval ? isIntraday(interval) : false;
@@ -933,7 +965,7 @@ export function buildOption(
     const rsiYIdx = panelYAxisIdx['rsi'];
     const closes = filtered.map((d) => d.close);
     const rsiPeriod = sigConfig?.rsi?.period ?? 14;
-    const rsiResult = computeRSI(closes, rsiPeriod);
+    const rsiResult = computed?.rsi ? { rsi: computed.rsi } : computeRSI(closes, rsiPeriod);
     const rsiPadded = [...padNull, ...rsiResult.rsi, ...padNull];
 
     const oversold = sigConfig?.rsi?.oversold ?? 30;
@@ -996,7 +1028,7 @@ export function buildOption(
     const fast = sigConfig?.macd?.fast ?? 12;
     const slow = sigConfig?.macd?.slow ?? 26;
     const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
-    const macdResult = computeMACD(closes, fast, slow, sigPeriod);
+    const macdResult = computed?.macd || computeMACD(closes, fast, slow, sigPeriod);
 
     const macdPadded = [...padNull, ...macdResult.macd, ...padNull];
     const signalPadded = [...padNull, ...macdResult.signal, ...padNull];
@@ -1072,7 +1104,7 @@ export function buildOption(
     const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
     const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
     const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
-    const srResult = computeStochRSI(closes, rsiP, stochP, kS, dS);
+    const srResult = computed?.stochRsi || computeStochRSI(closes, rsiP, stochP, kS, dS);
 
     const kPadded = [...padNull, ...srResult.k, ...padNull];
     const dPadded = [...padNull, ...srResult.d, ...padNull];
@@ -1125,7 +1157,7 @@ export function buildOption(
     const closes = filtered.map((d) => d.close);
     const vols = filtered.map((d) => d.volume);
     const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
-    const obvResult = computeOBV(closes, vols, emaPeriod);
+    const obvResult = computed?.obv || computeOBV(closes, vols, emaPeriod);
 
     const obvPadded = [...padNull, ...obvResult.obv, ...padNull];
     const obvEmaPadded = [...padNull, ...obvResult.obvEma, ...padNull];
@@ -1165,7 +1197,7 @@ export function buildOption(
     const closes = filtered.map((d) => d.close);
     const length = sigConfig?.williamsPasa?.length ?? 260;
     const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;
-    const wpResult = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+    const wpResult = computed?.williamsPasa || computeWilliamsPasa(highs, lows, closes, length, emaLen);
 
     const rPadded = [...padNull, ...wpResult.percentR, ...padNull];
     const emaPadded = [...padNull, ...wpResult.emaWil, ...padNull];
@@ -1229,7 +1261,7 @@ export function buildOption(
     const slow = sigConfig?.nizamiCedid?.slow ?? 260;
     const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
     const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
-    const ncResult = computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
+    const ncResult = computed?.nizamiCedid || computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
     console.log('Nizami Cedid debug:', {
       filteredLength: filtered.length,
       closesLength: closes.length,
@@ -1294,17 +1326,19 @@ export function buildOption(
   }
 
   // Chaikin Money Flow (CMF) sub panel
-  if (showCMF && cmfResult && filtered.length > 20) {
+  const cmfSrc = computed?.cmf || (cmfResult ? {
+    cmf: cmfResult.cmf,
+    ema34: ema(cmfResult.cmf, 34),
+    ema68: ema(cmfResult.cmf, 68)
+  } : null);
+
+  if (showCMF && cmfSrc && filtered.length > 20) {
     const cmfGridIdx = subPanels.indexOf('cmf') + 1;
     const cmfYIdx = panelYAxisIdx['cmf'];
-    const cmfPadded = [...padNull, ...cmfResult.cmf, ...padNull];
+    const cmfPadded = [...padNull, ...cmfSrc.cmf, ...padNull];
 
-    // Compute EMAs of CMF values
-    const ema34Cmf = ema(cmfResult.cmf, 34);
-    const ema68Cmf = ema(cmfResult.cmf, 68);
-
-    const ema34Padded = [...padNull, ...ema34Cmf, ...padNull];
-    const ema68Padded = [...padNull, ...ema68Cmf, ...padNull];
+    const ema34Padded = [...padNull, ...cmfSrc.ema34, ...padNull];
+    const ema68Padded = [...padNull, ...cmfSrc.ema68, ...padNull];
 
     subSeries.push(
       {
@@ -1380,7 +1414,8 @@ export function buildOption(
     showNizamiCedid,
     showCMF,
     sigConfig,
-    tc
+    tc,
+    computed
   );
 
   return {

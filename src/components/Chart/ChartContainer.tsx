@@ -13,6 +13,7 @@ import {
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
 import { buildOption, getThemeColors, getPaddingCount, getGridMargins, buildTitlesOption } from './chartBuilder';
+import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
   computeRSI,
@@ -519,6 +520,9 @@ export default function ChartContainer({
   useEffect(() => { showNizamiCedidRef.current = showNizamiCedid; }, [showNizamiCedid]);
   useEffect(() => { showCMFRef.current = showCMF; }, [showCMF]);
   useEffect(() => { signalConfigRef.current = signalConfig; }, [signalConfig]);
+
+  const computedIndicatorsRef = useRef<ComputedIndicators>({});
+  const lastHoveredIdxRef = useRef<number | null>(null);
 
   // Toggle visibility of individual Bollinger bands
   const [visibleBollinger, setVisibleBollinger] = useState<Set<string>>(
@@ -1109,6 +1113,12 @@ export default function ChartContainer({
       if (xInfo?.value != null && currentDataRef.current.length > 0) {
         const dataIndex = Math.round(xInfo.value);
         const realIdx = dataIndex - getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+        
+        if (realIdx === lastHoveredIdxRef.current) {
+          return;
+        }
+        lastHoveredIdxRef.current = realIdx;
+
         const bar = currentDataRef.current[realIdx];
         if (bar) {
           const prevClose = realIdx > 0 ? currentDataRef.current[realIdx - 1].close : bar.open;
@@ -1137,7 +1147,8 @@ export default function ChartContainer({
             showNizamiCedidRef.current,
             showCMFRef.current,
             signalConfigRef.current,
-            themeColorsRef.current
+            themeColorsRef.current,
+            computedIndicatorsRef.current
           );
           chart.setOption({ title: updatedTitles });
         } else {
@@ -1158,7 +1169,8 @@ export default function ChartContainer({
               showNizamiCedidRef.current,
               showCMFRef.current,
               signalConfigRef.current,
-              themeColorsRef.current
+              themeColorsRef.current,
+              computedIndicatorsRef.current
             );
             chart.setOption({ title: updatedTitles });
           }
@@ -1167,6 +1179,7 @@ export default function ChartContainer({
     });
 
     chart.on('globalout', () => {
+      lastHoveredIdxRef.current = null;
       const lastIdx = currentDataRef.current.length - 1;
       if (lastIdx >= 0) {
         const updatedTitles = buildTitlesOption(
@@ -1182,7 +1195,8 @@ export default function ChartContainer({
           showNizamiCedidRef.current,
           showCMFRef.current,
           signalConfigRef.current,
-          themeColorsRef.current
+          themeColorsRef.current,
+          computedIndicatorsRef.current
         );
         chart.setOption({ title: updatedTitles });
       }
@@ -1257,6 +1271,52 @@ export default function ChartContainer({
     const volumes = filtered.map((d) => d.volume);
     const cmfResult = showCMF && filtered.length > 20 ? computeCMF(highs, lows, closes, volumes, 20) : null;
 
+    const computed: ComputedIndicators = {};
+    if (showRSI && filtered.length > 15) {
+      const period = signalConfig?.rsi?.period ?? 14;
+      computed.rsi = computeRSI(closes, period).rsi;
+    }
+    if (showMACD && filtered.length > 35) {
+      const fast = signalConfig?.macd?.fast ?? 12;
+      const slow = signalConfig?.macd?.slow ?? 26;
+      const sigPeriod = signalConfig?.macd?.signalPeriod ?? 9;
+      computed.macd = computeMACD(closes, fast, slow, sigPeriod);
+    }
+    if (showStochRSI && filtered.length > 30) {
+      const rsiP = signalConfig?.stochRsi?.rsiPeriod ?? 14;
+      const stochP = signalConfig?.stochRsi?.stochPeriod ?? 14;
+      const kS = signalConfig?.stochRsi?.kSmooth ?? 3;
+      const dS = signalConfig?.stochRsi?.dSmooth ?? 3;
+      computed.stochRsi = computeStochRSI(closes, rsiP, stochP, kS, dS);
+    }
+    if (showOBV && filtered.length > 20) {
+      const emaPeriod = signalConfig?.obv?.emaPeriod ?? 20;
+      computed.obv = computeOBV(closes, volumes, emaPeriod);
+    }
+    if (showWilliamsPasa && filtered.length > 260) {
+      const length = signalConfig?.williamsPasa?.length ?? 260;
+      const emaLen = signalConfig?.williamsPasa?.emaLen ?? 260;
+      computed.williamsPasa = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+    }
+    if (showNizamiCedid && filtered.length > 260) {
+      const fast = signalConfig?.nizamiCedid?.fast ?? 120;
+      const slow = signalConfig?.nizamiCedid?.slow ?? 260;
+      const signalLen = signalConfig?.nizamiCedid?.signalLen ?? 50;
+      const vwmaLen = signalConfig?.nizamiCedid?.vwmaLen ?? 185;
+      computed.nizamiCedid = computeNizamiCedid(closes, volumes, fast, slow, signalLen, vwmaLen);
+    }
+    if (showCMF && cmfResult) {
+      const ema34Cmf = ema(cmfResult.cmf, 34);
+      const ema68Cmf = ema(cmfResult.cmf, 68);
+      computed.cmf = {
+        cmf: cmfResult.cmf,
+        ema34: ema34Cmf,
+        ema68: ema68Cmf
+      };
+    }
+    computedIndicatorsRef.current = computed;
+    lastHoveredIdxRef.current = null;
+
     const newOption = buildOption(
       filtered,
       symbol,
@@ -1279,6 +1339,8 @@ export default function ChartContainer({
       showPearsonChannels,
       showCMF,
       cmfResult,
+      null,
+      computed
     );
 
     if (savedZoom && Array.isArray(newOption.dataZoom)) {
