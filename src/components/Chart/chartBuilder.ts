@@ -47,9 +47,8 @@ export interface ComputedIndicators {
   };
   cmf?: {
     cmf: (number | null)[];
-    ema34: (number | null)[];
-    ema68: (number | null)[];
     ema130: (number | null)[];
+    ema260: (number | null)[];
   };
 }
 
@@ -249,7 +248,8 @@ function computeEMARegimeAreas(
     if (currentScore === null) {
       currentStartIdx = i;
       currentScore = score;
-    } else if (Math.abs(currentScore - score) > 0.03) {
+    // Merge threshold: increase from 0.03 to 0.10 to produce far fewer segments
+    } else if (Math.abs(currentScore - score) > 0.10) {
       const r = Math.round(239 - (239 - 76) * currentScore);
       const g = Math.round(83 + (175 - 83) * currentScore);
       const b = 80;
@@ -871,6 +871,8 @@ export function buildOption(
           silent: true,
           z: 4,
           connectNulls: false,
+          clip: true,
+          sampling: 'average',
           tooltip: { show: false },
         });
       }
@@ -911,6 +913,7 @@ export function buildOption(
           connectNulls: true,
           silent: true,
           z: 5,
+          clip: true,
           label: {
             show: true,
             formatter: `${res.p}`,
@@ -932,6 +935,7 @@ export function buildOption(
           connectNulls: true,
           silent: true,
           z: 5,
+          clip: true,
           tooltip: { show: false },
         });
 
@@ -950,6 +954,7 @@ export function buildOption(
             connectNulls: true,
             silent: true,
             z: 5,
+            clip: true,
             tooltip: { show: false },
           });
         }
@@ -981,6 +986,8 @@ export function buildOption(
       showSymbol: false,
       lineStyle: { color: '#E040FB', width: 2 },
       z: 5,
+      clip: true,
+      sampling: 'average',
       tooltip: { show: false },
       markLine: {
         silent: true,
@@ -1068,6 +1075,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#2196F3', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1079,6 +1088,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#FF6D00', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1120,6 +1131,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#2196F3', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
         markLine: {
           silent: true,
@@ -1146,6 +1159,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#FF6D00', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
     );
@@ -1173,6 +1188,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#26a69a', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1184,6 +1201,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#FF6D00', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
     );
@@ -1213,6 +1232,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#7E57C2', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
         markLine: {
           silent: true,
@@ -1247,6 +1268,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#FF9800', width: 1.5, type: 'dashed' },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       }
     );
@@ -1263,15 +1286,6 @@ export function buildOption(
     const signalLen = sigConfig?.nizamiCedid?.signalLen ?? 50;
     const vwmaLen = sigConfig?.nizamiCedid?.vwmaLen ?? 185;
     const ncResult = computed?.nizamiCedid || computeNizamiCedid(closes, vols, fast, slow, signalLen, vwmaLen);
-    console.log('Nizami Cedid debug:', {
-      filteredLength: filtered.length,
-      closesLength: closes.length,
-      macdLength: ncResult.macd.length,
-      lastCloses: closes.slice(-10),
-      lastMacd: ncResult.macd.slice(-10),
-      lastEmacd: ncResult.emacd.slice(-10),
-      lastDelta: ncResult.delta.slice(-10),
-    });
 
     const macdPadded = [...padNull, ...ncResult.macd, ...padNull];
     const signalPadded = [...padNull, ...ncResult.signal, ...padNull];
@@ -1287,6 +1301,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#2196F3', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1298,6 +1314,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#FF6D00', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1309,6 +1327,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#4CAF50', width: 4.5 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       },
       {
@@ -1329,9 +1349,8 @@ export function buildOption(
   // Chaikin Money Flow (CMF) sub panel
   const cmfSrc = computed?.cmf || (cmfResult ? {
     cmf: cmfResult.cmf,
-    ema34: ema(cmfResult.cmf, 34),
-    ema68: ema(cmfResult.cmf, 68),
-    ema130: ema(cmfResult.cmf, 130)
+    ema130: ema(cmfResult.cmf, 130),
+    ema260: ema(cmfResult.cmf, 260)
   } : null);
 
   if (showCMF && cmfSrc && filtered.length > 20) {
@@ -1339,9 +1358,8 @@ export function buildOption(
     const cmfYIdx = panelYAxisIdx['cmf'];
     const cmfPadded = [...padNull, ...cmfSrc.cmf, ...padNull];
 
-    const ema34Padded = [...padNull, ...cmfSrc.ema34, ...padNull];
-    const ema68Padded = [...padNull, ...cmfSrc.ema68, ...padNull];
     const ema130Padded = [...padNull, ...cmfSrc.ema130, ...padNull];
+    const ema260Padded = [...padNull, ...cmfSrc.ema260, ...padNull];
 
     subSeries.push(
       {
@@ -1353,6 +1371,8 @@ export function buildOption(
         showSymbol: false,
         lineStyle: { color: '#9c27b0', width: 2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
         markLine: {
           silent: true,
@@ -1376,36 +1396,29 @@ export function buildOption(
         },
       },
       {
-        name: 'CMF EMA 34',
-        type: 'line',
-        data: ema34Padded,
-        xAxisIndex: cmfGridIdx,
-        yAxisIndex: cmfYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#FF9800', width: 1.2 },
-        z: 5,
-        tooltip: { show: false },
-      },
-      {
-        name: 'CMF EMA 68',
-        type: 'line',
-        data: ema68Padded,
-        xAxisIndex: cmfGridIdx,
-        yAxisIndex: cmfYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#e91e63', width: 1.2 },
-        z: 5,
-        tooltip: { show: false },
-      },
-      {
         name: 'CMF EMA 130',
         type: 'line',
         data: ema130Padded,
         xAxisIndex: cmfGridIdx,
         yAxisIndex: cmfYIdx,
         showSymbol: false,
+        lineStyle: { color: '#FF9800', width: 1.2 },
+        z: 5,
+        clip: true,
+        sampling: 'average',
+        tooltip: { show: false },
+      },
+      {
+        name: 'CMF EMA 260',
+        type: 'line',
+        data: ema260Padded,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
         lineStyle: { color: '#00e5ff', width: 1.2 },
         z: 5,
+        clip: true,
+        sampling: 'average',
         tooltip: { show: false },
       }
     );
@@ -1492,6 +1505,8 @@ export function buildOption(
                   silent: true,
                   z: 5,
                   connectNulls: false,
+                  clip: true,
+                  sampling: 'average',
                   tooltip: { show: false },
                 },
                 {
@@ -1505,6 +1520,8 @@ export function buildOption(
                   silent: true,
                   z: 5,
                   connectNulls: false,
+                  clip: true,
+                  sampling: 'average',
                   tooltip: { show: false },
                 },
                 {
@@ -1518,6 +1535,8 @@ export function buildOption(
                   silent: true,
                   z: 5,
                   connectNulls: false,
+                  clip: true,
+                  sampling: 'average',
                   tooltip: { show: false },
                 },
               );
@@ -1567,6 +1586,7 @@ export function buildOption(
                 connectNulls: false,
                 z: 4,
                 silent: true,
+                clip: true,
                 tooltip: { show: false },
               },
               {
@@ -1580,6 +1600,7 @@ export function buildOption(
                 connectNulls: false,
                 z: 4,
                 silent: true,
+                clip: true,
                 tooltip: { show: false },
               },
             ] as echarts.SeriesOption[];
@@ -1625,6 +1646,8 @@ export function buildOption(
                 lineStyle: { color: '#2196F3', width: 1.5 },
                 z: 5,
                 silent: true,
+                clip: true,
+                sampling: 'average',
                 tooltip: { show: false },
               },
               {
@@ -1637,6 +1660,8 @@ export function buildOption(
                 lineStyle: { color: '#ef5350', width: 1.5 },
                 z: 5,
                 silent: true,
+                clip: true,
+                sampling: 'average',
                 tooltip: { show: false },
               },
               {
@@ -1652,6 +1677,7 @@ export function buildOption(
                 connectNulls: false,
                 z: 2,
                 silent: true,
+                clip: true,
                 tooltip: { show: false },
               },
               {
@@ -1667,6 +1693,7 @@ export function buildOption(
                 connectNulls: false,
                 z: 2,
                 silent: true,
+                clip: true,
                 tooltip: { show: false },
               },
             ] as echarts.SeriesOption[];
@@ -2141,33 +2168,28 @@ export function getPanelTitleHTML(
   
   if (panel === 'cmf' && filtered.length > 20) {
     let cmfVal: number | null = null;
-    let e34Val: number | null = null;
-    let e68Val: number | null = null;
     let e130Val: number | null = null;
+    let e260Val: number | null = null;
     
     if (computed.cmf) {
       cmfVal = computed.cmf.cmf[activeIdx];
-      e34Val = computed.cmf.ema34[activeIdx];
-      e68Val = computed.cmf.ema68[activeIdx];
       e130Val = computed.cmf.ema130[activeIdx];
+      e260Val = computed.cmf.ema260[activeIdx];
     } else {
       const cmfResult = computeCMF(highs, lows, closes, vols, 20);
       cmfVal = cmfResult.cmf[activeIdx];
-      e34Val = ema(cmfResult.cmf, 34)[activeIdx];
-      e68Val = ema(cmfResult.cmf, 68)[activeIdx];
       e130Val = ema(cmfResult.cmf, 130)[activeIdx];
+      e260Val = ema(cmfResult.cmf, 260)[activeIdx];
     }
     
     const cVal = cmfVal !== null && cmfVal !== undefined ? cmfVal.toFixed(4) : '--';
-    const e34Str = e34Val !== null && e34Val !== undefined ? e34Val.toFixed(4) : '--';
-    const e68Str = e68Val !== null && e68Val !== undefined ? e68Val.toFixed(4) : '--';
     const e130Str = e130Val !== null && e130Val !== undefined ? e130Val.toFixed(4) : '--';
+    const e260Str = e260Val !== null && e260Val !== undefined ? e260Val.toFixed(4) : '--';
     
     return `<span style="color: #9c27b0; font-weight: bold; margin-right: 8px;">CMF(20)</span>` +
            `<span style="color: #9c27b0; margin-right: 8px;">CMF: ${cVal}</span>` +
-           `<span style="color: #FF9800; margin-right: 8px;">EMA(34): ${e34Str}</span>` +
-           `<span style="color: #e91e63; margin-right: 8px;">EMA(68): ${e68Str}</span>` +
-           `<span style="color: #00e5ff;">EMA(130): ${e130Str}</span>`;
+           `<span style="color: #FF9800; margin-right: 8px;">EMA(130): ${e130Str}</span>` +
+           `<span style="color: #00e5ff;">EMA(260): ${e260Str}</span>`;
   }
 
   return '';

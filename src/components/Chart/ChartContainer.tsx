@@ -608,6 +608,10 @@ export default function ChartContainer({
     let priceAxisStartYMax = 0;
     let activeYAxisIdx = 0;
     let activeYAxisId = 'y-axis-price';
+    // RAF throttle for drag moves
+    let dragRafId: number | null = null;
+    // Shared drag flag — read by axisPointer handler to suppress legend updates during pan
+    const isDraggingRef = { current: false };
 
     // Shift + Drag measurement variables
     let isMeasuring = false;
@@ -671,6 +675,7 @@ export default function ChartContainer({
       }
 
       if (clientX < gridLeft || clientX > gridRight) {
+        isDraggingRef.current = true;
         dragOnPriceAxis = true;
         priceAxisDragStartY = clientY;
 
@@ -714,6 +719,7 @@ export default function ChartContainer({
         return;
       }
 
+      isDraggingRef.current = true;
       dragging = true;
       dragStartX = clientX;
       dragStartY = clientY;
@@ -756,25 +762,23 @@ export default function ChartContainer({
         if (preventDefault) preventDefault();
         const dy = clientY - priceAxisDragStartY;
         const rect = containerRef.current.getBoundingClientRect();
-        
-        const opt = chart.getOption() as any;
-        const yAxes = opt.yAxis || [];
-        const gIdx = yAxes[activeYAxisIdx]?.gridIndex ?? 0;
-        const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
+        const capturedAxisId = activeYAxisId;
+        const capturedAxisIdx = activeYAxisIdx;
+        const capturedYMin = priceAxisStartYMin;
+        const capturedYMax = priceAxisStartYMax;
 
-        const yRange = priceAxisStartYMax - priceAxisStartYMin;
-        const mid = (priceAxisStartYMin + priceAxisStartYMax) / 2;
-        const scaleFactor = 1 + (dy / gridHeight) * 2;
-        const newHalf = (yRange / 2) * Math.max(0.1, scaleFactor);
-        
-        chart.setOption({
-          yAxis: [
-            {
-              id: activeYAxisId,
-              min: mid - newHalf,
-              max: mid + newHalf,
-            },
-          ],
+        if (dragRafId !== null) return; // skip — frame already queued
+        dragRafId = requestAnimationFrame(() => {
+          dragRafId = null;
+          const opt = chart.getOption() as any;
+          const yAxes = opt.yAxis || [];
+          const gIdx = yAxes[capturedAxisIdx]?.gridIndex ?? 0;
+          const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
+          const yRange = capturedYMax - capturedYMin;
+          const mid = (capturedYMin + capturedYMax) / 2;
+          const scaleFactor = 1 + (dy / gridHeight) * 2;
+          const newHalf = (yRange / 2) * Math.max(0.1, scaleFactor);
+          chart.setOption({ yAxis: [{ id: capturedAxisId, min: mid - newHalf, max: mid + newHalf }] });
         });
         return;
       }
@@ -790,38 +794,38 @@ export default function ChartContainer({
       const newStart = startZoomStart + shift;
       const newEnd = startZoomEnd + shift;
 
-      chart.dispatchAction({
-        type: 'dataZoom',
-        dataZoomIndex: 0,
-        start: newStart,
-        end: newEnd,
+      // Capture for RAF closure
+      const capturedAxisId = activeYAxisId;
+      const capturedAxisIdx = activeYAxisIdx;
+      const dy = clientY - dragStartY;
+      const capturedYMin = startYMin;
+      const capturedYMax = startYMax;
+
+      // Always throttle to one RAF frame — skip extra mousemove events
+      if (dragRafId !== null) return;
+      dragRafId = requestAnimationFrame(() => {
+        dragRafId = null;
+        chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 0, start: newStart, end: newEnd });
+        if (capturedAxisId && capturedAxisId !== '') {
+          const opt = chart.getOption() as any;
+          const yAxes = opt.yAxis || [];
+          const gIdx = yAxes[capturedAxisIdx]?.gridIndex ?? 0;
+          const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
+          const yRange = capturedYMax - capturedYMin;
+          const yShift = (dy / gridHeight) * yRange;
+          chart.setOption({ yAxis: [{ id: capturedAxisId, min: capturedYMin + yShift, max: capturedYMax + yShift }] });
+        }
       });
-
-      if (activeYAxisId && activeYAxisId !== '') {
-        const dy = clientY - dragStartY;
-        const opt = chart.getOption() as any;
-        const yAxes = opt.yAxis || [];
-        const gIdx = yAxes[activeYAxisIdx]?.gridIndex ?? 0;
-        const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
-
-        const yRange = startYMax - startYMin;
-        const yShift = (dy / gridHeight) * yRange;
-
-        chart.setOption({
-          yAxis: [
-            {
-              id: activeYAxisId,
-              min: startYMin + yShift,
-              max: startYMax + yShift,
-            },
-          ],
-        });
-      }
     };
 
     const handleDragEnd = () => {
       dragging = false;
       dragOnPriceAxis = false;
+      isDraggingRef.current = false;
+      if (dragRafId !== null) {
+        cancelAnimationFrame(dragRafId);
+        dragRafId = null;
+      }
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -1133,6 +1137,9 @@ export default function ChartContainer({
 
     // Crosshair tracking for legend
     chart.on('updateAxisPointer', (params: unknown) => {
+      // Skip all updates during pan/drag to avoid React re-renders
+      if (isDraggingRef.current) return;
+
       const p = params as { axesInfo?: Array<{ axisDim?: string; value?: number }> };
       const xInfo = p.axesInfo?.find((a) => a.axisDim === 'x');
       if (xInfo?.value != null && currentDataRef.current.length > 0) {
@@ -1268,14 +1275,12 @@ export default function ChartContainer({
       computed.nizamiCedid = computeNizamiCedid(closes, volumes, fast, slow, signalLen, vwmaLen);
     }
     if (showCMF && cmfResult) {
-      const ema34Cmf = ema(cmfResult.cmf, 34);
-      const ema68Cmf = ema(cmfResult.cmf, 68);
       const ema130Cmf = ema(cmfResult.cmf, 130);
+      const ema260Cmf = ema(cmfResult.cmf, 260);
       computed.cmf = {
         cmf: cmfResult.cmf,
-        ema34: ema34Cmf,
-        ema68: ema68Cmf,
-        ema130: ema130Cmf
+        ema130: ema130Cmf,
+        ema260: ema260Cmf
       };
     }
     computedIndicatorsRef.current = computed;
