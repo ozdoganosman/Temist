@@ -1562,6 +1562,7 @@ export function buildOption(
     dataZoom: [
       {
         type: 'inside',
+        filterMode: 'none',
         xAxisIndex: allXAxisIndices,
         start: zoomStart,
         end: zoomEnd,
@@ -1572,6 +1573,7 @@ export function buildOption(
       },
       {
         type: 'slider',
+        filterMode: 'none',
         xAxisIndex: allXAxisIndices,
         start: zoomStart,
         end: zoomEnd,
