@@ -1871,7 +1871,13 @@ export default function ChartContainer({
       window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       ro.disconnect();
-      chart.dispose();
+      try {
+        chart.dispose();
+      } catch (e) {
+        // ECharts might already be in a bad state (e.g. from invalid markLine data).
+        // Swallow the dispose error to prevent crashing the React tree on unmount.
+        console.warn('[ChartContainer] dispose error (safe to ignore):', e);
+      }
       chartInstanceRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

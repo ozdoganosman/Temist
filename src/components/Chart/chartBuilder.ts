@@ -548,6 +548,8 @@ export function buildOption(
   if (drawings && drawings.length > 0) {
     drawings.forEach((d) => {
       if (d.type === 'horizontal') {
+        // Guard: skip if startPrice is not a valid finite number
+        if (d.startPrice == null || !isFinite(d.startPrice)) return;
         const isSelected = d.id === selectedDrawingId;
         const color = isSelected ? '#ff9800' : '#26a69a';
         const width = isSelected ? 3 : 2;
@@ -568,6 +570,7 @@ export function buildOption(
       }
     });
   }
+
 
   const mainSeries: echarts.SeriesOption = {
     name: symbol,
