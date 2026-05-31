@@ -4,6 +4,11 @@ const DB_NAME = 'borsa_history';
 const DB_VERSION = 1;
 const STORE_NAME = 'ohlcv';
 
+// TTL: how long cached data is considered fresh
+const MEMORY_TTL_MS = 2 * 60 * 1000;   // 2 min for in-memory (same session)
+const DB_TTL_MS     = 5 * 60 * 1000;   // 5 min for IndexedDB (persisted)
+
+
 interface CacheEntry {
   key: string;
   data: OHLCVData[];
@@ -39,15 +44,20 @@ export async function getFromDB(symbol: string, interval: string): Promise<Cache
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const key = `${symbol}_${interval}`;
-    return new Promise((resolve) => {
+    const entry = await new Promise<CacheEntry | null>((resolve) => {
       const req = store.get(key);
       req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => resolve(null);
     });
+    if (!entry) return null;
+    // TTL check
+    if (Date.now() - entry.fetchedAt > DB_TTL_MS) return null;
+    return entry;
   } catch {
     return null;
   }
 }
+
 
 export async function saveToDB(symbol: string, interval: string, data: OHLCVData[]): Promise<void> {
   try {
@@ -71,7 +81,14 @@ interface MemEntry {
 const memCache = new Map<string, MemEntry>();
 
 export function getFromMemory(symbol: string, interval: string): MemEntry | undefined {
-  return memCache.get(`${symbol}_${interval}`);
+  const entry = memCache.get(`${symbol}_${interval}`);
+  if (!entry) return undefined;
+  // TTL check
+  if (Date.now() - entry.fetchedAt > MEMORY_TTL_MS) {
+    memCache.delete(`${symbol}_${interval}`);
+    return undefined;
+  }
+  return entry;
 }
 
 export function saveToMemory(symbol: string, interval: string, data: OHLCVData[], fetchedAt?: number): void {

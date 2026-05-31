@@ -122,3 +122,50 @@
 .symbol-dropdown-compact {
   width: 220px;
 }
+
+/* Recent searches section header */
+.symbol-dropdown-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.symbol-clear-recent {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+
+.symbol-clear-recent:hover {
+  background: var(--highlight-bg);
+  color: var(--down-color);
+}
+
+/* Recent icon inside result row */
+.sdi-recent-icon {
+  font-size: 10px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Result count footer */
+.symbol-dropdown-count {
+  padding: 5px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+  border-top: 1px solid var(--border-primary);
+}

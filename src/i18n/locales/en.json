@@ -177,7 +177,9 @@
     "csvOhlcvDesc": "Price and volume data only",
     "csvAllDesc": "Price + RSI, MACD, Bollinger, ADX, SuperTrend",
     "excelOhlcvDesc": "XLSX format price data",
-    "excelAllDesc": "XLSX format all data"
+    "excelAllDesc": "XLSX format all data",
+    "png": "Chart Image (PNG)",
+    "pngDesc": "Download current chart image"
   },
   "backtest": {
     "title": "Backtest",

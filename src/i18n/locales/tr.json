@@ -177,7 +177,9 @@
     "csvOhlcvDesc": "Sadece fiyat ve hacim verileri",
     "csvAllDesc": "Fiyat + RSI, MACD, Bollinger, ADX, SuperTrend",
     "excelOhlcvDesc": "XLSX formatında fiyat verileri",
-    "excelAllDesc": "XLSX formatında tüm veriler"
+    "excelAllDesc": "XLSX formatında tüm veriler",
+    "png": "Grafik Resmi (PNG)",
+    "pngDesc": "Mevcut grafik görüntüsünü indir"
   },
   "backtest": {
     "title": "Backtest",

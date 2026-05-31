@@ -71,6 +71,10 @@ export default function ExportMenu({ data, symbol }: ExportMenuProps) {
             {t('export.excelAll')}
             <span className="export-option-desc">{t('export.excelAllDesc')}</span>
           </button>
+          <button className="export-option" onClick={() => handle(() => window.dispatchEvent(new CustomEvent('temist-export-chart-png')))}>
+            {t('export.png')}
+            <span className="export-option-desc">{t('export.pngDesc')}</span>
+          </button>
         </div>
       )}
     </div>

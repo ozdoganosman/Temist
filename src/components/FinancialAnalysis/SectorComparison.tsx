@@ -495,10 +495,6 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
 
     radarInstance.current.setOption(radarOption, true);
     radarInstance.current.resize();
-
-    const handleResize = () => { radarInstance.current?.resize(); };
-    window.addEventListener('resize', handleResize);
-    return () => { window.removeEventListener('resize', handleResize); };
   }, [loading, allComparisonData, radarData, theme, symbol, kpis]);
 
   // --- Bar Chart Effect ---
@@ -579,10 +575,6 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
 
     barInstance.current.setOption(barOption, true);
     barInstance.current.resize();
-
-    const handleResize = () => { barInstance.current?.resize(); };
-    window.addEventListener('resize', handleResize);
-    return () => { window.removeEventListener('resize', handleResize); };
   }, [activeMetric, loading, allComparisonData, theme, symbol]);
 
   // Resize chart when tab becomes visible
@@ -594,9 +586,28 @@ export default function SectorComparison({ symbol, symbols, kpis }: Props) {
     return () => clearTimeout(timer);
   }, [activeTab]);
 
-  // Clean up on unmount
+  // Clean up and resize observation on mount/unmount
   useEffect(() => {
+    let radarRo: ResizeObserver | null = null;
+    let barRo: ResizeObserver | null = null;
+
+    if (radarRef.current) {
+      radarRo = new ResizeObserver(() => {
+        radarInstance.current?.resize();
+      });
+      radarRo.observe(radarRef.current);
+    }
+
+    if (barRef.current) {
+      barRo = new ResizeObserver(() => {
+        barInstance.current?.resize();
+      });
+      barRo.observe(barRef.current);
+    }
+
     return () => {
+      radarRo?.disconnect();
+      barRo?.disconnect();
       radarInstance.current?.dispose();
       barInstance.current?.dispose();
     };

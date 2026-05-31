@@ -709,6 +709,26 @@ export default function ChartContainer({
 
     const handleResize = () => chart.resize();
     window.addEventListener('resize', handleResize);
+
+    const handleExportPng = () => {
+      try {
+        const option = chart.getOption() as any;
+        const bg = option?.backgroundColor || '#131722';
+        const url = chart.getDataURL({
+          type: 'png',
+          pixelRatio: 2,
+          backgroundColor: bg,
+        });
+        const a = document.createElement('a');
+        a.download = `${symbolRef.current}_chart.png`;
+        a.href = url;
+        a.click();
+      } catch (e) {
+        console.error('PNG export failed', e);
+      }
+    };
+    window.addEventListener('temist-export-chart-png', handleExportPng);
+
     const ro = new ResizeObserver(handleResize);
     ro.observe(containerRef.current);
 
@@ -1859,6 +1879,7 @@ export default function ChartContainer({
         clearTimeout(zoomSaveTimeout);
       }
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('temist-export-chart-png', handleExportPng);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('mouseup', onMouseUp);
