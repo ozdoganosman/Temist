@@ -49,6 +49,7 @@ export interface ComputedIndicators {
     cmf: (number | null)[];
     ema34: (number | null)[];
     ema68: (number | null)[];
+    ema130: (number | null)[];
   };
 }
 
@@ -1329,7 +1330,8 @@ export function buildOption(
   const cmfSrc = computed?.cmf || (cmfResult ? {
     cmf: cmfResult.cmf,
     ema34: ema(cmfResult.cmf, 34),
-    ema68: ema(cmfResult.cmf, 68)
+    ema68: ema(cmfResult.cmf, 68),
+    ema130: ema(cmfResult.cmf, 130)
   } : null);
 
   if (showCMF && cmfSrc && filtered.length > 20) {
@@ -1339,6 +1341,7 @@ export function buildOption(
 
     const ema34Padded = [...padNull, ...cmfSrc.ema34, ...padNull];
     const ema68Padded = [...padNull, ...cmfSrc.ema68, ...padNull];
+    const ema130Padded = [...padNull, ...cmfSrc.ema130, ...padNull];
 
     subSeries.push(
       {
@@ -1391,6 +1394,17 @@ export function buildOption(
         yAxisIndex: cmfYIdx,
         showSymbol: false,
         lineStyle: { color: '#e91e63', width: 1.2 },
+        z: 5,
+        tooltip: { show: false },
+      },
+      {
+        name: 'CMF EMA 130',
+        type: 'line',
+        data: ema130Padded,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#00e5ff', width: 1.2 },
         z: 5,
         tooltip: { show: false },
       }
@@ -1926,24 +1940,35 @@ export function buildTitlesOption(
       };
     }
     else if (panel === 'cmf' && showCMF && filtered.length > 20) {
-      const cmfResult = computeCMF(highs, lows, closes, vols, 20);
-      const cmfVal = cmfResult.cmf[activeIdx];
-      const ema34Cmf = ema(cmfResult.cmf, 34);
-      const ema68Cmf = ema(cmfResult.cmf, 68);
-      
+      const cmfVal = computed?.cmf?.cmf[activeIdx] ?? (computeCMF(highs, lows, closes, vols, 20).cmf[activeIdx]);
       const cVal = cmfVal !== null && cmfVal !== undefined ? cmfVal.toFixed(4) : '--';
-      const e34Val = ema34Cmf[activeIdx];
-      const e68Val = ema68Cmf[activeIdx];
+      
+      let e34Val = null;
+      let e68Val = null;
+      let e130Val = null;
+      
+      if (computed?.cmf) {
+        e34Val = computed.cmf.ema34[activeIdx];
+        e68Val = computed.cmf.ema68[activeIdx];
+        e130Val = computed.cmf.ema130[activeIdx];
+      } else {
+        const fullCmf = computeCMF(highs, lows, closes, vols, 20).cmf;
+        e34Val = ema(fullCmf, 34)[activeIdx];
+        e68Val = ema(fullCmf, 68)[activeIdx];
+        e130Val = ema(fullCmf, 130)[activeIdx];
+      }
       
       const e34Str = e34Val !== null && e34Val !== undefined ? e34Val.toFixed(4) : '--';
       const e68Str = e68Val !== null && e68Val !== undefined ? e68Val.toFixed(4) : '--';
+      const e130Str = e130Val !== null && e130Val !== undefined ? e130Val.toFixed(4) : '--';
       
-      text = `{name|CMF(20)}  {cmf|CMF: ${cVal}}  {ema34|EMA(34): ${e34Str}}  {ema68|EMA(68): ${e68Str}}`;
+      text = `{name|CMF(20)}  {cmf|CMF: ${cVal}}  {ema34|EMA(34): ${e34Str}}  {ema68|EMA(68): ${e68Str}}  {ema130|EMA(130): ${e130Str}}`;
       rich = {
         name: { color: '#9c27b0', fontWeight: 'bold', fontSize: 11 },
         cmf: { color: '#9c27b0', fontSize: 11 },
         ema34: { color: '#FF9800', fontSize: 11 },
         ema68: { color: '#e91e63', fontSize: 11 },
+        ema130: { color: '#00e5ff', fontSize: 11 },
       };
     }
 

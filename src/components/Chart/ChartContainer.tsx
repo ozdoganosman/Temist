@@ -1308,10 +1308,12 @@ export default function ChartContainer({
     if (showCMF && cmfResult) {
       const ema34Cmf = ema(cmfResult.cmf, 34);
       const ema68Cmf = ema(cmfResult.cmf, 68);
+      const ema130Cmf = ema(cmfResult.cmf, 130);
       computed.cmf = {
         cmf: cmfResult.cmf,
         ema34: ema34Cmf,
-        ema68: ema68Cmf
+        ema68: ema68Cmf,
+        ema130: ema130Cmf
       };
     }
     computedIndicatorsRef.current = computed;
