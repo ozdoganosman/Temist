@@ -1297,6 +1297,13 @@ export function buildOption(
     const cmfYIdx = panelYAxisIdx['cmf'];
     const cmfPadded = [...padNull, ...cmfResult.cmf, ...padNull];
 
+    // Compute EMAs of CMF values
+    const ema34Cmf = ema(cmfResult.cmf, 34);
+    const ema68Cmf = ema(cmfResult.cmf, 68);
+
+    const ema34Padded = [...padNull, ...ema34Cmf, ...padNull];
+    const ema68Padded = [...padNull, ...ema68Cmf, ...padNull];
+
     subSeries.push(
       {
         name: 'CMF (20)',
@@ -1328,6 +1335,28 @@ export function buildOption(
             },
           ],
         },
+      },
+      {
+        name: 'CMF EMA 34',
+        type: 'line',
+        data: ema34Padded,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#FF9800', width: 1.2 },
+        z: 5,
+        tooltip: { show: false },
+      },
+      {
+        name: 'CMF EMA 68',
+        type: 'line',
+        data: ema68Padded,
+        xAxisIndex: cmfGridIdx,
+        yAxisIndex: cmfYIdx,
+        showSymbol: false,
+        lineStyle: { color: '#e91e63', width: 1.2 },
+        z: 5,
+        tooltip: { show: false },
       }
     );
   }
