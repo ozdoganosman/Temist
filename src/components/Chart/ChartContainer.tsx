@@ -120,6 +120,8 @@ export default function ChartContainer({
 }: ChartContainerProps) {
   const filtered = data;
   const containerRef = useRef<HTMLDivElement>(null);
+  const measureOverlayRef = useRef<HTMLDivElement>(null);
+  const measureBadgeRef = useRef<HTMLDivElement>(null);
   const [commentaryOpen, setCommentaryOpen] = useState(() => {
     return localStorage.getItem('temist_chart_commentary_open') !== 'false';
   });
@@ -585,6 +587,13 @@ export default function ChartContainer({
     let activeYAxisIdx = 0;
     let activeYAxisId = 'y-axis-price';
 
+    // Shift + Drag measurement variables
+    let isMeasuring = false;
+    let measureStartX = 0;
+    let measureStartY = 0;
+    let measureStartPrice = 0;
+    let measureStartBarIdx = 0;
+
     // Cursor change on hover over axis areas
     const setCursorOnAll = (cursor: string) => {
       if (!containerRef.current) return;
@@ -596,7 +605,7 @@ export default function ChartContainer({
     };
     const SLIDER_ZONE_HEIGHT = 34;
     const onHoverMove = (e: MouseEvent) => {
-      if (!containerRef.current || dragging || dragOnPriceAxis) return;
+      if (!containerRef.current || dragging || dragOnPriceAxis || isMeasuring) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
       const gridRight = rect.right - margins.right;
@@ -795,14 +804,153 @@ export default function ChartContainer({
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
-      handleDragStart(e.clientX, e.clientY, () => e.preventDefault());
+      if (e.shiftKey) {
+        // Shift key is held down: start measurement instead of panning
+        isMeasuring = true;
+        const rect = containerRef.current!.getBoundingClientRect();
+        measureStartX = e.clientX;
+        measureStartY = e.clientY;
+
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
+
+        // Convert pixels to chart coordinates
+        try {
+          measureStartPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localY);
+          measureStartBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localX));
+        } catch (err) {
+          console.error('ECharts convertFromPixel error:', err);
+          isMeasuring = false;
+          return;
+        }
+
+        // Show overlay & badge (clear existing content/styles)
+        if (measureOverlayRef.current && measureBadgeRef.current) {
+          measureOverlayRef.current.style.display = 'block';
+          measureOverlayRef.current.style.left = `${localX}px`;
+          measureOverlayRef.current.style.top = `${localY}px`;
+          measureOverlayRef.current.style.width = '0px';
+          measureOverlayRef.current.style.height = '0px';
+          measureOverlayRef.current.className = 'chart-measure-overlay';
+
+          measureBadgeRef.current.style.display = 'flex';
+          measureBadgeRef.current.style.left = `${localX}px`;
+          measureBadgeRef.current.style.top = `${localY}px`;
+          measureBadgeRef.current.innerHTML = '';
+        }
+
+        e.preventDefault();
+      } else {
+        handleDragStart(e.clientX, e.clientY, () => e.preventDefault());
+      }
     };
 
     const onMouseMove = (e: MouseEvent) => {
-      handleDragMove(e.clientX, e.clientY);
+      if (isMeasuring) {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const currentX = e.clientX;
+        const currentY = e.clientY;
+
+        const localStartX = measureStartX - rect.left;
+        const localStartY = measureStartY - rect.top;
+        const localCurrentX = currentX - rect.left;
+        const localCurrentY = currentY - rect.top;
+
+        // Calculate visual dimensions
+        const left = Math.min(localStartX, localCurrentX);
+        const top = Math.min(localStartY, localCurrentY);
+        const width = Math.abs(localStartX - localCurrentX);
+        const height = Math.abs(localStartY - localCurrentY);
+
+        // Convert current position to ECharts data
+        let currentPrice = 0;
+        let currentBarIdx = 0;
+        try {
+          currentPrice = chart.convertFromPixel({ yAxisId: 'y-axis-price' }, localCurrentY);
+          currentBarIdx = Math.round(chart.convertFromPixel({ xAxisIndex: 0 }, localCurrentX));
+        } catch (err) {
+          currentPrice = measureStartPrice;
+          currentBarIdx = measureStartBarIdx;
+        }
+
+        // Calculate differences
+        const priceDiff = currentPrice - measureStartPrice;
+        const pricePct = measureStartPrice !== 0 ? (priceDiff / measureStartPrice) * 100 : 0;
+        const isBullish = priceDiff >= 0;
+
+        const sign = isBullish ? '+' : '';
+        const colorClass = isBullish ? 'bullish' : 'bearish';
+
+        const barsCount = Math.abs(currentBarIdx - measureStartBarIdx);
+        let durationText = '';
+
+        if (currentDataRef.current.length > 0) {
+          const padding = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+          const startIdx = clamp(measureStartBarIdx - padding, 0, currentDataRef.current.length - 1);
+          const currentIdx = clamp(currentBarIdx - padding, 0, currentDataRef.current.length - 1);
+          
+          const startDate = new Date(currentDataRef.current[startIdx].date);
+          const endDate = new Date(currentDataRef.current[currentIdx].date);
+          const timeDiffMs = Math.abs(endDate.getTime() - startDate.getTime());
+
+          if (isIntraday(intervalRef.current)) {
+            const hours = Math.floor(timeDiffMs / (1000 * 60 * 60));
+            const minutes = Math.round((timeDiffMs % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) {
+              durationText = `${hours} Saat ${minutes} Dakika`;
+            } else {
+              durationText = `${minutes} Dakika`;
+            }
+          } else {
+            const days = Math.round(timeDiffMs / (1000 * 60 * 60 * 24));
+            durationText = `${days} Gün`;
+          }
+        }
+
+        // Update Overlay Box
+        if (measureOverlayRef.current) {
+          measureOverlayRef.current.style.left = `${left}px`;
+          measureOverlayRef.current.style.top = `${top}px`;
+          measureOverlayRef.current.style.width = `${width}px`;
+          measureOverlayRef.current.style.height = `${height}px`;
+          measureOverlayRef.current.className = `chart-measure-overlay ${colorClass}`;
+        }
+
+        // Update Badge Position
+        if (measureBadgeRef.current) {
+          const badgeWidth = measureBadgeRef.current.offsetWidth || 150;
+          const badgeHeight = measureBadgeRef.current.offsetHeight || 50;
+
+          let badgeLeft = left + width / 2 - badgeWidth / 2;
+          let badgeTop = top + height / 2 - badgeHeight / 2;
+
+          badgeLeft = Math.max(10, Math.min(rect.width - badgeWidth - 10, badgeLeft));
+          badgeTop = Math.max(10, Math.min(rect.height - badgeHeight - 10, badgeTop));
+
+          measureBadgeRef.current.style.left = `${badgeLeft}px`;
+          measureBadgeRef.current.style.top = `${badgeTop}px`;
+          measureBadgeRef.current.style.display = 'flex';
+          
+          measureBadgeRef.current.innerHTML = `
+            <div class="chart-measure-badge-diff ${colorClass}">
+              ${sign}${priceDiff.toFixed(2)} TL (${sign}${pricePct.toFixed(2)}%)
+            </div>
+            <div class="chart-measure-badge-info">
+              ${barsCount} Bar, ${durationText}
+            </div>
+          `;
+        }
+      } else {
+        handleDragMove(e.clientX, e.clientY);
+      }
     };
 
     const onMouseUp = () => {
+      if (isMeasuring) {
+        isMeasuring = false;
+        if (measureOverlayRef.current) measureOverlayRef.current.style.display = 'none';
+        if (measureBadgeRef.current) measureBadgeRef.current.style.display = 'none';
+      }
       handleDragEnd();
     };
 
@@ -942,6 +1090,25 @@ export default function ChartContainer({
     };
     el.addEventListener('dblclick', onDblClick);
 
+    // Key and window visibility listeners to reset measurement
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && isMeasuring) {
+        isMeasuring = false;
+        if (measureOverlayRef.current) measureOverlayRef.current.style.display = 'none';
+        if (measureBadgeRef.current) measureBadgeRef.current.style.display = 'none';
+      }
+    };
+    window.addEventListener('keyup', handleKeyUp);
+
+    const handleVisibilityChange = () => {
+      if (isMeasuring) {
+        isMeasuring = false;
+        if (measureOverlayRef.current) measureOverlayRef.current.style.display = 'none';
+        if (measureBadgeRef.current) measureBadgeRef.current.style.display = 'none';
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Crosshair tracking for legend
     chart.on('updateAxisPointer', (params: unknown) => {
       const p = params as { axesInfo?: Array<{ axisDim?: string; value?: number }> };
@@ -978,6 +1145,8 @@ export default function ChartContainer({
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('mousemove', onHoverMove);
       el.removeEventListener('dblclick', onDblClick);
+      window.removeEventListener('keyup', handleKeyUp);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       ro.disconnect();
       chart.dispose();
       chartInstanceRef.current = null;
@@ -1075,6 +1244,8 @@ export default function ChartContainer({
     <div className="chart-outer-container" style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="chart-inner-container" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         <div ref={containerRef} className="chart-container" />
+        <div ref={measureOverlayRef} className="chart-measure-overlay" />
+        <div ref={measureBadgeRef} className="chart-measure-badge" />
       </div>
 
       {/* 💡 Yorumlayan Bilgi Kutusu */}
