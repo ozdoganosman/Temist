@@ -85,6 +85,9 @@ export function getThemeColors(): ThemeColors {
 
 const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
+export const RIGHT_PAD_BARS = 10;
+export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
+export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
 
 export function getPaddingCount(dataLen: number, intradayMode = false): number {
   if (intradayMode) return 10;
@@ -569,9 +572,9 @@ export function buildOption(
   const total = dates.length;
   const dataTotal = filtered.length;
   const dataEnd = padded.offset + dataTotal;
-  const rightPadBars = 20;
+  const rightPadBars = RIGHT_PAD_BARS;
   const visibleEnd = Math.min(dataEnd + rightPadBars, total);
-  const dataStart = Math.max(padded.offset, visibleEnd - 120 - rightPadBars);
+  const dataStart = Math.max(padded.offset, visibleEnd - DEFAULT_VISIBLE_CANDLE_COUNT - rightPadBars);
   const zoomStart = (dataStart / total) * 100;
   const zoomEnd = (visibleEnd / total) * 100;
   const visibleStartValue = zoomStartValue ?? dataStart;
@@ -644,7 +647,8 @@ export function buildOption(
     name: symbol,
     type: 'candlestick' as const,
     data: ohlc,
-    barWidth: '60%',
+    barWidth: '72%',
+    barMinWidth: 4,
     barMaxWidth: 20,
     itemStyle: {
       color: UP_COLOR,
@@ -1799,7 +1803,8 @@ export function buildOption(
         data: volumes,
         xAxisIndex: 0,
         yAxisIndex: 1,
-        barWidth: '60%',
+        barWidth: '72%',
+        barMinWidth: 3,
         z: 1,
         tooltip: { show: false },
       },

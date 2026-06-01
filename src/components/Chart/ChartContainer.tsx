@@ -12,7 +12,17 @@ import {
 } from '../../utils/signalDetection';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
-import { buildOption, computeVisiblePriceExtent, getThemeColors, getPaddingCount, getGridMargins, getPanelTitleHTML } from './chartBuilder';
+import {
+  DEFAULT_VISIBLE_CANDLE_COUNT,
+  MAX_PERSISTED_VISIBLE_CANDLE_COUNT,
+  RIGHT_PAD_BARS,
+  buildOption,
+  computeVisiblePriceExtent,
+  getThemeColors,
+  getPaddingCount,
+  getGridMargins,
+  getPanelTitleHTML,
+} from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
@@ -1989,10 +1999,11 @@ export default function ChartContainer({
     const total = pad + filtered.length + pad;
 
     if (symbolChanged) {
-      const rightPadBars = 20;
+      const rightPadBars = RIGHT_PAD_BARS;
       const dataEnd = pad + filtered.length;
       const visibleEnd = Math.min(dataEnd + rightPadBars, total);
       const defaultOffset = total - visibleEnd;
+      visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + rightPadBars, total);
       offsetFromEnd = defaultOffset;
     }
 
@@ -2002,6 +2013,9 @@ export default function ChartContainer({
     if (visibleBarCount !== null && offsetFromEnd !== null) {
       if (visibleBarCount < 10) {
         visibleBarCount = 10;
+      }
+      if (visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
+        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, total);
       }
       if (visibleBarCount > total) {
         visibleBarCount = total;
