@@ -15,6 +15,7 @@ import { isIntraday } from './types';
 import {
   DEFAULT_VISIBLE_CANDLE_COUNT,
   MAX_PERSISTED_VISIBLE_CANDLE_COUNT,
+  LARGE_MODE_VISIBLE_THRESHOLD,
   RIGHT_PAD_BARS,
   buildOption,
   computeVisiblePriceExtent,
@@ -680,6 +681,8 @@ export default function ChartContainer({
   const computedIndicatorsRef = useRef<ComputedIndicators>({});
   const lastHoveredIdxRef = useRef<number | null>(null);
   const updatePanelTitlesRef = useRef<(activeIdx: number) => void>(() => {});
+  const zoomSaveRef = useRef<() => void>(() => {});
+  const currentLargeModeRef = useRef<boolean | null>(null);
 
   // Toggle visibility of individual Bollinger bands
   const [visibleBollinger, setVisibleBollinger] = useState<Set<string>>(
@@ -760,6 +763,7 @@ export default function ChartContainer({
     let priceAxisStartYMax = 0;
     let activeYAxisIdx = 0;
     let activeYAxisId = 'y-axis-price';
+    let activeYAxisGridIndex = 0;
     // RAF throttle for drag moves
     let dragRafId: number | null = null;
     // Shared drag flag — read by axisPointer handler to suppress legend updates during pan
@@ -1042,6 +1046,7 @@ export default function ChartContainer({
 
       activeYAxisIdx = 0;
       activeYAxisId = 'y-axis-price';
+      activeYAxisGridIndex = gIdx;
       const foundIdx = yAxes.findIndex((y: any) => y.gridIndex === gIdx && y.position !== 'left');
       if (foundIdx !== -1) {
         activeYAxisIdx = foundIdx;
@@ -1097,7 +1102,7 @@ export default function ChartContainer({
 
       // Capture for RAF closure
       const capturedAxisId = activeYAxisId;
-      const capturedAxisIdx = activeYAxisIdx;
+      const capturedGridIndex = activeYAxisGridIndex;
       const dy = clientY - dragStartY;
       const capturedYMin = startYMin;
       const capturedYMax = startYMax;
@@ -1106,20 +1111,27 @@ export default function ChartContainer({
       if (dragRafId !== null) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
-        chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 0, start: newStart, end: newEnd });
+        // Batch the horizontal pan (dataZoom) and the vertical pan (yAxis) into
+        // a SINGLE setOption so the chart re-renders once per frame instead of
+        // 3x (dispatchAction + its dataZoom-event autoscale + a manual setOption).
+        const patch: Record<string, unknown> = {
+          dataZoom: [
+            { start: newStart, end: newEnd },
+            { start: newStart, end: newEnd },
+          ],
+        };
         if (capturedAxisId && capturedAxisId !== '') {
-          const opt = chart.getOption() as any;
-          const yAxes = opt.yAxis || [];
-          const gIdx = yAxes[capturedAxisIdx]?.gridIndex ?? 0;
-          const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
+          const gridHeight = capturedGridIndex === 0 ? rect.height - 70 : 120;
           const yRange = capturedYMax - capturedYMin;
           const yShift = (dy / gridHeight) * yRange;
-          chart.setOption({ yAxis: [{ id: capturedAxisId, min: capturedYMin + yShift, max: capturedYMax + yShift }] });
+          patch.yAxis = [{ id: capturedAxisId, min: capturedYMin + yShift, max: capturedYMax + yShift }];
         }
+        chart.setOption(patch);
       });
     };
 
     const handleDragEnd = () => {
+      const wasDragging = dragging || dragOnPriceAxis;
       dragging = false;
       dragOnPriceAxis = false;
       isDraggingRef.current = false;
@@ -1127,6 +1139,9 @@ export default function ChartContainer({
         cancelAnimationFrame(dragRafId);
         dragRafId = null;
       }
+      // Persist the new zoom/pan window (the autoscale handler skips saving
+      // while dragging is in progress).
+      if (wasDragging) zoomSaveRef.current();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -1868,46 +1883,58 @@ export default function ChartContainer({
     });
 
     let zoomSaveTimeout: any = null;
-    chart.on('dataZoom', () => {
+    let autoscaleRafId: number | null = null;
+    const runAutoscale = () => {
       const opt = chart.getOption() as any;
       const dz = opt?.dataZoom?.[0];
       const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
+      if (!(currentDataRef.current.length > 0 && xAxisDataLen)) return;
 
-      if (currentDataRef.current.length > 0 && xAxisDataLen) {
-        const toNumber = (value: unknown): number | null => {
-          if (typeof value === 'number' && Number.isFinite(value)) return value;
-          if (typeof value === 'string' && value.trim() !== '') {
-            const parsed = Number(value);
-            return Number.isFinite(parsed) ? parsed : null;
-          }
-          return null;
-        };
-
-        let startValue = toNumber(dz?.startValue);
-        let endValue = toNumber(dz?.endValue);
-        if (startValue === null || endValue === null) {
-          const startPct = toNumber(dz?.start) ?? 0;
-          const endPct = toNumber(dz?.end) ?? 100;
-          const maxCategoryIdx = Math.max(0, xAxisDataLen - 1);
-          startValue = Math.floor((startPct / 100) * maxCategoryIdx);
-          endValue = Math.ceil((endPct / 100) * maxCategoryIdx);
+      const toNumber = (value: unknown): number | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string' && value.trim() !== '') {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
         }
+        return null;
+      };
 
-        const pad = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
-        const extent = computeVisiblePriceExtent(
-          currentDataRef.current,
-          startValue,
-          endValue,
-          pad,
-          logScaleRef.current,
-        );
-        if (extent) {
-          chart.setOption({
-            yAxis: [{ id: 'y-axis-price', min: extent.min, max: extent.max }],
-          });
-        }
+      let startValue = toNumber(dz?.startValue);
+      let endValue = toNumber(dz?.endValue);
+      if (startValue === null || endValue === null) {
+        const startPct = toNumber(dz?.start) ?? 0;
+        const endPct = toNumber(dz?.end) ?? 100;
+        const maxCategoryIdx = Math.max(0, xAxisDataLen - 1);
+        startValue = Math.floor((startPct / 100) * maxCategoryIdx);
+        endValue = Math.ceil((endPct / 100) * maxCategoryIdx);
       }
 
+      const pad = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+      const extent = computeVisiblePriceExtent(
+        currentDataRef.current,
+        startValue,
+        endValue,
+        pad,
+        logScaleRef.current,
+      );
+
+      // Toggle candlestick large-mode based on how many candles are on screen,
+      // so zoomed-out views stay fast while zoomed-in views keep readable bodies.
+      const desiredLarge = Math.abs(endValue - startValue) > LARGE_MODE_VISIBLE_THRESHOLD;
+      const patch: Record<string, unknown> = {};
+      if (extent) {
+        patch.yAxis = [{ id: 'y-axis-price', min: extent.min, max: extent.max }];
+      }
+      if (desiredLarge !== currentLargeModeRef.current) {
+        currentLargeModeRef.current = desiredLarge;
+        patch.series = [{ large: desiredLarge }];
+      }
+      if (Object.keys(patch).length > 0) {
+        chart.setOption(patch);
+      }
+    };
+
+    const scheduleZoomSave = () => {
       if (zoomSaveTimeout) {
         clearTimeout(zoomSaveTimeout);
       }
@@ -1930,11 +1957,32 @@ export default function ChartContainer({
           }
         }
       }, 200);
+    };
+    zoomSaveRef.current = scheduleZoomSave;
+
+    chart.on('dataZoom', () => {
+      // While the user is actively dragging, the pan RAF already sets both the
+      // dataZoom window and the y-axis in one batched setOption — skip the
+      // autoscale here to avoid a second full re-render per frame.
+      // Otherwise (wheel / slider) coalesce rapid events into one autoscale per
+      // animation frame.
+      if (!isDraggingRef.current && autoscaleRafId === null) {
+        autoscaleRafId = requestAnimationFrame(() => {
+          autoscaleRafId = null;
+          if (!chart.isDisposed()) runAutoscale();
+        });
+      }
+
+      scheduleZoomSave();
     });
 
     return () => {
       if (zoomSaveTimeout) {
         clearTimeout(zoomSaveTimeout);
+      }
+      if (autoscaleRafId !== null) {
+        cancelAnimationFrame(autoscaleRafId);
+        autoscaleRafId = null;
       }
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('temist-export-chart-png', handleExportPng);
@@ -2137,6 +2185,14 @@ export default function ChartContainer({
     );
 
     chart.setOption(newOption, true);
+    // Keep the live large-mode tracker in sync with what buildOption just chose,
+    // so the dataZoom handler only toggles it when the visible span crosses the
+    // threshold.
+    const builtSpan =
+      zoomStartVal !== null && zoomEndVal !== null
+        ? Math.abs(zoomEndVal - zoomStartVal)
+        : DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
+    currentLargeModeRef.current = builtSpan > LARGE_MODE_VISIBLE_THRESHOLD;
     if (filtered.length > 0) {
       lastBarRef.current = { ...filtered[filtered.length - 1] };
     }

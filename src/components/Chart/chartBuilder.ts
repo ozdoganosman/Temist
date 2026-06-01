@@ -88,6 +88,11 @@ const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
+// Above this many visible candles, switch ECharts candlestick "large" mode back
+// on. Large mode batches rendering (much cheaper) but collapses bodies to ~1px;
+// that's acceptable once this many candles are on screen (bodies would be hair-
+// thin anyway). Below the threshold we keep large:false so bodies stay readable.
+export const LARGE_MODE_VISIBLE_THRESHOLD = 250;
 
 export function getPaddingCount(dataLen: number, intradayMode = false): number {
   if (intradayMode) return 10;
@@ -643,17 +648,24 @@ export function buildOption(
   }
 
 
+  // ECharts "large" candlestick mode auto-enables when the data length exceeds
+  // largeThreshold (600) and collapses candle bodies into ~1px sticks. Daily
+  // (~3650 bars) and weekly history crossed that threshold, so their candles
+  // rendered as thin lines while monthly looked fine. Keep large mode OFF while
+  // a readable number of candles is on screen (so bodies render properly), and
+  // only turn it back on when so many candles are visible that bodies would be
+  // hair-thin anyway — that restores the batched-render performance for the
+  // zoomed-out case. The visible span is recomputed live on zoom in the
+  // dataZoom handler.
+  const visibleSpan = Math.abs(visibleEndValue - visibleStartValue);
+  const useLargeMode = visibleSpan > LARGE_MODE_VISIBLE_THRESHOLD;
+
   const mainSeries: echarts.SeriesOption = {
     name: symbol,
     type: 'candlestick' as const,
     data: ohlc,
-    // Disable ECharts "large" candlestick mode. It auto-enables when the data
-    // length exceeds largeThreshold (600) and collapses candle bodies into ~1px
-    // sticks. Daily (~3650 bars) and weekly history crossed that threshold, so
-    // their candles rendered as thin lines while monthly (fewer bars) looked
-    // fine. Only the visible window is drawn (the chart clips), so keeping this
-    // off is safe for performance.
-    large: false,
+    large: useLargeMode,
+    largeThreshold: 600,
     barWidth: '72%',
     barMinWidth: 4,
     barMaxWidth: 20,
