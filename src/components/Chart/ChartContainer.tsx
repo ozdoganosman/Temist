@@ -51,6 +51,30 @@ import './ChartContainer.css';
 // Keep import reference for future use (signal scatter is already called inside buildOption)
 void buildSignalScatterSeries;
 
+type ChartOptionSnapshot = {
+  xAxis?: Array<{ data?: unknown[] }>;
+  yAxis?: Array<{ id?: string; gridIndex?: number; position?: string }>;
+  grid?: unknown[];
+  dataZoom?: Array<{
+    start?: number;
+    end?: number;
+    startValue?: number;
+    endValue?: number;
+  }>;
+  backgroundColor?: string;
+};
+
+/** getOption() can be undefined before the first setOption or during teardown. */
+function getSafeChartOption(chart: echarts.ECharts | null | undefined): ChartOptionSnapshot | null {
+  if (!chart || chart.isDisposed()) return null;
+  try {
+    const opt = chart.getOption() as ChartOptionSnapshot | undefined;
+    return opt ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
@@ -732,7 +756,7 @@ export default function ChartContainer({
 
     const handleExportPng = () => {
       try {
-        const option = chart.getOption() as any;
+        const option = getSafeChartOption(chart);
         const bg = option?.backgroundColor || '#131722';
         const url = chart.getDataURL({
           type: 'png',
@@ -793,7 +817,7 @@ export default function ChartContainer({
     const dragDrawingRef = { current: null as DragDrawingState | null };
 
     const detectDrawingHit = (localX: number, localY: number): { drawing: ChartDrawing; mode: 'move' | 'resize-start' | 'resize-end'; startPixel: [number, number]; endPixel: [number, number] } | null => {
-      const xAxisData = chart.getOption()?.xAxis?.[0]?.data as string[] | undefined;
+      const xAxisData = getSafeChartOption(chart)?.xAxis?.[0]?.data as string[] | undefined;
       const drawingsList = drawingsRef.current;
 
       const dist2d = (p1: [number, number], p2: [number, number]) => {
@@ -860,7 +884,6 @@ export default function ChartContainer({
             if (dLine < 12) hit = true;
           }
         } else if (d.type === 'horizontal') {
-          const opt = chart.getOption() as any;
           const margins = getGridMargins();
           const rect = containerRef.current!.getBoundingClientRect();
           const gridLeft = margins.left;
@@ -909,8 +932,7 @@ export default function ChartContainer({
     };
 
     const getBarDate = (idx: number): string => {
-      const option = chart.getOption();
-      const xAxisData = option?.xAxis?.[0]?.data;
+      const xAxisData = getSafeChartOption(chart)?.xAxis?.[0]?.data;
       if (Array.isArray(xAxisData) && idx >= 0 && idx < xAxisData.length) {
         return String(xAxisData[idx]);
       }
@@ -939,8 +961,8 @@ export default function ChartContainer({
       const clickX = e.clientX - rect.left;
 
       if (distFromBottom > SLIDER_ZONE_HEIGHT && (e.clientX > gridRight || e.clientX < gridLeft)) {
-        const opt = chart.getOption() as any;
-        const grids = opt.grid || [];
+        const opt = getSafeChartOption(chart);
+        const grids = opt?.grid || [];
         const testX = rect.width / 2;
         let overGrid = false;
         for (let i = 0; i < grids.length; i++) {
@@ -989,9 +1011,9 @@ export default function ChartContainer({
         dragOnPriceAxis = true;
         priceAxisDragStartY = clientY;
 
-        const opt = chart.getOption() as any;
-        const grids = opt.grid || [];
-        const yAxes = opt.yAxis || [];
+        const opt = getSafeChartOption(chart);
+        const grids = opt?.grid || [];
+        const yAxes = opt?.yAxis || [];
         const testX = rect.width / 2;
 
         let gIdx = 0;
@@ -1033,9 +1055,9 @@ export default function ChartContainer({
       dragging = true;
       dragStartX = clientX;
       dragStartY = clientY;
-      const opt = chart.getOption() as any;
-      const grids = opt.grid || [];
-      const yAxes = opt.yAxis || [];
+      const opt = getSafeChartOption(chart);
+      const grids = opt?.grid || [];
+      const yAxes = opt?.yAxis || [];
       const testX = rect.width / 2;
 
       let gIdx = 0;
@@ -1046,10 +1068,10 @@ export default function ChartContainer({
         }
       }
 
-      startZoomStart = opt.dataZoom?.[0]?.start ?? 0;
-      startZoomEnd = opt.dataZoom?.[0]?.end ?? 100;
-      const xAxisLen = opt.xAxis?.[0]?.data?.length ?? 0;
-      const zoomWindow = readDataZoomWindow(opt.dataZoom?.[0], xAxisLen);
+      startZoomStart = opt?.dataZoom?.[0]?.start ?? 0;
+      startZoomEnd = opt?.dataZoom?.[0]?.end ?? 100;
+      const xAxisLen = opt?.xAxis?.[0]?.data?.length ?? 0;
+      const zoomWindow = readDataZoomWindow(opt?.dataZoom?.[0], xAxisLen);
       startZoomStartValue = zoomWindow.startValue;
       startZoomEndValue = zoomWindow.endValue;
 
@@ -1085,8 +1107,8 @@ export default function ChartContainer({
         if (dragRafId !== null) return; // skip — frame already queued
         dragRafId = requestAnimationFrame(() => {
           dragRafId = null;
-          const opt = chart.getOption() as any;
-          const yAxes = opt.yAxis || [];
+          const opt = getSafeChartOption(chart);
+          const yAxes = opt?.yAxis || [];
           const gIdx = yAxes[capturedAxisIdx]?.gridIndex ?? 0;
           const gridHeight = gIdx === 0 ? (rect.height - 70) : 120;
           const yRange = capturedYMax - capturedYMin;
@@ -1120,8 +1142,8 @@ export default function ChartContainer({
       if (dragRafId !== null) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
-        const optNow = chart.getOption() as { xAxis?: Array<{ data?: unknown[] }> };
-        const maxIdx = Math.max(0, (optNow.xAxis?.[0]?.data?.length ?? 1) - 1);
+        const optNow = getSafeChartOption(chart);
+        const maxIdx = Math.max(0, (optNow?.xAxis?.[0]?.data?.length ?? 1) - 1);
         const shifted = shiftDataZoomWindow(
           capturedStartValue,
           capturedEndValue,
@@ -1515,15 +1537,15 @@ export default function ChartContainer({
         return;
       }
 
-      const opt = chart.getOption() as any;
-      const yAxes = opt.yAxis || [];
+      const opt = getSafeChartOption(chart);
+      const yAxes = opt?.yAxis || [];
 
       // Calculate default volume max limit to prevent volume bars from overlapping the price chart
       const maxVol = filtered.reduce((m, d) => Math.max(m, d.volume), 0);
       const volAxisMax = maxVol > 0 ? maxVol * 10 : 100;
 
       if (clientX < gridLeft || clientX > gridRight) {
-        const grids = opt.grid || [];
+        const grids = opt?.grid || [];
         const testX = rect.width / 2;
 
         let gIdx = 0;
@@ -1913,7 +1935,7 @@ export default function ChartContainer({
     let zoomSaveTimeout: any = null;
     let autoscaleRafId: number | null = null;
     const runAutoscale = () => {
-      const opt = chart.getOption() as any;
+      const opt = getSafeChartOption(chart);
       const dz = opt?.dataZoom?.[0];
       const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
       if (!(currentDataRef.current.length > 0 && xAxisDataLen)) return;
@@ -1967,12 +1989,12 @@ export default function ChartContainer({
         clearTimeout(zoomSaveTimeout);
       }
       zoomSaveTimeout = setTimeout(() => {
-        const opt = chart.getOption() as any;
+        const opt = getSafeChartOption(chart);
         if (opt?.dataZoom && opt.dataZoom.length > 0) {
           const dz = opt.dataZoom[0];
           const startValue = dz.startValue;
           const endValue = dz.endValue;
-          const xAxisDataLen = opt.xAxis?.[0]?.data?.length;
+          const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
           if (startValue !== undefined && startValue !== null && endValue !== undefined && endValue !== null && xAxisDataLen) {
             const visibleBarCount = endValue - startValue;
             const offsetFromEnd = xAxisDataLen - 1 - endValue;
@@ -2044,7 +2066,7 @@ export default function ChartContainer({
   // Update chart when data/type/timeframe changes
   const updateChart = useCallback(() => {
     const chart = chartInstanceRef.current;
-    if (!chart) return;
+    if (!chart || chart.isDisposed()) return;
 
     const symbolChanged = prevSymbolRef.current !== symbol;
     const intradayMode = isIntraday(interval);
@@ -2052,8 +2074,8 @@ export default function ChartContainer({
     const maxCategoryIdx = Math.max(0, categoryCount - 1);
     const padBefore = getPaddingCount(filtered.length, intradayMode);
 
-    const opt = chart.getOption() as any;
-    const xAxisDataLen = opt.xAxis?.[0]?.data?.length ?? categoryCount;
+    const opt = getSafeChartOption(chart);
+    const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
 
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
