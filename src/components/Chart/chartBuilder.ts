@@ -87,8 +87,8 @@ const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 
 export function getPaddingCount(dataLen: number, intradayMode = false): number {
-  if (intradayMode) return Math.min(40, Math.max(20, Math.floor(dataLen * 0.1)));
-  return Math.min(200, Math.max(50, Math.floor(dataLen * 0.2)));
+  if (intradayMode) return 10;
+  return 15;
 }
 
 function generateFutureDates(lastDate: string, count: number): string[] {
