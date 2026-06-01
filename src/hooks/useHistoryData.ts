@@ -9,7 +9,7 @@ import { getFromMemory, saveToMemory, getFromDB, saveToDB } from '../utils/histo
 // ── Helpers ───────────────────────────────────────
 
 /** Max age before a background refresh is triggered */
-const STALE_MS = 2 * 60_000; // 2 minutes
+const STALE_MS = 4 * 3600_000; // 4 hours
 
 // ── Hook ──────────────────────────────────────────
 
@@ -18,7 +18,7 @@ const STALE_MS = 2 * 60_000; // 2 minutes
  *
  * Layer 1: Module-level Map  (instant, survives re-renders)
  * Layer 2: IndexedDB          (persists across page reloads)
- * Layer 3: Live backend fetch (if online) or static JSON fetch
+ * Layer 3: Static JSON fetch  (pre-built data)
  *
  * Always fetches/caches daily data, then aggregates
  * to the requested interval (weekly/monthly/quarterly).
@@ -83,13 +83,10 @@ export function useHistoryData(symbol: string, interval: Interval) {
         return;
       }
 
-      // 3. Live or Static fetch
+      // 3. Static JSON fetch
       setLoading(true);
       try {
-        let records = await fetchHistoryLive(symbol, undefined, '1d');
-        if (records.length === 0) {
-          records = await fetchHistory(symbol, 'max', '1d');
-        }
+        const records = await fetchHistory(symbol, 'max', '1d');
         if (!cancelled) {
           persist(records);
           setRawData(records);
@@ -106,18 +103,16 @@ export function useHistoryData(symbol: string, interval: Interval) {
     }
 
     /** Fetch silently and update data + caches */
-    async function backgroundRefresh() {
-      try {
-        let records = await fetchHistoryLive(symbol, undefined, '1d');
-        if (records.length === 0) {
-          records = await fetchHistory(symbol, 'max', '1d');
-        }
-        if (!cancelled && records.length > 0) {
-          persist(records);
-          setRawData(records);
-          dataRef.current = records;
-        }
-      } catch {}
+    function backgroundRefresh() {
+      fetchHistory(symbol, 'max', '1d')
+        .then((records) => {
+          if (!cancelled && records.length > 0) {
+            persist(records);
+            setRawData(records);
+            dataRef.current = records;
+          }
+        })
+        .catch(() => {});
     }
 
     /** Write to both memory and IndexedDB */

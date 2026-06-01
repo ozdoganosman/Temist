@@ -199,7 +199,7 @@ async function fetchFinancialsWithCache(symbol: string, forceRefresh: boolean): 
     if (cached) return cached;
   }
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}data/financials/${symbol}.json?t=${Date.now()}`);
+    const res = await fetch(`${import.meta.env.BASE_URL}data/financials/${symbol}.json`);
     if (!res.ok) return null;
     const json = await res.json();
     await setCacheItem('financials', symbol, json);

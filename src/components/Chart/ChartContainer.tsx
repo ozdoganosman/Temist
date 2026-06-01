@@ -1946,12 +1946,11 @@ export default function ChartContainer({
     const total = pad + filtered.length + pad;
 
     if (symbolChanged) {
-      const rightPadBars = 15;
+      const rightPadBars = 120;
       const dataEnd = pad + filtered.length;
       const visibleEnd = Math.min(dataEnd + rightPadBars, total);
       const defaultOffset = total - visibleEnd;
       offsetFromEnd = defaultOffset;
-      visibleBarCount = 120 + rightPadBars;
     }
 
     let zoomStartVal: number | null = null;

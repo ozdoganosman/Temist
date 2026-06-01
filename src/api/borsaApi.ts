@@ -36,7 +36,7 @@ export interface QuoteData {
 
 export async function fetchDataTimestamp(): Promise<number | null> {
   try {
-    const res = await fetch(`${DATA_BASE}/scan.json?t=${Date.now()}`);
+    const res = await fetch(`${DATA_BASE}/scan.json`);
     if (!res.ok) return null;
     const json = await res.json();
     return json.timestamp ?? null;
@@ -48,7 +48,7 @@ export async function fetchDataTimestamp(): Promise<number | null> {
 // ── Symbols ───────────────────────────────────
 
 export async function fetchSymbols(): Promise<{ stocks: SymbolInfo[]; indices: SymbolInfo[] }> {
-  const res = await fetch(`${DATA_BASE}/symbols.json?t=${Date.now()}`);
+  const res = await fetch(`${DATA_BASE}/symbols.json`);
   return res.json();
 }
 
@@ -59,7 +59,7 @@ export async function fetchHistory(
   _period: string = '1y',
   _interval: string = '1d',
 ): Promise<OHLCVData[]> {
-  const res = await fetch(`${DATA_BASE}/history/${symbol}.json?t=${Date.now()}`);
+  const res = await fetch(`${DATA_BASE}/history/${symbol}.json`);
   if (!res.ok) return [];
   const json = await res.json();
   return json.data ?? [];
@@ -131,7 +131,7 @@ export async function fetchFinancials(
   quarterly = false,
 ): Promise<FinancialsResponse> {
   try {
-    const res = await fetch(`${DATA_BASE}/financials/${symbol}.json?t=${Date.now()}`);
+    const res = await fetch(`${DATA_BASE}/financials/${symbol}.json`);
     if (!res.ok) {
       return { symbol, report, quarterly, periods: [], data: [] };
     }
@@ -178,7 +178,7 @@ export interface AllFinancialsResponse {
 
 export async function fetchAllFinancials(symbol: string): Promise<AllFinancialsResponse | null> {
   try {
-    const res = await fetch(`${DATA_BASE}/financials/${symbol}.json?t=${Date.now()}`);
+    const res = await fetch(`${DATA_BASE}/financials/${symbol}.json`);
     if (!res.ok) return null;
     const json = await res.json();
     return {
@@ -248,7 +248,7 @@ export function startScan(
 ): AbortController {
   const controller = new AbortController();
 
-  fetch(`${DATA_BASE}/scan.json?t=${Date.now()}`, { signal: controller.signal })
+  fetch(`${DATA_BASE}/scan.json`, { signal: controller.signal })
     .then(async (res) => {
       if (!res.ok) {
         onError(`HTTP ${res.status}`);
@@ -276,7 +276,7 @@ export function startScan(
  * Fetch cached scan results (same as startScan in static mode).
  */
 export async function fetchScanResults(): Promise<ScanComplete & { cache_age_seconds?: number; cached?: boolean }> {
-  const res = await fetch(`${DATA_BASE}/scan.json?t=${Date.now()}`);
+  const res = await fetch(`${DATA_BASE}/scan.json`);
   if (!res.ok) {
     return { type: 'complete', results: [], total_symbols: 0, analyzed: 0, timestamp: 0 };
   }
@@ -356,7 +356,7 @@ function flattenBacktestAggregated(json: any): BacktestStatRow[] {
 
 export async function fetchBacktestResults(): Promise<BacktestResult> {
   try {
-    const res = await fetch(`${DATA_BASE}/backtest.json?t=${Date.now()}`);
+    const res = await fetch(`${DATA_BASE}/backtest.json`);
     if (!res.ok) return { stats: [] };
     const json = await res.json();
     return {

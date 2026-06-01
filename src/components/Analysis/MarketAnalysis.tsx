@@ -249,89 +249,6 @@ try {
   console.error('Failed to parse cached financials:', e);
 }
 
-interface PaginationControlsProps {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  totalItems: number;
-  startIndex: number;
-  endIndex: number;
-}
-
-function PaginationControls({
-  currentPage,
-  totalPages,
-  onPageChange,
-  totalItems,
-  startIndex,
-  endIndex,
-}: PaginationControlsProps) {
-  if (totalPages <= 1) return null;
-
-  const pages: (number | string)[] = [];
-  const range = 2; // how many pages before/after current to show
-
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || (i >= currentPage - range && i <= currentPage + range)) {
-      pages.push(i);
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...');
-    }
-  }
-
-  return (
-    <div className="scanner-pagination">
-      <div className="pagination-info">
-        {totalItems} hisse arasından {startIndex + 1}-{Math.min(endIndex, totalItems)} gösteriliyor
-      </div>
-      <div className="pagination-buttons">
-        <button
-          className="pagination-btn"
-          disabled={currentPage === 1}
-          onClick={() => onPageChange(1)}
-          title="İlk Sayfa"
-        >
-          «
-        </button>
-        <button
-          className="pagination-btn"
-          disabled={currentPage === 1}
-          onClick={() => onPageChange(currentPage - 1)}
-          title="Önceki"
-        >
-          ‹
-        </button>
-        {pages.map((p, idx) => (
-          <button
-            key={idx}
-            className={`pagination-btn ${p === currentPage ? 'active' : ''} ${p === '...' ? 'disabled' : ''}`}
-            disabled={p === '...'}
-            onClick={() => typeof p === 'number' && onPageChange(p)}
-          >
-            {p}
-          </button>
-        ))}
-        <button
-          className="pagination-btn"
-          disabled={currentPage === totalPages}
-          onClick={() => onPageChange(currentPage + 1)}
-          title="Sonraki"
-        >
-          ›
-        </button>
-        <button
-          className="pagination-btn"
-          disabled={currentPage === totalPages}
-          onClick={() => onPageChange(totalPages)}
-          title="Son Sayfa"
-        >
-          »
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function MarketAnalysis({
   onSymbolClick,
   watchlists = [],
@@ -540,18 +457,6 @@ export default function MarketAnalysis({
   const [filterBullishPC, setFilterBullishPC] = useState(() => localStorage.getItem('temist_scanner_f_pc') === 'true');
   const [filterHighScore, setFilterHighScore] = useState(() => localStorage.getItem('temist_scanner_f_high') === 'true');
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [currentIndicatorPage, setCurrentIndicatorPage] = useState(1);
-  const ITEMS_PER_PAGE = 50;
-
-  // Reset page to 1 when filters or search change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterHighScore, searchQuery, selectedSector]);
-
-  useEffect(() => {
-    setCurrentIndicatorPage(1);
-  }, [searchQuery, selectedSector, rules, ruleMatchingMode]);
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>(() => (localStorage.getItem('temist_scanner_view_mode') as 'table' | 'heatmap') || 'table');
   const [heatmapColorBy, setHeatmapColorBy] = useState<'change' | 'score'>('change');
   const [selectedStockHistory, setSelectedStockHistory] = useState<OHLCVData[] | null>(null);
@@ -1015,11 +920,6 @@ export default function MarketAnalysis({
     return list;
   }, [results, filterBullishWP, filterBullishNC, filterBullishER, filterBullishPC, filterHighScore, sortKey, sortDirection, searchQuery, selectedSector, getSymbolDisplayName]);
 
-  const paginatedList = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredAndSorted.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredAndSorted, currentPage]);
-
   // Market sentiment calculations
   const sentimentStats = useMemo(() => {
     if (results.length === 0) return { avgScore: 50, bullCount: 0, bearCount: 0, neutralCount: 0 };
@@ -1333,11 +1233,6 @@ export default function MarketAnalysis({
 
     return list;
   }, [results, financialsData, rules, ruleMatchingMode, indSortKey, indSortDirection, searchQuery, selectedSector, getSymbolDisplayName]);
-
-  const paginatedIndicatorList = useMemo(() => {
-    const start = (currentIndicatorPage - 1) * ITEMS_PER_PAGE;
-    return indicatorFilteredAndSorted.slice(start, start + ITEMS_PER_PAGE);
-  }, [indicatorFilteredAndSorted, currentIndicatorPage]);
 
   const heatmapData = useMemo(() => {
     const list = activeTab === 'smart' ? filteredAndSorted : indicatorFilteredAndSorted;
@@ -1751,8 +1646,7 @@ export default function MarketAnalysis({
                   />
                 </div>
               ) : (
-                <>
-                  <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
+                <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
                   <table className="scanner-table">
                     <thead>
                       <tr>
@@ -1792,7 +1686,7 @@ export default function MarketAnalysis({
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedList.map(stock => (
+                      {filteredAndSorted.map(stock => (
                         <tr
                           key={stock.symbol}
                           onClick={() => handleRowClick(stock)}
@@ -1876,16 +1770,7 @@ export default function MarketAnalysis({
                   </tbody>
                 </table>
               </div>
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={Math.ceil(filteredAndSorted.length / ITEMS_PER_PAGE)}
-                onPageChange={setCurrentPage}
-                totalItems={filteredAndSorted.length}
-                startIndex={(currentPage - 1) * ITEMS_PER_PAGE}
-                endIndex={currentPage * ITEMS_PER_PAGE}
-              />
-            </>
-          )}
+            )}
           </div>
           </>
         )}
@@ -2204,8 +2089,7 @@ export default function MarketAnalysis({
                   />
                 </div>
               ) : (
-                <>
-                  <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
+                <div ref={tableWrapRef} className="scanner-table-wrap" onScroll={handleScroll}>
                   <table className="scanner-table indicator-table">
                   <thead>
                     <tr>
@@ -2378,7 +2262,7 @@ export default function MarketAnalysis({
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedIndicatorList.map(stock => {
+                    {indicatorFilteredAndSorted.map(stock => {
                       const wp = stock.indicators.williamsPasa;
                       const nc = stock.indicators.nizamiCedid;
                       const er = stock.indicators.emaRibbon;
@@ -2593,16 +2477,7 @@ export default function MarketAnalysis({
                   </tbody>
                 </table>
               </div>
-              <PaginationControls
-                currentPage={currentIndicatorPage}
-                totalPages={Math.ceil(indicatorFilteredAndSorted.length / ITEMS_PER_PAGE)}
-                onPageChange={setCurrentIndicatorPage}
-                totalItems={indicatorFilteredAndSorted.length}
-                startIndex={(currentIndicatorPage - 1) * ITEMS_PER_PAGE}
-                endIndex={currentIndicatorPage * ITEMS_PER_PAGE}
-              />
-            </>
-          )}
+            )}
           </div>
           </>
         )}
