@@ -8,6 +8,9 @@ import {
   shiftDataZoomWindow,
   getPaddedCategoryCount,
   getRightPanGutterCount,
+  portableZoomFromWindow,
+  windowFromPortableZoom,
+  legacyAxisOffsetToBarsPast,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -65,6 +68,33 @@ describe('padded category axis length', () => {
   it('includes asymmetric right gutter', () => {
     const count = getPaddedCategoryCount(3650, false);
     expect(count).toBe(15 + 3650 + getRightPanGutterCount(false));
+  });
+});
+
+describe('portable zoom (data-anchored)', () => {
+  it('maps legacy axis-end offset to bars past last data', () => {
+    const dataLen = 3650;
+    const bounds = getPaddedCategoryCount(dataLen, false);
+    const legacyOffset = bounds - 1 - (15 + dataLen + 10);
+    const barsPast = legacyAxisOffsetToBarsPast(legacyOffset, dataLen, false);
+    expect(barsPast).toBe(11);
+  });
+
+  it('keeps the window on real candles after symbol change', () => {
+    const prefs = portableZoomFromWindow(3600, 3675, 3650, false);
+    expect(prefs.barsPastLastData).toBe(11);
+    const window = windowFromPortableZoom(prefs, 500, false);
+    const lastData = 15 + 500 - 1;
+    expect(window.endValue).toBeGreaterThanOrEqual(lastData);
+    expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
+    expect(window.endValue - window.startValue).toBeGreaterThanOrEqual(10);
+  });
+
+  it('clamps deep gutter views back to sensible end', () => {
+    const prefs = { visibleBarCount: 80, barsPastLastData: 2000 };
+    const window = windowFromPortableZoom(prefs, 3650, false);
+    const lastData = 15 + 3650 - 1;
+    expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
 });
 

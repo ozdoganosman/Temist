@@ -26,6 +26,11 @@ import {
   readDataZoomWindow,
   shiftDataZoomWindow,
   getPaddedCategoryCount,
+  portableZoomFromWindow,
+  windowFromPortableZoom,
+  loadPortableZoomPrefs,
+  savePortableZoomPrefs,
+  type PortableZoomPrefs,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
@@ -709,8 +714,8 @@ export default function ChartContainer({
   const lastHoveredIdxRef = useRef<number | null>(null);
   const updatePanelTitlesRef = useRef<(activeIdx: number) => void>(() => {});
   const zoomSaveRef = useRef<() => void>(() => {});
-  /** Visible span + right offset — portable when switching symbols. */
-  const lastZoomPrefsRef = useRef<{ visibleBarCount: number; offsetFromEnd: number } | null>(null);
+  /** Visible span + anchor past last candle — portable when switching symbols. */
+  const lastZoomPrefsRef = useRef<PortableZoomPrefs | null>(null);
   const currentLargeModeRef = useRef<boolean | null>(null);
 
   // Toggle visibility of individual Bollinger bands
@@ -1997,16 +2002,21 @@ export default function ChartContainer({
           const startValue = dz.startValue;
           const endValue = dz.endValue;
           const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
-          if (startValue !== undefined && startValue !== null && endValue !== undefined && endValue !== null && xAxisDataLen) {
-            const visibleBarCount = endValue - startValue;
-            const offsetFromEnd = xAxisDataLen - 1 - endValue;
-            lastZoomPrefsRef.current = { visibleBarCount, offsetFromEnd };
-            try {
-              localStorage.setItem('temist_chart_visible_bar_count', String(visibleBarCount));
-              localStorage.setItem('temist_chart_zoom_offset_from_end', String(offsetFromEnd));
-            } catch (e) {
-              console.error(e);
-            }
+          if (
+            startValue !== undefined &&
+            startValue !== null &&
+            endValue !== undefined &&
+            endValue !== null &&
+            currentDataRef.current.length > 0
+          ) {
+            const prefs = portableZoomFromWindow(
+              startValue,
+              endValue,
+              currentDataRef.current.length,
+              isIntraday(intervalRef.current),
+            );
+            lastZoomPrefsRef.current = prefs;
+            savePortableZoomPrefs(prefs);
           }
         }
       }, 200);
@@ -2074,8 +2084,6 @@ export default function ChartContainer({
     const symbolChanged = prevSymbolRef.current !== symbol;
     const intradayMode = isIntraday(interval);
     const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
-    const maxCategoryIdx = Math.max(0, categoryCount - 1);
-    const padBefore = getPaddingCount(filtered.length, intradayMode);
 
     const opt = getSafeChartOption(chart);
     const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
@@ -2094,79 +2102,50 @@ export default function ChartContainer({
       }
     }
 
-    const applyPortableZoomWindow = (fromStorage: boolean) => {
-      let visibleBarCount: number | null = null;
-      let offsetFromEnd: number | null = null;
+    const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
+      const dataLenForRead = symbolChanged
+        ? Math.max(prevDataLenRef.current, filtered.length, 1)
+        : filtered.length;
 
-      if (opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+      if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && dataLenForRead > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
         if (live.endValue > live.startValue) {
-          visibleBarCount = live.endValue - live.startValue;
-          offsetFromEnd = xAxisDataLen - 1 - live.endValue;
+          return portableZoomFromWindow(
+            live.startValue,
+            live.endValue,
+            dataLenForRead,
+            intradayMode,
+          );
         }
       }
 
-      if (visibleBarCount === null || offsetFromEnd === null) {
-        const cached = lastZoomPrefsRef.current;
-        if (cached) {
-          visibleBarCount = cached.visibleBarCount;
-          offsetFromEnd = cached.offsetFromEnd;
-        }
+      if (lastZoomPrefsRef.current) {
+        return lastZoomPrefsRef.current;
       }
 
-      if (visibleBarCount === null || offsetFromEnd === null) {
-        try {
-          const savedCount = localStorage.getItem('temist_chart_visible_bar_count');
-          const savedOffset = localStorage.getItem('temist_chart_zoom_offset_from_end');
-          if (savedCount !== null && savedOffset !== null) {
-            visibleBarCount = parseInt(savedCount, 10);
-            offsetFromEnd = parseInt(savedOffset, 10);
-          }
-        } catch (e) {
-          console.error(e);
-        }
+      const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
+      if (stored) {
+        return stored;
       }
 
-      if (visibleBarCount === null || offsetFromEnd === null) {
-        const rightPadBars = RIGHT_PAD_BARS;
-        const dataEnd = padBefore + filtered.length;
-        const visibleEnd = Math.min(dataEnd + rightPadBars, categoryCount);
-        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + rightPadBars, categoryCount);
-        offsetFromEnd = categoryCount - visibleEnd;
-      }
-
-      if (visibleBarCount < 10) {
-        visibleBarCount = 10;
-      }
-      if (fromStorage && visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
-        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, categoryCount);
-      }
-      if (visibleBarCount > categoryCount) {
-        visibleBarCount = categoryCount;
-      }
-
-      if (offsetFromEnd < 0) {
-        offsetFromEnd = 0;
-      }
-      const maxOffsetFromEnd = Math.max(0, maxCategoryIdx - 10);
-      if (offsetFromEnd > maxOffsetFromEnd) {
-        offsetFromEnd = maxOffsetFromEnd;
-      }
-
-      let endIdx = maxCategoryIdx - offsetFromEnd;
-      let startIdx = endIdx - visibleBarCount;
-      if (startIdx < 0) {
-        startIdx = 0;
-        endIdx = Math.min(maxCategoryIdx, startIdx + visibleBarCount);
-      }
-
-      zoomStartVal = startIdx;
-      zoomEndVal = endIdx;
-      lastZoomPrefsRef.current = { visibleBarCount, offsetFromEnd };
+      return {
+        visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
+        barsPastLastData: RIGHT_PAD_BARS,
+      };
     };
 
     if (zoomStartVal === null) {
-      applyPortableZoomWindow(!symbolChanged);
+      let prefs = resolvePortableZoomPrefs();
+      if (prefs.visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
+        prefs = {
+          ...prefs,
+          visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
+        };
+      }
+      const window = windowFromPortableZoom(prefs, filtered.length, intradayMode);
+      zoomStartVal = window.startValue;
+      zoomEndVal = window.endValue;
+      lastZoomPrefsRef.current = prefs;
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;

@@ -110,6 +110,119 @@ export function getPaddedCategoryCount(dataLen: number, intradayMode = false): n
   return getPaddingCount(dataLen, intradayMode) + dataLen + getRightPanGutterCount(intradayMode);
 }
 
+export interface ChartDataBounds {
+  padBefore: number;
+  dataStart: number;
+  dataEndExclusive: number;
+  lastDataIdx: number;
+  maxCategoryIdx: number;
+  /** Furthest right index that still shows real candles (not deep empty gutter). */
+  maxSensibleEndIdx: number;
+}
+
+export function getChartDataBounds(dataLen: number, intradayMode = false): ChartDataBounds {
+  const padBefore = getPaddingCount(dataLen, intradayMode);
+  const dataStart = padBefore;
+  const dataEndExclusive = padBefore + dataLen;
+  const lastDataIdx = Math.max(dataStart, dataEndExclusive - 1);
+  const maxCategoryIdx = Math.max(0, getPaddedCategoryCount(dataLen, intradayMode) - 1);
+  const maxSensibleEndIdx = Math.min(dataEndExclusive + RIGHT_PAD_BARS, maxCategoryIdx);
+  return { padBefore, dataStart, dataEndExclusive, lastDataIdx, maxCategoryIdx, maxSensibleEndIdx };
+}
+
+/** Zoom prefs anchored to the last real candle — portable across symbols. */
+export interface PortableZoomPrefs {
+  visibleBarCount: number;
+  /** Window end minus last data index (0 ≈ last candle visible at right edge). */
+  barsPastLastData: number;
+}
+
+export function portableZoomFromWindow(
+  startValue: number,
+  endValue: number,
+  dataLen: number,
+  intradayMode = false,
+): PortableZoomPrefs {
+  const { lastDataIdx } = getChartDataBounds(dataLen, intradayMode);
+  return {
+    visibleBarCount: Math.max(1, endValue - startValue),
+    barsPastLastData: endValue - lastDataIdx,
+  };
+}
+
+export function windowFromPortableZoom(
+  prefs: PortableZoomPrefs,
+  dataLen: number,
+  intradayMode = false,
+): { startValue: number; endValue: number } {
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  if (dataLen === 0) {
+    return { startValue: 0, endValue: 0 };
+  }
+
+  const maxPast = RIGHT_PAD_BARS + 5;
+  const barsPast = Math.min(Math.max(prefs.barsPastLastData, -5), maxPast);
+  let visible = Math.max(10, prefs.visibleBarCount);
+  visible = Math.min(visible, bounds.maxCategoryIdx + 1);
+
+  let endIdx = bounds.lastDataIdx + barsPast;
+  endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx);
+  endIdx = Math.min(endIdx, bounds.maxCategoryIdx);
+
+  let startIdx = endIdx - visible;
+  if (startIdx < bounds.dataStart) {
+    startIdx = bounds.dataStart;
+    endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
+  }
+
+  return { startValue: startIdx, endValue: endIdx };
+}
+
+/** Convert legacy axis-end offset (pre data-anchor) to barsPastLastData. */
+export function legacyAxisOffsetToBarsPast(
+  offsetFromAxisEnd: number,
+  dataLen: number,
+  intradayMode = false,
+): number {
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  const endIdx = bounds.maxCategoryIdx - offsetFromAxisEnd;
+  return endIdx - bounds.lastDataIdx;
+}
+
+export function loadPortableZoomPrefs(
+  dataLen: number,
+  intradayMode = false,
+): PortableZoomPrefs | null {
+  try {
+    const countRaw = localStorage.getItem('temist_chart_visible_bar_count');
+    const offsetRaw = localStorage.getItem('temist_chart_zoom_offset_from_end');
+    if (countRaw === null || offsetRaw === null) return null;
+
+    const visibleBarCount = parseInt(countRaw, 10);
+    const offsetNum = parseInt(offsetRaw, 10);
+    if (!Number.isFinite(visibleBarCount) || !Number.isFinite(offsetNum)) return null;
+
+    // Legacy values were "offset from axis end" (thousands when a normal view).
+    const barsPastLastData =
+      offsetNum > RIGHT_PAD_BARS + 20
+        ? legacyAxisOffsetToBarsPast(offsetNum, dataLen, intradayMode)
+        : offsetNum;
+
+    return { visibleBarCount, barsPastLastData };
+  } catch {
+    return null;
+  }
+}
+
+export function savePortableZoomPrefs(prefs: PortableZoomPrefs): void {
+  try {
+    localStorage.setItem('temist_chart_visible_bar_count', String(prefs.visibleBarCount));
+    localStorage.setItem('temist_chart_zoom_offset_from_end', String(prefs.barsPastLastData));
+  } catch {
+    // ignore quota errors
+  }
+}
+
 type DataZoomWindowInput = {
   start?: number;
   end?: number;
