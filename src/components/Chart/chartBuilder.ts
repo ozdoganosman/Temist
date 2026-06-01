@@ -510,7 +510,7 @@ export function buildOption(
   const total = dates.length;
   const dataTotal = filtered.length;
   const dataEnd = padded.offset + dataTotal;
-  const rightPadBars = 120;
+  const rightPadBars = 15;
   const visibleEnd = Math.min(dataEnd + rightPadBars, total);
   const dataStart = Math.max(padded.offset, visibleEnd - 120 - rightPadBars);
   const zoomStart = (dataStart / total) * 100;
@@ -576,6 +576,8 @@ export function buildOption(
     name: symbol,
     type: 'candlestick' as const,
     data: ohlc,
+    barWidth: '60%',
+    barMaxWidth: 20,
     itemStyle: {
       color: UP_COLOR,
       color0: DOWN_COLOR,
