@@ -709,6 +709,8 @@ export default function ChartContainer({
   const lastHoveredIdxRef = useRef<number | null>(null);
   const updatePanelTitlesRef = useRef<(activeIdx: number) => void>(() => {});
   const zoomSaveRef = useRef<() => void>(() => {});
+  /** Visible span + right offset — portable when switching symbols. */
+  const lastZoomPrefsRef = useRef<{ visibleBarCount: number; offsetFromEnd: number } | null>(null);
   const currentLargeModeRef = useRef<boolean | null>(null);
 
   // Toggle visibility of individual Bollinger bands
@@ -1998,6 +2000,7 @@ export default function ChartContainer({
           if (startValue !== undefined && startValue !== null && endValue !== undefined && endValue !== null && xAxisDataLen) {
             const visibleBarCount = endValue - startValue;
             const offsetFromEnd = xAxisDataLen - 1 - endValue;
+            lastZoomPrefsRef.current = { visibleBarCount, offsetFromEnd };
             try {
               localStorage.setItem('temist_chart_visible_bar_count', String(visibleBarCount));
               localStorage.setItem('temist_chart_zoom_offset_from_end', String(offsetFromEnd));
@@ -2080,8 +2083,10 @@ export default function ChartContainer({
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
 
-    // Indicator/layout toggles: keep the live zoom window as-is (no offset math).
-    if (!symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+    const axisLengthUnchanged = !symbolChanged && xAxisDataLen === categoryCount;
+
+    // Same symbol + same axis length (e.g. indicator toggle): keep exact indices.
+    if (axisLengthUnchanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
       const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
       if (live.endValue > live.startValue) {
         zoomStartVal = live.startValue;
@@ -2089,17 +2094,23 @@ export default function ChartContainer({
       }
     }
 
-    const applyStoredZoomWindow = (fromStorage: boolean) => {
+    const applyPortableZoomWindow = (fromStorage: boolean) => {
       let visibleBarCount: number | null = null;
       let offsetFromEnd: number | null = null;
 
-      if (!fromStorage && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
-        const dz = opt.dataZoom[0];
-        const startVal = dz.startValue;
-        const endVal = dz.endValue;
-        if (startVal !== undefined && endVal !== undefined) {
-          visibleBarCount = endVal - startVal;
-          offsetFromEnd = xAxisDataLen - 1 - endVal;
+      if (opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+        const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
+        if (live.endValue > live.startValue) {
+          visibleBarCount = live.endValue - live.startValue;
+          offsetFromEnd = xAxisDataLen - 1 - live.endValue;
+        }
+      }
+
+      if (visibleBarCount === null || offsetFromEnd === null) {
+        const cached = lastZoomPrefsRef.current;
+        if (cached) {
+          visibleBarCount = cached.visibleBarCount;
+          offsetFromEnd = cached.offsetFromEnd;
         }
       }
 
@@ -2116,23 +2127,17 @@ export default function ChartContainer({
         }
       }
 
-      if (symbolChanged) {
+      if (visibleBarCount === null || offsetFromEnd === null) {
         const rightPadBars = RIGHT_PAD_BARS;
         const dataEnd = padBefore + filtered.length;
         const visibleEnd = Math.min(dataEnd + rightPadBars, categoryCount);
-        const defaultOffset = categoryCount - visibleEnd;
         visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + rightPadBars, categoryCount);
-        offsetFromEnd = defaultOffset;
-      }
-
-      if (visibleBarCount === null || offsetFromEnd === null) {
-        return;
+        offsetFromEnd = categoryCount - visibleEnd;
       }
 
       if (visibleBarCount < 10) {
         visibleBarCount = 10;
       }
-      // Only cap persisted zoom from storage — not the user's current on-chart zoom.
       if (fromStorage && visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
         visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, categoryCount);
       }
@@ -2157,10 +2162,11 @@ export default function ChartContainer({
 
       zoomStartVal = startIdx;
       zoomEndVal = endIdx;
+      lastZoomPrefsRef.current = { visibleBarCount, offsetFromEnd };
     };
 
     if (zoomStartVal === null) {
-      applyStoredZoomWindow(true);
+      applyPortableZoomWindow(!symbolChanged);
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;
