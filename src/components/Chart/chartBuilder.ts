@@ -140,6 +140,13 @@ function formatIndicatorVal(v: number): string {
   return v.toExponential(2);
 }
 
+function isMobileViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  const coarsePointer =
+    typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return window.innerWidth < 768 || coarsePointer;
+}
+
 export function addPadding(
   dates: string[],
   ohlcArr: unknown[],
@@ -334,9 +341,7 @@ function computeEMARegimeAreas(
 }
 
 function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any {
-  const isMobile =
-    typeof window !== 'undefined' &&
-    (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
+  const isMobile = isMobileViewport();
   const rowHeight = isMobile ? 26 : 32;
   const tableWidth = isMobile ? 260 : 340;
   
@@ -508,9 +513,7 @@ function buildPearsonTable(results: any[], tc: ThemeColors, bottom: number): any
 }
 
 export function getGridMargins() {
-  const isMobile =
-    typeof window !== 'undefined' &&
-    (window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches);
+  const isMobile = isMobileViewport();
   return {
     left: isMobile ? 10 : 15,
     right: isMobile ? 32 : 55,
