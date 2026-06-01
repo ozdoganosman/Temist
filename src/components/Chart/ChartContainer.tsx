@@ -20,6 +20,7 @@ import {
   buildOption,
   computeVisiblePriceExtent,
   getThemeColors,
+  getAxisLeadingOffset,
   getPaddingCount,
   getGridMargins,
   getPanelTitleHTML,
@@ -1484,7 +1485,7 @@ export default function ChartContainer({
         let durationText = '';
 
         if (currentDataRef.current.length > 0) {
-          const padding = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+          const padding = getAxisLeadingOffset(currentDataRef.current.length, isIntraday(intervalRef.current));
           const startIdx = clamp(measureStartBarIdx - padding, 0, currentDataRef.current.length - 1);
           const currentIdx = clamp(currentBarIdx - padding, 0, currentDataRef.current.length - 1);
           
@@ -1936,7 +1937,7 @@ export default function ChartContainer({
       const xInfo = p.axesInfo?.find((a) => a.axisDim === 'x');
       if (xInfo?.value != null && currentDataRef.current.length > 0) {
         const dataIndex = Math.round(xInfo.value);
-        const realIdx = dataIndex - getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+        const realIdx = dataIndex - getAxisLeadingOffset(currentDataRef.current.length, isIntraday(intervalRef.current));
         
         if (realIdx === lastHoveredIdxRef.current) {
           return;
@@ -2005,12 +2006,12 @@ export default function ChartContainer({
         endValue = Math.ceil((endPct / 100) * maxCategoryIdx);
       }
 
-      const pad = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+      const axisOffset = getAxisLeadingOffset(currentDataRef.current.length, isIntraday(intervalRef.current));
       const extent = computeVisiblePriceExtent(
         currentDataRef.current,
         startValue,
         endValue,
-        pad,
+        axisOffset,
         logScaleRef.current,
       );
 

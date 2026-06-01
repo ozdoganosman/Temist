@@ -86,6 +86,8 @@ export function getThemeColors(): ThemeColors {
 const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
+/** Empty x-axis slots on each side so the chart can be panned to center in the viewport. */
+export const LEFT_PAN_GUTTER_BARS = 2400;
 /** Empty x-axis slots after the last candle so pan-right can reveal whitespace. */
 export const RIGHT_PAN_GUTTER_BARS = 2400;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
@@ -101,13 +103,22 @@ export function getPaddingCount(dataLen: number, intradayMode = false): number {
   return 15;
 }
 
+export function getLeftPanGutterCount(intradayMode = false): number {
+  return intradayMode ? 1200 : LEFT_PAN_GUTTER_BARS;
+}
+
 export function getRightPanGutterCount(intradayMode = false): number {
   return intradayMode ? 1200 : RIGHT_PAN_GUTTER_BARS;
 }
 
-/** Total x-axis category count (left pad + data + right gutter). */
+/** Category index where real OHLCV data begins (after the left pan gutter). */
+export function getAxisLeadingOffset(_dataLen: number, intradayMode = false): number {
+  return getLeftPanGutterCount(intradayMode);
+}
+
+/** Total x-axis category count (left gutter + data + right gutter). */
 export function getPaddedCategoryCount(dataLen: number, intradayMode = false): number {
-  return getPaddingCount(dataLen, intradayMode) + dataLen + getRightPanGutterCount(intradayMode);
+  return getLeftPanGutterCount(intradayMode) + dataLen + getRightPanGutterCount(intradayMode);
 }
 
 export interface ChartDataBounds {
@@ -121,7 +132,7 @@ export interface ChartDataBounds {
 }
 
 export function getChartDataBounds(dataLen: number, intradayMode = false): ChartDataBounds {
-  const padBefore = getPaddingCount(dataLen, intradayMode);
+  const padBefore = getLeftPanGutterCount(intradayMode);
   const dataStart = padBefore;
   const dataEndExclusive = padBefore + dataLen;
   const lastDataIdx = Math.max(dataStart, dataEndExclusive - 1);
@@ -170,8 +181,8 @@ export function windowFromPortableZoom(
   endIdx = Math.min(endIdx, bounds.maxCategoryIdx);
 
   let startIdx = endIdx - visible;
-  if (startIdx < bounds.dataStart) {
-    startIdx = bounds.dataStart;
+  if (startIdx < 0) {
+    startIdx = 0;
     endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
   }
 
@@ -385,7 +396,7 @@ export function addPadding(
   closeArr: (number | null)[],
   intradayMode = false,
 ) {
-  const padBefore = getPaddingCount(dates.length, intradayMode);
+  const padBefore = getLeftPanGutterCount(intradayMode);
   const padAfterCount = getRightPanGutterCount(intradayMode);
   const padBeforeArr = new Array(padBefore).fill('');
   const lastDate = dates.length > 0 ? dates[dates.length - 1] : '';
@@ -1201,7 +1212,7 @@ export function buildOption(
 
   // --- Sub panel series ---
   const subSeries: echarts.SeriesOption[] = [];
-  const pad = getPaddingCount(filtered.length, intradayMode);
+  const pad = getLeftPanGutterCount(intradayMode);
   const padNull = new Array(pad).fill(null);
 
   // ── New Indicators Calculations ──
@@ -2282,7 +2293,7 @@ export function buildOption(
       // ── Signal scatter markers (4-directional) ──
       ...(signalEvents && signalEvents.length > 0
         ? (() => {
-            const pad = getPaddingCount(filtered.length, intradayMode);
+            const pad = getLeftPanGutterCount(intradayMode);
             const longEntryPts: SignalPoint[] = [];
             const longExitPts: SignalPoint[] = [];
             const shortEntryPts: SignalPoint[] = [];
