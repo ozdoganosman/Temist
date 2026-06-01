@@ -6,7 +6,7 @@ const STORE_NAME = 'ohlcv';
 
 // TTL: how long cached data is considered fresh
 const MEMORY_TTL_MS = 2 * 60 * 1000;   // 2 min for in-memory (same session)
-const DB_TTL_MS     = 5 * 60 * 1000;   // 5 min for IndexedDB (persisted)
+const DB_TTL_MS     = 12 * 60 * 60 * 1000; // 12 hours for IndexedDB (persisted)
 
 
 interface CacheEntry {
