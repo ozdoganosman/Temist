@@ -25,6 +25,7 @@ import {
   getPanelTitleHTML,
   readDataZoomWindow,
   shiftDataZoomWindow,
+  getPaddedCategoryCount,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
@@ -2046,79 +2047,98 @@ export default function ChartContainer({
     if (!chart) return;
 
     const symbolChanged = prevSymbolRef.current !== symbol;
-
-    let visibleBarCount: number | null = null;
-    let offsetFromEnd: number | null = null;
+    const intradayMode = isIntraday(interval);
+    const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
+    const maxCategoryIdx = Math.max(0, categoryCount - 1);
+    const padBefore = getPaddingCount(filtered.length, intradayMode);
 
     const opt = chart.getOption() as any;
-    if (opt?.dataZoom && opt.dataZoom.length > 0 && opt.dataZoom[0].startValue !== undefined && opt.dataZoom[0].startValue !== null) {
-      const dz = opt.dataZoom[0];
-      const startVal = dz.startValue;
-      const endVal = dz.endValue;
-      const xAxisDataLen = opt.xAxis?.[0]?.data?.length;
-      if (startVal !== undefined && endVal !== undefined && xAxisDataLen) {
-        visibleBarCount = endVal - startVal;
-        offsetFromEnd = xAxisDataLen - 1 - endVal;
-      }
-    }
-
-    if (visibleBarCount === null || offsetFromEnd === null) {
-      try {
-        const savedCount = localStorage.getItem('temist_chart_visible_bar_count');
-        const savedOffset = localStorage.getItem('temist_chart_zoom_offset_from_end');
-        if (savedCount !== null && savedOffset !== null) {
-          visibleBarCount = parseInt(savedCount, 10);
-          offsetFromEnd = parseInt(savedOffset, 10);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    const pad = getPaddingCount(filtered.length, isIntraday(interval));
-    const total = pad + filtered.length + pad;
-
-    if (symbolChanged) {
-      const rightPadBars = RIGHT_PAD_BARS;
-      const dataEnd = pad + filtered.length;
-      const visibleEnd = Math.min(dataEnd + rightPadBars, total);
-      const defaultOffset = total - visibleEnd;
-      visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + rightPadBars, total);
-      offsetFromEnd = defaultOffset;
-    }
+    const xAxisDataLen = opt.xAxis?.[0]?.data?.length ?? categoryCount;
 
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
 
-    if (visibleBarCount !== null && offsetFromEnd !== null) {
+    // Indicator/layout toggles: keep the live zoom window as-is (no offset math).
+    if (!symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+      const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
+      if (live.endValue > live.startValue) {
+        zoomStartVal = live.startValue;
+        zoomEndVal = live.endValue;
+      }
+    }
+
+    const applyStoredZoomWindow = (fromStorage: boolean) => {
+      let visibleBarCount: number | null = null;
+      let offsetFromEnd: number | null = null;
+
+      if (!fromStorage && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+        const dz = opt.dataZoom[0];
+        const startVal = dz.startValue;
+        const endVal = dz.endValue;
+        if (startVal !== undefined && endVal !== undefined) {
+          visibleBarCount = endVal - startVal;
+          offsetFromEnd = xAxisDataLen - 1 - endVal;
+        }
+      }
+
+      if (visibleBarCount === null || offsetFromEnd === null) {
+        try {
+          const savedCount = localStorage.getItem('temist_chart_visible_bar_count');
+          const savedOffset = localStorage.getItem('temist_chart_zoom_offset_from_end');
+          if (savedCount !== null && savedOffset !== null) {
+            visibleBarCount = parseInt(savedCount, 10);
+            offsetFromEnd = parseInt(savedOffset, 10);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (symbolChanged) {
+        const rightPadBars = RIGHT_PAD_BARS;
+        const dataEnd = padBefore + filtered.length;
+        const visibleEnd = Math.min(dataEnd + rightPadBars, categoryCount);
+        const defaultOffset = categoryCount - visibleEnd;
+        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + rightPadBars, categoryCount);
+        offsetFromEnd = defaultOffset;
+      }
+
+      if (visibleBarCount === null || offsetFromEnd === null) {
+        return;
+      }
+
       if (visibleBarCount < 10) {
         visibleBarCount = 10;
       }
-      if (visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
-        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, total);
+      // Only cap persisted zoom from storage — not the user's current on-chart zoom.
+      if (fromStorage && visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
+        visibleBarCount = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, categoryCount);
       }
-      if (visibleBarCount > total) {
-        visibleBarCount = total;
+      if (visibleBarCount > categoryCount) {
+        visibleBarCount = categoryCount;
       }
 
-      // Allow offsetFromEnd === 0 so the window can align with the right gutter (pan right).
       if (offsetFromEnd < 0) {
         offsetFromEnd = 0;
       }
-      const maxOffsetFromEnd = Math.max(0, total - 10);
+      const maxOffsetFromEnd = Math.max(0, maxCategoryIdx - 10);
       if (offsetFromEnd > maxOffsetFromEnd) {
         offsetFromEnd = maxOffsetFromEnd;
       }
 
-      let endIdx = total - 1 - offsetFromEnd;
+      let endIdx = maxCategoryIdx - offsetFromEnd;
       let startIdx = endIdx - visibleBarCount;
       if (startIdx < 0) {
         startIdx = 0;
-        endIdx = Math.min(total - 1, startIdx + visibleBarCount);
+        endIdx = Math.min(maxCategoryIdx, startIdx + visibleBarCount);
       }
 
       zoomStartVal = startIdx;
       zoomEndVal = endIdx;
+    };
+
+    if (zoomStartVal === null) {
+      applyStoredZoomWindow(true);
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;

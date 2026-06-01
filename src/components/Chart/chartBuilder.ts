@@ -105,6 +105,11 @@ export function getRightPanGutterCount(intradayMode = false): number {
   return intradayMode ? 1200 : RIGHT_PAN_GUTTER_BARS;
 }
 
+/** Total x-axis category count (left pad + data + right gutter). */
+export function getPaddedCategoryCount(dataLen: number, intradayMode = false): number {
+  return getPaddingCount(dataLen, intradayMode) + dataLen + getRightPanGutterCount(intradayMode);
+}
+
 type DataZoomWindowInput = {
   start?: number;
   end?: number;

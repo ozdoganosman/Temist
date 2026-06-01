@@ -6,6 +6,8 @@ import {
   getPaddingCount,
   readDataZoomWindow,
   shiftDataZoomWindow,
+  getPaddedCategoryCount,
+  getRightPanGutterCount,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -56,6 +58,13 @@ describe('chartBuilder price axis scaling', () => {
 
     expect(yAxis[0].min).toBeGreaterThan(9);
     expect(yAxis[0].max).toBeLessThan(13);
+  });
+});
+
+describe('padded category axis length', () => {
+  it('includes asymmetric right gutter', () => {
+    const count = getPaddedCategoryCount(3650, false);
+    expect(count).toBe(15 + 3650 + getRightPanGutterCount(false));
   });
 });
 
