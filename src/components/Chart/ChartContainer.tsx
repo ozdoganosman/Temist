@@ -919,6 +919,7 @@ export default function ChartContainer({
     };
     const SLIDER_ZONE_HEIGHT = 34;
     const onHoverMove = (e: MouseEvent) => {
+      if (chart.isDisposed()) return;
       if (!containerRef.current || dragging || dragOnPriceAxis || isMeasuring || dragDrawingRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
@@ -961,7 +962,7 @@ export default function ChartContainer({
     };
 
     const handleDragStart = (clientX: number, clientY: number, preventDefault: () => void) => {
-      if (!containerRef.current) return;
+      if (chart.isDisposed() || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
       const gridLeft = rect.left + margins.left;
@@ -1056,7 +1057,7 @@ export default function ChartContainer({
     };
 
     const handleDragMove = (clientX: number, clientY: number, preventDefault?: () => void) => {
-      if (!containerRef.current) return;
+      if (chart.isDisposed() || !containerRef.current) return;
 
       if (dragOnPriceAxis) {
         if (preventDefault) preventDefault();
@@ -1129,6 +1130,7 @@ export default function ChartContainer({
     };
 
     const onMouseDown = (e: MouseEvent) => {
+      if (chart.isDisposed()) return;
       if (e.button !== 0) return;
 
       if (activeToolRef.current !== 'pointer') {
@@ -1233,6 +1235,7 @@ export default function ChartContainer({
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (chart.isDisposed()) return;
       if (dragDrawingRef.current) {
         const drag = dragDrawingRef.current;
         const dx = e.clientX - drag.clickX;
@@ -1456,7 +1459,7 @@ export default function ChartContainer({
     };
 
     const handleDblClickLike = (clientX: number, clientY: number) => {
-      if (!containerRef.current) return;
+      if (chart.isDisposed() || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const margins = getGridMargins();
       const gridLeft = rect.left + margins.left;
@@ -1545,6 +1548,7 @@ export default function ChartContainer({
 
     let lastTapTime = 0;
     const onTouchStart = (e: TouchEvent) => {
+      if (chart.isDisposed()) return;
       if (e.touches.length === 1) {
         const touch = e.touches[0];
 
@@ -1625,6 +1629,7 @@ export default function ChartContainer({
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      if (chart.isDisposed()) return;
       if (e.touches.length === 1) {
         const touch = e.touches[0];
 
@@ -1937,8 +1942,8 @@ export default function ChartContainer({
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('mouseup', onMouseUp);
       document.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('mousedown', onMouseDown);
-      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('mousedown', onMouseDown, true);
+      el.removeEventListener('touchstart', onTouchStart, true);
       el.removeEventListener('mousemove', onHoverMove);
       el.removeEventListener('dblclick', onDblClick);
       window.removeEventListener('keyup', handleKeyUp);
