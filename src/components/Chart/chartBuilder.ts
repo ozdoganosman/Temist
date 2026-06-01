@@ -161,6 +161,62 @@ export function addPadding(
   };
 }
 
+export interface PriceAxisExtent {
+  min: number;
+  max: number;
+}
+
+export function computeVisiblePriceExtent(
+  data: OHLCVData[],
+  categoryStart: number,
+  categoryEnd: number,
+  pad: number,
+  logScale = false,
+): PriceAxisExtent | undefined {
+  if (data.length === 0) return undefined;
+
+  const start = Math.max(0, Math.floor(Math.min(categoryStart, categoryEnd) - pad));
+  const end = Math.min(data.length - 1, Math.ceil(Math.max(categoryStart, categoryEnd) - pad));
+  if (end < 0 || start > data.length - 1 || start > end) return undefined;
+
+  let min = Infinity;
+  let max = -Infinity;
+  let minPositive = Infinity;
+
+  for (let i = start; i <= end; i++) {
+    const low = data[i]?.low;
+    const high = data[i]?.high;
+    if (Number.isFinite(low) && (!logScale || low > 0)) {
+      min = Math.min(min, low);
+      if (low > 0) minPositive = Math.min(minPositive, low);
+    }
+    if (Number.isFinite(high) && (!logScale || high > 0)) {
+      max = Math.max(max, high);
+      if (high > 0) minPositive = Math.min(minPositive, high);
+    }
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
+
+  const range = max - min;
+  const padding = range > 0 ? range * 0.06 : Math.max(Math.abs(max) * 0.01, 0.01);
+  const paddedMin = min - padding;
+  const paddedMax = max + padding;
+
+  if (logScale) {
+    const safeMin = Number.isFinite(minPositive) ? minPositive * 0.95 : min;
+    return {
+      min: Math.max(paddedMin, safeMin),
+      max: paddedMax,
+    };
+  }
+
+  return {
+    min: paddedMin,
+    max: paddedMax,
+  };
+}
+
 function computeNizamiCedidRegimeAreas(condition: (boolean | null)[], rawDates: string[]): any[] {
   const areas: any[] = [];
   let startIdx: number | null = null;
@@ -515,6 +571,15 @@ export function buildOption(
   const dataStart = Math.max(padded.offset, visibleEnd - 120 - rightPadBars);
   const zoomStart = (dataStart / total) * 100;
   const zoomEnd = (visibleEnd / total) * 100;
+  const visibleStartValue = zoomStartValue ?? dataStart;
+  const visibleEndValue = zoomEndValue ?? visibleEnd;
+  const priceAxisExtent = computeVisiblePriceExtent(
+    filtered,
+    visibleStartValue,
+    visibleEndValue,
+    padded.offset,
+    logScale,
+  );
 
   const lastClose = filtered.length > 0 ? filtered[filtered.length - 1].close : null;
   const lastOpen = filtered.length > 0 ? filtered[filtered.length - 1].open : null;
@@ -692,6 +757,8 @@ export function buildOption(
       id: 'y-axis-price',
       type: logScale ? 'log' : 'value',
       scale: true,
+      min: priceAxisExtent?.min,
+      max: priceAxisExtent?.max,
       gridIndex: 0,
       position: 'right',
       splitLine: { lineStyle: { color: tc.border } },

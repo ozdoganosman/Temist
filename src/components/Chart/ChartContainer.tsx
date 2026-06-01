@@ -12,7 +12,7 @@ import {
 } from '../../utils/signalDetection';
 import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
-import { buildOption, getThemeColors, getPaddingCount, getGridMargins, getPanelTitleHTML } from './chartBuilder';
+import { buildOption, computeVisiblePriceExtent, getThemeColors, getPaddingCount, getGridMargins, getPanelTitleHTML } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
@@ -499,6 +499,10 @@ export default function ChartContainer({
   useEffect(() => {
     intervalRef.current = interval;
   }, [interval]);
+  const logScaleRef = useRef(logScale);
+  useEffect(() => {
+    logScaleRef.current = logScale;
+  }, [logScale]);
   const onLegendUpdateRef = useRef(onLegendUpdate);
   useEffect(() => {
     onLegendUpdateRef.current = onLegendUpdate;
@@ -1850,6 +1854,45 @@ export default function ChartContainer({
 
     let zoomSaveTimeout: any = null;
     chart.on('dataZoom', () => {
+      const opt = chart.getOption() as any;
+      const dz = opt?.dataZoom?.[0];
+      const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
+
+      if (currentDataRef.current.length > 0 && xAxisDataLen) {
+        const toNumber = (value: unknown): number | null => {
+          if (typeof value === 'number' && Number.isFinite(value)) return value;
+          if (typeof value === 'string' && value.trim() !== '') {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+          }
+          return null;
+        };
+
+        let startValue = toNumber(dz?.startValue);
+        let endValue = toNumber(dz?.endValue);
+        if (startValue === null || endValue === null) {
+          const startPct = toNumber(dz?.start) ?? 0;
+          const endPct = toNumber(dz?.end) ?? 100;
+          const maxCategoryIdx = Math.max(0, xAxisDataLen - 1);
+          startValue = Math.floor((startPct / 100) * maxCategoryIdx);
+          endValue = Math.ceil((endPct / 100) * maxCategoryIdx);
+        }
+
+        const pad = getPaddingCount(currentDataRef.current.length, isIntraday(intervalRef.current));
+        const extent = computeVisiblePriceExtent(
+          currentDataRef.current,
+          startValue,
+          endValue,
+          pad,
+          logScaleRef.current,
+        );
+        if (extent) {
+          chart.setOption({
+            yAxis: [{ id: 'y-axis-price', min: extent.min, max: extent.max }],
+          });
+        }
+      }
+
       if (zoomSaveTimeout) {
         clearTimeout(zoomSaveTimeout);
       }
