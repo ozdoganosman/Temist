@@ -23,6 +23,8 @@ import {
   getPaddingCount,
   getGridMargins,
   getPanelTitleHTML,
+  readDataZoomWindow,
+  shiftDataZoomWindow,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
@@ -755,6 +757,8 @@ export default function ChartContainer({
     let dragStartY = 0;
     let startZoomStart = 0;
     let startZoomEnd = 100;
+    let startZoomStartValue = 0;
+    let startZoomEndValue = 0;
     let startYMin = 0;
     let startYMax = 0;
     let dragOnPriceAxis = false;
@@ -1043,6 +1047,10 @@ export default function ChartContainer({
 
       startZoomStart = opt.dataZoom?.[0]?.start ?? 0;
       startZoomEnd = opt.dataZoom?.[0]?.end ?? 100;
+      const xAxisLen = opt.xAxis?.[0]?.data?.length ?? 0;
+      const zoomWindow = readDataZoomWindow(opt.dataZoom?.[0], xAxisLen);
+      startZoomStartValue = zoomWindow.startValue;
+      startZoomEndValue = zoomWindow.endValue;
 
       activeYAxisIdx = 0;
       activeYAxisId = 'y-axis-price';
@@ -1095,10 +1103,8 @@ export default function ChartContainer({
 
       const dx = clientX - dragStartX;
       const pxRange = rect.width;
-      const zoomRange = startZoomEnd - startZoomStart;
-      const shift = -(dx / pxRange) * zoomRange;
-      const newStart = startZoomStart + shift;
-      const newEnd = startZoomEnd + shift;
+      const visibleSpan = Math.max(1, startZoomEndValue - startZoomStartValue);
+      const shiftBars = Math.round(-(dx / pxRange) * visibleSpan);
 
       // Capture for RAF closure
       const capturedAxisId = activeYAxisId;
@@ -1106,18 +1112,39 @@ export default function ChartContainer({
       const dy = clientY - dragStartY;
       const capturedYMin = startYMin;
       const capturedYMax = startYMax;
+      const capturedStartValue = startZoomStartValue;
+      const capturedEndValue = startZoomEndValue;
 
       // Always throttle to one RAF frame — skip extra mousemove events
       if (dragRafId !== null) return;
       dragRafId = requestAnimationFrame(() => {
         dragRafId = null;
+        const optNow = chart.getOption() as { xAxis?: Array<{ data?: unknown[] }> };
+        const maxIdx = Math.max(0, (optNow.xAxis?.[0]?.data?.length ?? 1) - 1);
+        const shifted = shiftDataZoomWindow(
+          capturedStartValue,
+          capturedEndValue,
+          shiftBars,
+          maxIdx,
+        );
         // Batch the horizontal pan (dataZoom) and the vertical pan (yAxis) into
         // a SINGLE setOption so the chart re-renders once per frame instead of
         // 3x (dispatchAction + its dataZoom-event autoscale + a manual setOption).
+        // Use startValue/endValue so pan can reach the full right gutter (percent caps at 100).
         const patch: Record<string, unknown> = {
           dataZoom: [
-            { start: newStart, end: newEnd },
-            { start: newStart, end: newEnd },
+            {
+              startValue: shifted.startValue,
+              endValue: shifted.endValue,
+              start: undefined,
+              end: undefined,
+            },
+            {
+              startValue: shifted.startValue,
+              endValue: shifted.endValue,
+              start: undefined,
+              end: undefined,
+            },
           ],
         };
         if (capturedAxisId && capturedAxisId !== '') {
@@ -2074,11 +2101,13 @@ export default function ChartContainer({
         visibleBarCount = total;
       }
 
+      // Allow offsetFromEnd === 0 so the window can align with the right gutter (pan right).
       if (offsetFromEnd < 0) {
         offsetFromEnd = 0;
       }
-      if (offsetFromEnd > total - 10) {
-        offsetFromEnd = total - 10;
+      const maxOffsetFromEnd = Math.max(0, total - 10);
+      if (offsetFromEnd > maxOffsetFromEnd) {
+        offsetFromEnd = maxOffsetFromEnd;
       }
 
       let endIdx = total - 1 - offsetFromEnd;

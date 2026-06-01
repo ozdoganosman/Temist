@@ -86,6 +86,8 @@ export function getThemeColors(): ThemeColors {
 const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
+/** Empty x-axis slots after the last candle so pan-right can reveal whitespace. */
+export const RIGHT_PAN_GUTTER_BARS = 48;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
 // Above this many visible candles, switch ECharts candlestick "large" mode back
@@ -97,6 +99,80 @@ export const LARGE_MODE_VISIBLE_THRESHOLD = 250;
 export function getPaddingCount(dataLen: number, intradayMode = false): number {
   if (intradayMode) return 10;
   return 15;
+}
+
+export function getRightPanGutterCount(intradayMode = false): number {
+  return intradayMode ? 24 : RIGHT_PAN_GUTTER_BARS;
+}
+
+type DataZoomWindowInput = {
+  start?: number;
+  end?: number;
+  startValue?: number;
+  endValue?: number;
+};
+
+/** Resolve the current dataZoom window as category indices. */
+export function readDataZoomWindow(
+  dz: DataZoomWindowInput | undefined,
+  categoryCount: number,
+): { startValue: number; endValue: number } {
+  const maxIdx = Math.max(0, categoryCount - 1);
+  if (categoryCount === 0) {
+    return { startValue: 0, endValue: 0 };
+  }
+
+  const toIndex = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
+    return null;
+  };
+
+  let startValue = toIndex(dz?.startValue);
+  let endValue = toIndex(dz?.endValue);
+  if (startValue === null || endValue === null) {
+    const startPct = toIndex(dz?.start) ?? 0;
+    const endPct = toIndex(dz?.end) ?? 100;
+    startValue = Math.floor((startPct / 100) * maxIdx);
+    endValue = Math.ceil((endPct / 100) * maxIdx);
+  }
+
+  return {
+    startValue: Math.max(0, Math.min(maxIdx, startValue)),
+    endValue: Math.max(0, Math.min(maxIdx, endValue)),
+  };
+}
+
+/** Shift a dataZoom window by bar count, clamped to [0, maxCategoryIdx]. */
+export function shiftDataZoomWindow(
+  startValue: number,
+  endValue: number,
+  shiftBars: number,
+  maxCategoryIdx: number,
+): { startValue: number; endValue: number } {
+  if (maxCategoryIdx <= 0) {
+    return { startValue: 0, endValue: 0 };
+  }
+
+  const span = Math.max(1, endValue - startValue);
+  let newStart = startValue + shiftBars;
+  let newEnd = endValue + shiftBars;
+
+  if (newStart < 0) {
+    newEnd -= newStart;
+    newStart = 0;
+  }
+  if (newEnd > maxCategoryIdx) {
+    newStart -= newEnd - maxCategoryIdx;
+    newEnd = maxCategoryIdx;
+  }
+  if (newStart < 0) {
+    newStart = 0;
+  }
+  if (newEnd < newStart) {
+    newEnd = Math.min(maxCategoryIdx, newStart + span);
+  }
+
+  return { startValue: newStart, endValue: newEnd };
 }
 
 function generateFutureDates(lastDate: string, count: number): string[] {
@@ -162,17 +238,26 @@ export function addPadding(
   closeArr: (number | null)[],
   intradayMode = false,
 ) {
-  const pad = getPaddingCount(dates.length, intradayMode);
-  const padBefore = new Array(pad).fill('');
+  const padBefore = getPaddingCount(dates.length, intradayMode);
+  const padAfterCount = getRightPanGutterCount(intradayMode);
+  const padBeforeArr = new Array(padBefore).fill('');
   const lastDate = dates.length > 0 ? dates[dates.length - 1] : '';
-  const padAfter = generateFutureDates(lastDate, pad);
+  const padAfter = generateFutureDates(lastDate, padAfterCount);
 
   return {
-    dates: [...padBefore, ...dates, ...padAfter],
-    ohlc: [...new Array(pad).fill(EMPTY_OHLC), ...ohlcArr, ...new Array(pad).fill(EMPTY_OHLC)],
-    volumes: [...new Array(pad).fill(EMPTY_VOL), ...volumeArr, ...new Array(pad).fill(EMPTY_VOL)],
-    close: [...new Array(pad).fill(null), ...closeArr, ...new Array(pad).fill(null)],
-    offset: pad,
+    dates: [...padBeforeArr, ...dates, ...padAfter],
+    ohlc: [
+      ...new Array(padBefore).fill(EMPTY_OHLC),
+      ...ohlcArr,
+      ...new Array(padAfterCount).fill(EMPTY_OHLC),
+    ],
+    volumes: [
+      ...new Array(padBefore).fill(EMPTY_VOL),
+      ...volumeArr,
+      ...new Array(padAfterCount).fill(EMPTY_VOL),
+    ],
+    close: [...new Array(padBefore).fill(null), ...closeArr, ...new Array(padAfterCount).fill(null)],
+    offset: padBefore,
   };
 }
 

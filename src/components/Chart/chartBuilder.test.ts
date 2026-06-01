@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { OHLCVData } from '../../api/borsaApi';
-import { buildOption, computeVisiblePriceExtent, getPaddingCount } from './chartBuilder';
+import {
+  buildOption,
+  computeVisiblePriceExtent,
+  getPaddingCount,
+  readDataZoomWindow,
+  shiftDataZoomWindow,
+} from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
 const theme: ThemeColors = {
@@ -50,5 +56,25 @@ describe('chartBuilder price axis scaling', () => {
 
     expect(yAxis[0].min).toBeGreaterThan(9);
     expect(yAxis[0].max).toBeLessThan(13);
+  });
+});
+
+describe('dataZoom pan window', () => {
+  it('reads percent zoom as category indices', () => {
+    const window = readDataZoomWindow({ start: 0, end: 100 }, 101);
+    expect(window.startValue).toBe(0);
+    expect(window.endValue).toBe(100);
+  });
+
+  it('shifts the window right until the last category', () => {
+    const shifted = shiftDataZoomWindow(40, 80, 30, 100);
+    expect(shifted.endValue).toBe(100);
+    expect(shifted.startValue).toBe(60);
+  });
+
+  it('shifts the window left until the first category', () => {
+    const shifted = shiftDataZoomWindow(10, 50, -20, 100);
+    expect(shifted.startValue).toBe(0);
+    expect(shifted.endValue).toBe(40);
   });
 });
