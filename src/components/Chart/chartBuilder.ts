@@ -146,6 +146,8 @@ export interface PortableZoomPrefs {
   visibleBarCount: number;
   /** Window end minus last data index (0 ≈ last candle visible at right edge). */
   barsPastLastData: number;
+  /** Window start minus first data index (negative = panned into left gutter). */
+  startOffsetFromDataStart: number;
 }
 
 export function portableZoomFromWindow(
@@ -154,12 +156,25 @@ export function portableZoomFromWindow(
   dataLen: number,
   intradayMode = false,
 ): PortableZoomPrefs {
-  const { lastDataIdx } = getChartDataBounds(dataLen, intradayMode);
+  const bounds = getChartDataBounds(dataLen, intradayMode);
   return {
     visibleBarCount: Math.max(1, endValue - startValue),
-    barsPastLastData: endValue - lastDataIdx,
+    barsPastLastData: endValue - bounds.lastDataIdx,
+    startOffsetFromDataStart: startValue - bounds.dataStart,
   };
 }
+
+export function defaultPortableZoomPrefs(dataLen: number, intradayMode = false): PortableZoomPrefs {
+  const visible = DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
+  return {
+    visibleBarCount: visible,
+    barsPastLastData: RIGHT_PAD_BARS,
+    startOffsetFromDataStart: Math.max(0, dataLen - visible),
+  };
+}
+
+const MIN_VISIBLE_BARS = 20;
+const MAX_VISIBLE_BARS = 800;
 
 export function windowFromPortableZoom(
   prefs: PortableZoomPrefs,
@@ -173,20 +188,61 @@ export function windowFromPortableZoom(
 
   const maxPast = RIGHT_PAD_BARS + 5;
   const barsPast = Math.min(Math.max(prefs.barsPastLastData, -5), maxPast);
-  let visible = Math.max(10, prefs.visibleBarCount);
-  visible = Math.min(visible, bounds.maxCategoryIdx + 1);
+  let visible = Math.max(10, Math.min(prefs.visibleBarCount, MAX_VISIBLE_BARS));
 
-  let endIdx = bounds.lastDataIdx + barsPast;
-  endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx);
-  endIdx = Math.min(endIdx, bounds.maxCategoryIdx);
+  const hasStartOffset = Number.isFinite(prefs.startOffsetFromDataStart);
+  let startIdx: number;
+  let endIdx: number;
 
-  let startIdx = endIdx - visible;
-  if (startIdx < 0) {
-    startIdx = 0;
-    endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
+  if (hasStartOffset) {
+    const dataBars = bounds.lastDataIdx - bounds.dataStart + 1;
+    const minOffset = -getLeftPanGutterCount(intradayMode) + 5;
+    const maxOffset = Math.max(0, dataBars - 10);
+    const offset = Math.min(Math.max(prefs.startOffsetFromDataStart, minOffset), maxOffset);
+    startIdx = Math.max(0, bounds.dataStart + offset);
+    endIdx = startIdx + visible;
+    endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx, bounds.maxCategoryIdx);
+    if (endIdx <= startIdx) {
+      endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
+    }
+  } else {
+    endIdx = bounds.lastDataIdx + barsPast;
+    endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx);
+    endIdx = Math.min(endIdx, bounds.maxCategoryIdx);
+    startIdx = endIdx - visible;
+    if (startIdx < 0) {
+      startIdx = 0;
+      endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
+    }
   }
 
   return { startValue: startIdx, endValue: endIdx };
+}
+
+/** Prevent symbol switches from restoring a full-history or gutter-swallowing zoom. */
+export function sanitizePrefsForSymbolSwitch(
+  prefs: PortableZoomPrefs,
+  dataLen: number,
+  intradayMode = false,
+): PortableZoomPrefs {
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  const dataBars = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
+
+  if (prefs.visibleBarCount >= dataBars * 0.7 || prefs.visibleBarCount > MAX_VISIBLE_BARS) {
+    return normalizePortableZoomPrefs(defaultPortableZoomPrefs(dataLen, intradayMode), dataLen, intradayMode);
+  }
+
+  let p = normalizePortableZoomPrefs(prefs, dataLen, intradayMode);
+
+  const leftGutter = getLeftPanGutterCount(intradayMode);
+  const minOffset = -leftGutter + 5;
+  const maxOffset = Math.max(0, dataBars - 10);
+  if (!Number.isFinite(p.startOffsetFromDataStart)) {
+    p.startOffsetFromDataStart = Math.max(0, dataBars - p.visibleBarCount);
+  }
+  p.startOffsetFromDataStart = Math.min(Math.max(p.startOffsetFromDataStart, minOffset), maxOffset);
+
+  return p;
 }
 
 /** Convert legacy axis-end offset (pre data-anchor) to barsPastLastData. */
@@ -219,7 +275,18 @@ export function loadPortableZoomPrefs(
         ? legacyAxisOffsetToBarsPast(offsetNum, dataLen, intradayMode)
         : offsetNum;
 
-    return { visibleBarCount, barsPastLastData };
+    const offsetRaw2 = localStorage.getItem('temist_chart_start_offset_from_data');
+    const startOffsetFromDataStart =
+      offsetRaw2 !== null && offsetRaw2 !== ''
+        ? parseInt(offsetRaw2, 10)
+        : Math.max(0, dataLen - visibleBarCount);
+
+    const loaded: PortableZoomPrefs = {
+      visibleBarCount,
+      barsPastLastData,
+      startOffsetFromDataStart: Number.isFinite(startOffsetFromDataStart) ? startOffsetFromDataStart : 0,
+    };
+    return sanitizePrefsForSymbolSwitch(loaded, dataLen, intradayMode);
   } catch {
     return null;
   }
@@ -229,13 +296,11 @@ export function savePortableZoomPrefs(prefs: PortableZoomPrefs): void {
   try {
     localStorage.setItem('temist_chart_visible_bar_count', String(prefs.visibleBarCount));
     localStorage.setItem('temist_chart_zoom_offset_from_end', String(prefs.barsPastLastData));
+    localStorage.setItem('temist_chart_start_offset_from_data', String(prefs.startOffsetFromDataStart));
   } catch {
     // ignore quota errors
   }
 }
-
-const MIN_VISIBLE_BARS = 20;
-const MAX_VISIBLE_BARS = 800;
 
 /** Clamp portable prefs so symbol switches never land on gutter-wide spans. */
 export function normalizePortableZoomPrefs(
@@ -246,9 +311,14 @@ export function normalizePortableZoomPrefs(
   const bounds = getChartDataBounds(dataLen, intradayMode);
   const dataBarCount = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
   const maxVisible = Math.min(dataBarCount + RIGHT_PAD_BARS, MAX_VISIBLE_BARS);
+  const startOffset = Number.isFinite(prefs.startOffsetFromDataStart)
+    ? prefs.startOffsetFromDataStart
+    : Math.max(0, dataBarCount - Math.min(Math.max(prefs.visibleBarCount, MIN_VISIBLE_BARS), maxVisible));
+
   return {
     visibleBarCount: Math.min(Math.max(prefs.visibleBarCount, MIN_VISIBLE_BARS), maxVisible),
     barsPastLastData: Math.min(Math.max(prefs.barsPastLastData, -5), RIGHT_PAD_BARS + 5),
+    startOffsetFromDataStart: startOffset,
   };
 }
 

@@ -13,6 +13,7 @@ import {
   windowFromPortableZoom,
   legacyAxisOffsetToBarsPast,
   normalizePortableZoomPrefs,
+  sanitizePrefsForSymbolSwitch,
   readDataZoomWindow,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
@@ -112,10 +113,31 @@ describe('portable zoom (data-anchored)', () => {
   });
 
   it('clamps deep gutter views back to sensible end', () => {
-    const prefs = { visibleBarCount: 80, barsPastLastData: 2000 };
+    const prefs = { visibleBarCount: 80, barsPastLastData: 2000, startOffsetFromDataStart: 0 };
     const window = windowFromPortableZoom(prefs, 3650, false);
     const lastData = getLeftPanGutterCount(false) + 3650 - 1;
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
+  });
+
+  it('preserves horizontal gutter offset on symbol switch', () => {
+    const left = getLeftPanGutterCount(false);
+    const centered = {
+      visibleBarCount: 120,
+      barsPastLastData: 10,
+      startOffsetFromDataStart: -400,
+    };
+    const window = windowFromPortableZoom(centered, 3650, false);
+    expect(window.startValue).toBeLessThan(left + 100);
+    expect(window.endValue - window.startValue).toBeLessThanOrEqual(120);
+  });
+
+  it('rejects full-history zoom on symbol switch', () => {
+    const insane = sanitizePrefsForSymbolSwitch(
+      { visibleBarCount: 5000, barsPastLastData: 11, startOffsetFromDataStart: 0 },
+      3650,
+      false,
+    );
+    expect(insane.visibleBarCount).toBeLessThanOrEqual(82);
   });
 });
 

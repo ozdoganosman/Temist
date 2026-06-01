@@ -32,6 +32,8 @@ import {
   loadPortableZoomPrefs,
   savePortableZoomPrefs,
   normalizePortableZoomPrefs,
+  sanitizePrefsForSymbolSwitch,
+  defaultPortableZoomPrefs,
   type PortableZoomPrefs,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
@@ -2147,14 +2149,19 @@ export default function ChartContainer({
     }
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
-      if (symbolChanged) {
+      if (symbolChanged && filtered.length > 0) {
         if (lastZoomPrefsRef.current) {
-          return normalizePortableZoomPrefs(lastZoomPrefsRef.current, filtered.length, intradayMode);
+          return sanitizePrefsForSymbolSwitch(lastZoomPrefsRef.current, filtered.length, intradayMode);
         }
         const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
         if (stored) {
-          return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
+          return sanitizePrefsForSymbolSwitch(stored, filtered.length, intradayMode);
         }
+        return sanitizePrefsForSymbolSwitch(
+          defaultPortableZoomPrefs(filtered.length, intradayMode),
+          filtered.length,
+          intradayMode,
+        );
       } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
         if (live.endValue > live.startValue) {
@@ -2175,17 +2182,14 @@ export default function ChartContainer({
         return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
       }
 
-      return normalizePortableZoomPrefs(
-        {
-          visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
-          barsPastLastData: RIGHT_PAD_BARS,
-        },
+      return sanitizePrefsForSymbolSwitch(
+        defaultPortableZoomPrefs(filtered.length, intradayMode),
         filtered.length,
         intradayMode,
       );
     };
 
-    if (zoomStartVal === null) {
+    if (zoomStartVal === null && filtered.length > 0) {
       const prefs = resolvePortableZoomPrefs();
       const window = windowFromPortableZoom(prefs, filtered.length, intradayMode);
       zoomStartVal = window.startValue;
