@@ -223,6 +223,24 @@ export function savePortableZoomPrefs(prefs: PortableZoomPrefs): void {
   }
 }
 
+const MIN_VISIBLE_BARS = 20;
+const MAX_VISIBLE_BARS = 800;
+
+/** Clamp portable prefs so symbol switches never land on gutter-wide spans. */
+export function normalizePortableZoomPrefs(
+  prefs: PortableZoomPrefs,
+  dataLen: number,
+  intradayMode = false,
+): PortableZoomPrefs {
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  const dataBarCount = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
+  const maxVisible = Math.min(dataBarCount + RIGHT_PAD_BARS, MAX_VISIBLE_BARS);
+  return {
+    visibleBarCount: Math.min(Math.max(prefs.visibleBarCount, MIN_VISIBLE_BARS), maxVisible),
+    barsPastLastData: Math.min(Math.max(prefs.barsPastLastData, -5), RIGHT_PAD_BARS + 5),
+  };
+}
+
 type DataZoomWindowInput = {
   start?: number;
   end?: number;
@@ -234,6 +252,8 @@ type DataZoomWindowInput = {
 export function readDataZoomWindow(
   dz: DataZoomWindowInput | undefined,
   categoryCount: number,
+  dataLen?: number,
+  intradayMode = false,
 ): { startValue: number; endValue: number } {
   const maxIdx = Math.max(0, categoryCount - 1);
   if (categoryCount === 0) {
@@ -250,8 +270,17 @@ export function readDataZoomWindow(
   if (startValue === null || endValue === null) {
     const startPct = toIndex(dz?.start) ?? 0;
     const endPct = toIndex(dz?.end) ?? 100;
-    startValue = Math.floor((startPct / 100) * maxIdx);
-    endValue = Math.ceil((endPct / 100) * maxIdx);
+    // Map percent to the data region, not the full axis (avoids 2400-bar gutter skew).
+    if (dataLen != null && dataLen > 0) {
+      const bounds = getChartDataBounds(dataLen, intradayMode);
+      const dataBarCount = bounds.lastDataIdx - bounds.dataStart + 1;
+      startValue = bounds.dataStart + Math.floor((startPct / 100) * dataBarCount);
+      endValue = bounds.dataStart + Math.ceil((endPct / 100) * dataBarCount);
+      endValue = Math.min(endValue, bounds.maxSensibleEndIdx);
+    } else {
+      startValue = Math.floor((startPct / 100) * maxIdx);
+      endValue = Math.ceil((endPct / 100) * maxIdx);
+    }
   }
 
   return {

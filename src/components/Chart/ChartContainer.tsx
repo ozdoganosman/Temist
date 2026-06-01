@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import * as echarts from 'echarts';
 import type { Interval, LegendData, ActiveDrawingTool, ChartDrawing } from './types';
 import type { OHLCVData, AllFinancialsResponse } from '../../api/borsaApi';
@@ -30,6 +30,7 @@ import {
   windowFromPortableZoom,
   loadPortableZoomPrefs,
   savePortableZoomPrefs,
+  normalizePortableZoomPrefs,
   type PortableZoomPrefs,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
@@ -716,6 +717,39 @@ export default function ChartContainer({
   const zoomSaveRef = useRef<() => void>(() => {});
   /** Visible span + anchor past last candle — portable when switching symbols. */
   const lastZoomPrefsRef = useRef<PortableZoomPrefs | null>(null);
+
+  // Snapshot zoom from the outgoing symbol before the chart is rebuilt.
+  useLayoutEffect(() => {
+    return () => {
+      const chart = chartInstanceRef.current;
+      if (!chart || chart.isDisposed()) return;
+      const dataLen = currentDataRef.current.length;
+      if (dataLen === 0) return;
+      const opt = getSafeChartOption(chart);
+      const xLen = opt?.xAxis?.[0]?.data?.length ?? 0;
+      if (!opt?.dataZoom?.[0] || xLen === 0) return;
+      const live = readDataZoomWindow(
+        opt.dataZoom[0],
+        xLen,
+        dataLen,
+        isIntraday(intervalRef.current),
+      );
+      if (live.endValue > live.startValue) {
+        const prefs = normalizePortableZoomPrefs(
+          portableZoomFromWindow(
+            live.startValue,
+            live.endValue,
+            dataLen,
+            isIntraday(intervalRef.current),
+          ),
+          dataLen,
+          isIntraday(intervalRef.current),
+        );
+        lastZoomPrefsRef.current = prefs;
+        savePortableZoomPrefs(prefs);
+      }
+    };
+  }, [symbol]);
   const currentLargeModeRef = useRef<boolean | null>(null);
 
   // Toggle visibility of individual Bollinger bands
@@ -1078,7 +1112,12 @@ export default function ChartContainer({
       startZoomStart = opt?.dataZoom?.[0]?.start ?? 0;
       startZoomEnd = opt?.dataZoom?.[0]?.end ?? 100;
       const xAxisLen = opt?.xAxis?.[0]?.data?.length ?? 0;
-      const zoomWindow = readDataZoomWindow(opt?.dataZoom?.[0], xAxisLen);
+      const zoomWindow = readDataZoomWindow(
+        opt?.dataZoom?.[0],
+        xAxisLen,
+        currentDataRef.current.length || filtered.length,
+        isIntraday(intervalRef.current),
+      );
       startZoomStartValue = zoomWindow.startValue;
       startZoomEndValue = zoomWindow.endValue;
 
@@ -2009,9 +2048,13 @@ export default function ChartContainer({
             endValue !== null &&
             currentDataRef.current.length > 0
           ) {
-            const prefs = portableZoomFromWindow(
-              startValue,
-              endValue,
+            const prefs = normalizePortableZoomPrefs(
+              portableZoomFromWindow(
+                startValue,
+                endValue,
+                currentDataRef.current.length,
+                isIntraday(intervalRef.current),
+              ),
               currentDataRef.current.length,
               isIntraday(intervalRef.current),
             );
@@ -2095,7 +2138,7 @@ export default function ChartContainer({
 
     // Same symbol + same axis length (e.g. indicator toggle): keep exact indices.
     if (axisLengthUnchanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
-      const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
+      const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
       if (live.endValue > live.startValue) {
         zoomStartVal = live.startValue;
         zoomEndVal = live.endValue;
@@ -2103,45 +2146,46 @@ export default function ChartContainer({
     }
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
-      const dataLenForRead = symbolChanged
-        ? Math.max(prevDataLenRef.current, filtered.length, 1)
-        : filtered.length;
-
-      if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && dataLenForRead > 0) {
-        const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen);
+      if (symbolChanged) {
+        if (lastZoomPrefsRef.current) {
+          return normalizePortableZoomPrefs(lastZoomPrefsRef.current, filtered.length, intradayMode);
+        }
+        const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
+        if (stored) {
+          return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
+        }
+      } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
+        const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
         if (live.endValue > live.startValue) {
-          return portableZoomFromWindow(
-            live.startValue,
-            live.endValue,
-            dataLenForRead,
+          return normalizePortableZoomPrefs(
+            portableZoomFromWindow(live.startValue, live.endValue, filtered.length, intradayMode),
+            filtered.length,
             intradayMode,
           );
         }
       }
 
       if (lastZoomPrefsRef.current) {
-        return lastZoomPrefsRef.current;
+        return normalizePortableZoomPrefs(lastZoomPrefsRef.current, filtered.length, intradayMode);
       }
 
       const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
       if (stored) {
-        return stored;
+        return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
       }
 
-      return {
-        visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
-        barsPastLastData: RIGHT_PAD_BARS,
-      };
+      return normalizePortableZoomPrefs(
+        {
+          visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
+          barsPastLastData: RIGHT_PAD_BARS,
+        },
+        filtered.length,
+        intradayMode,
+      );
     };
 
     if (zoomStartVal === null) {
-      let prefs = resolvePortableZoomPrefs();
-      if (prefs.visibleBarCount > MAX_PERSISTED_VISIBLE_CANDLE_COUNT) {
-        prefs = {
-          ...prefs,
-          visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
-        };
-      }
+      const prefs = resolvePortableZoomPrefs();
       const window = windowFromPortableZoom(prefs, filtered.length, intradayMode);
       zoomStartVal = window.startValue;
       zoomEndVal = window.endValue;

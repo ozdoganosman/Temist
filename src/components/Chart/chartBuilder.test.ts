@@ -11,6 +11,8 @@ import {
   portableZoomFromWindow,
   windowFromPortableZoom,
   legacyAxisOffsetToBarsPast,
+  normalizePortableZoomPrefs,
+  readDataZoomWindow,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -88,6 +90,22 @@ describe('portable zoom (data-anchored)', () => {
     expect(window.endValue).toBeGreaterThanOrEqual(lastData);
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
     expect(window.endValue - window.startValue).toBeGreaterThanOrEqual(10);
+  });
+
+  it('normalizes absurd visible bar counts from full-axis percent', () => {
+    const prefs = normalizePortableZoomPrefs({ visibleBarCount: 5000, barsPastLastData: 11 }, 3650, false);
+    expect(prefs.visibleBarCount).toBeLessThanOrEqual(800);
+    expect(prefs.visibleBarCount).toBeGreaterThanOrEqual(20);
+  });
+
+  it('maps percent zoom to the data region not the gutter', () => {
+    const dataLen = 3650;
+    const catCount = getPaddedCategoryCount(dataLen, false);
+    const fullAxis = readDataZoomWindow({ start: 0, end: 100 }, catCount);
+    const dataOnly = readDataZoomWindow({ start: 0, end: 100 }, catCount, dataLen, false);
+    expect(dataOnly.endValue - dataOnly.startValue).toBeLessThan(fullAxis.endValue - fullAxis.startValue);
+    const narrow = readDataZoomWindow({ start: 90, end: 100 }, catCount, dataLen, false);
+    expect(narrow.endValue - narrow.startValue).toBeLessThan(500);
   });
 
   it('clamps deep gutter views back to sensible end', () => {
