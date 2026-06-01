@@ -87,7 +87,7 @@ const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
 /** Empty x-axis slots after the last candle so pan-right can reveal whitespace. */
-export const RIGHT_PAN_GUTTER_BARS = 48;
+export const RIGHT_PAN_GUTTER_BARS = 120;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
 // Above this many visible candles, switch ECharts candlestick "large" mode back
@@ -102,7 +102,7 @@ export function getPaddingCount(dataLen: number, intradayMode = false): number {
 }
 
 export function getRightPanGutterCount(intradayMode = false): number {
-  return intradayMode ? 24 : RIGHT_PAN_GUTTER_BARS;
+  return intradayMode ? 60 : RIGHT_PAN_GUTTER_BARS;
 }
 
 type DataZoomWindowInput = {
