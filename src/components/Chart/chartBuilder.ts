@@ -88,13 +88,6 @@ const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
-// Hard bounds applied to the live zoom window (wheel / slider). These keep the
-// candles from collapsing into unreadable thin lines when the user zooms far
-// out (the cause of the "candles look broken on daily/weekly" reports), while
-// still allowing a focused zoom-in. Spans are measured in category slots, so
-// they include the surrounding padding bars.
-export const MIN_VISIBLE_CANDLE_SPAN = 10;
-export const MAX_VISIBLE_CANDLE_SPAN = MAX_PERSISTED_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
 
 export function getPaddingCount(dataLen: number, intradayMode = false): number {
   if (intradayMode) return 10;
@@ -654,6 +647,13 @@ export function buildOption(
     name: symbol,
     type: 'candlestick' as const,
     data: ohlc,
+    // Disable ECharts "large" candlestick mode. It auto-enables when the data
+    // length exceeds largeThreshold (600) and collapses candle bodies into ~1px
+    // sticks. Daily (~3650 bars) and weekly history crossed that threshold, so
+    // their candles rendered as thin lines while monthly (fewer bars) looked
+    // fine. Only the visible window is drawn (the chart clips), so keeping this
+    // off is safe for performance.
+    large: false,
     barWidth: '72%',
     barMinWidth: 4,
     barMaxWidth: 20,
@@ -1768,8 +1768,6 @@ export function buildOption(
         end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
         startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
         endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
-        minValueSpan: MIN_VISIBLE_CANDLE_SPAN,
-        maxValueSpan: MAX_VISIBLE_CANDLE_SPAN,
         zoomOnMouseWheel: true,
         moveOnMouseMove: false,
         moveOnMouseWheel: false,
@@ -1783,8 +1781,6 @@ export function buildOption(
         end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
         startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
         endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
-        minValueSpan: MIN_VISIBLE_CANDLE_SPAN,
-        maxValueSpan: MAX_VISIBLE_CANDLE_SPAN,
         bottom: 8,
         height: 20,
         borderColor: tc.border,
