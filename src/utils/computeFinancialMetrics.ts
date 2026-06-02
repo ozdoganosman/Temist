@@ -223,6 +223,17 @@ export interface RevenueProfitPoint {
   label: string;
   revenue: number | null;
   netIncome: number | null;
+  /** Net kâr / hasılat (%) */
+  netMarginPct: number | null;
+  /** Önceki yıla/çeyreğe göre hasılat değişimi (%) */
+  revenueYoYPct: number | null;
+  /** Önceki yıla/çeyreğe göre net kâr değişimi (%) */
+  netIncomeYoYPct: number | null;
+}
+
+function pctChange(current: number | null, baseline: number | null): number | null {
+  if (current == null || baseline == null || baseline === 0) return null;
+  return ((current - baseline) / Math.abs(baseline)) * 100;
 }
 
 export function deriveRevenueProfitTrend(allFin: AllFinancialsResponse, quarterly: boolean): RevenueProfitPoint[] {
@@ -244,11 +255,24 @@ export function deriveRevenueProfitTrend(allFin: AllFinancialsResponse, quarterl
     'NET DÖNEM KARI VEYA ZARARI'
   ]);
 
-  return periods.map((p) => ({
-    label: formatPeriodLabel(p),
-    revenue: val(revenueRow, p),
-    netIncome: val(profitRow, p),
-  }));
+  return periods.map((p, i) => {
+    const revenue = val(revenueRow, p);
+    const netIncome = val(profitRow, p);
+    const yoyIndex = quarterly ? i - 4 : i - 1;
+    const prevPeriod = yoyIndex >= 0 ? periods[yoyIndex] : null;
+    const prevRevenue = prevPeriod ? val(revenueRow, prevPeriod) : null;
+    const prevNetIncome = prevPeriod ? val(profitRow, prevPeriod) : null;
+
+    return {
+      label: formatPeriodLabel(p),
+      revenue,
+      netIncome,
+      netMarginPct:
+        revenue != null && revenue !== 0 && netIncome != null ? (netIncome / revenue) * 100 : null,
+      revenueYoYPct: pctChange(revenue, prevRevenue),
+      netIncomeYoYPct: pctChange(netIncome, prevNetIncome),
+    };
+  });
 }
 
 // ── Chart 2: Profitability Margins ───────────

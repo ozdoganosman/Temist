@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { OHLCVData, AllFinancialsResponse } from '../api/borsaApi';
-import { getLatestActivePeriod, computePEBands } from './computeFinancialMetrics';
+import {
+  getLatestActivePeriod,
+  computePEBands,
+  deriveRevenueProfitTrend,
+} from './computeFinancialMetrics';
 
 describe('getLatestActivePeriod', () => {
   const periods = ['2023/3', '2023/6', '2023/9', '2023/12', '2024/3'];
@@ -78,5 +82,29 @@ describe('computePEBands', () => {
       cashflow: { periods: [], data: [] },
     };
     expect(computePEBands(mockOhlcv, emptyFin)).toBeNull();
+  });
+});
+
+describe('deriveRevenueProfitTrend', () => {
+  const fin: AllFinancialsResponse = {
+    income_stmt: {
+      periods: ['2023/12', '2024/12'],
+      data: [
+        { item: 'Hasılat', '2023/12': 100, '2024/12': 200 },
+        { item: 'Dönem Net Karı', '2023/12': 10, '2024/12': 40 },
+      ],
+    },
+    balance_sheet: { periods: [], data: [] },
+    cashflow: { periods: [], data: [] },
+  };
+
+  it('computes net margin and YoY percentages', () => {
+    const points = deriveRevenueProfitTrend(fin, false);
+    expect(points).toHaveLength(2);
+    expect(points[0].netMarginPct).toBe(10);
+    expect(points[0].revenueYoYPct).toBeNull();
+    expect(points[1].netMarginPct).toBe(20);
+    expect(points[1].revenueYoYPct).toBe(100);
+    expect(points[1].netIncomeYoYPct).toBe(300);
   });
 });
