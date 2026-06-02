@@ -33,7 +33,10 @@ Borsa İstanbul (BIST) hisse senetleri için özelleştirilmiş teknik indikatö
 ## 🛠️ Mimari ve Veri Akışı
 
 Uygulama tamamen statik dosya tabanlı (client-side) çalışacak şekilde tasarlanmıştır:
-- Python derleme betiği (`build_data.py`) günlük olarak çalışır ve BIST verilerini statik JSON dosyalarına dönüştürür.
+- Python derleme betiği (`build_data.py`) GitHub Actions ile hafta içi otomatik çalışır ve BIST verilerini statik JSON dosyalarına dönüştürür.
+  - **Hızlı güncelleme** (günde 4 kez, seans saatleri): OHLCV + scan (`--skip-financials --skip-backtest`)
+  - **Tam güncelleme** (günde 1 kez, kapanış sonrası): finansal tablolar + backtest dahil
+  - Workflow: `.github/workflows/update-data.yml` — manuel tetikleme: Actions → *Update Market Data* → *Run workflow*
 - Sunucu bağımsızdır, hızlı yüklenir ve tamamen istemci tarafında (tarayıcıda) çalışır.
 
 ---

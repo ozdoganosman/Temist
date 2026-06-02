@@ -2,16 +2,36 @@ name: Update Market Data
 
 on:
   schedule:
-    # Weekdays at 21:00 UTC (midnight Turkey time, after market close)
-    - cron: '0 21 * * 1-5'
+    # BIST hafta içi — hızlı güncelleme (history + scan, UTC)
+    # 07:00 UTC = 10:00 İstanbul (açılış)
+    - cron: '0 7 * * 1-5'
+    # 10:00 UTC = 13:00 İstanbul
+    - cron: '0 10 * * 1-5'
+    # 12:30 UTC = 15:30 İstanbul
+    - cron: '30 12 * * 1-5'
+    # 14:00 UTC = 17:00 İstanbul (kapanışa yakın)
+    - cron: '0 14 * * 1-5'
+    # 16:30 UTC = 19:30 İstanbul — tam build (finansal + backtest)
+    - cron: '30 16 * * 1-5'
   workflow_dispatch:
+    inputs:
+      full_build:
+        description: 'Tam build (finansal tablolar + backtest; yoksa sadece fiyat/scan)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: update-market-data
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -19,23 +39,45 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Choose build mode
+        id: mode
+        run: |
+          FULL_CRON='30 16 * * 1-5'
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.full_build }}" = "true" ]; then
+              echo "flags=" >> "$GITHUB_OUTPUT"
+              echo "label=full (manual)" >> "$GITHUB_OUTPUT"
+            else
+              echo "flags=--skip-financials --skip-backtest" >> "$GITHUB_OUTPUT"
+              echo "label=quick (manual)" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "${{ github.event.schedule }}" = "$FULL_CRON" ]; then
+            echo "flags=" >> "$GITHUB_OUTPUT"
+            echo "label=full (scheduled)" >> "$GITHUB_OUTPUT"
+          else
+            echo "flags=--skip-financials --skip-backtest" >> "$GITHUB_OUTPUT"
+            echo "label=quick (scheduled)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Python dependencies
         run: |
+          pip install --upgrade pip
           pip install borsapy isyatirimhisse pandas numpy
+          if [ -z "${{ steps.mode.outputs.flags }}" ]; then
+            pip install scikit-learn lightgbm xgboost optuna
+          fi
 
-      - name: Run data builder
-        run: |
-          cd scripts
-          python build_data.py
+      - name: Run data builder (${{ steps.mode.outputs.label }})
+        run: python scripts/build_data.py ${{ steps.mode.outputs.flags }}
 
       - name: Check for changes
         id: changes
         run: |
           git add public/data/
           if git diff --staged --quiet; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Commit and push
@@ -43,5 +85,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: update market data $(date -u +%Y-%m-%d)"
+          git commit -m "chore: update market data $(date -u +%Y-%m-%dT%H:%MZ) [${{ steps.mode.outputs.label }}]"
           git push
+
+      - name: No data changes
+        if: steps.changes.outputs.changed != 'true'
+        run: echo "No changes in public/data — skip commit."
