@@ -14,6 +14,7 @@ import {
   legacyAxisOffsetToBarsPast,
   normalizePortableZoomPrefs,
   sanitizePrefsForSymbolSwitch,
+  portableZoomPrefsForSymbolSwitch,
   readDataZoomWindow,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
@@ -98,8 +99,19 @@ describe('portable zoom (data-anchored)', () => {
 
   it('normalizes absurd visible bar counts from full-axis percent', () => {
     const prefs = normalizePortableZoomPrefs({ visibleBarCount: 5000, barsPastLastData: 11 }, 3650, false);
-    expect(prefs.visibleBarCount).toBeLessThanOrEqual(800);
+    expect(prefs.visibleBarCount).toBeLessThanOrEqual(400);
     expect(prefs.visibleBarCount).toBeGreaterThanOrEqual(20);
+  });
+
+  it('symbol switch keeps bar span on data, not empty gutter', () => {
+    const prev = { visibleBarCount: 120, barsPastLastData: 8, startOffsetFromDataStart: -300 };
+    const prefs = portableZoomPrefsForSymbolSwitch(prev, 800, false);
+    const window = windowFromPortableZoom(prefs, 800, false);
+    const left = getLeftPanGutterCount(false);
+    const lastData = left + 800 - 1;
+    expect(window.endValue).toBeGreaterThanOrEqual(left);
+    expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
+    expect(window.endValue - window.startValue).toBeLessThanOrEqual(130);
   });
 
   it('maps percent zoom to the data region not the gutter', () => {
@@ -119,16 +131,17 @@ describe('portable zoom (data-anchored)', () => {
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
 
-  it('preserves horizontal gutter offset on symbol switch', () => {
+  it('falls back to data view when prefs target only empty gutter', () => {
     const left = getLeftPanGutterCount(false);
-    const centered = {
+    const gutterOnly = {
       visibleBarCount: 120,
       barsPastLastData: 10,
       startOffsetFromDataStart: -400,
     };
-    const window = windowFromPortableZoom(centered, 3650, false);
-    expect(window.startValue).toBeLessThan(left + 100);
-    expect(window.endValue - window.startValue).toBeLessThanOrEqual(120);
+    const window = windowFromPortableZoom(gutterOnly, 3650, false);
+    const lastData = left + 3650 - 1;
+    expect(window.endValue).toBeGreaterThanOrEqual(lastData - 150);
+    expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
 
   it('rejects full-history zoom on symbol switch', () => {

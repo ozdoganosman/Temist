@@ -87,9 +87,9 @@ const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
 /** Empty x-axis slots on each side so the chart can be panned to center in the viewport. */
-export const LEFT_PAN_GUTTER_BARS = 2400;
+export const LEFT_PAN_GUTTER_BARS = 600;
 /** Empty x-axis slots after the last candle so pan-right can reveal whitespace. */
-export const RIGHT_PAN_GUTTER_BARS = 2400;
+export const RIGHT_PAN_GUTTER_BARS = 600;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
 // Above this many visible candles, switch ECharts candlestick "large" mode back
@@ -104,11 +104,11 @@ export function getPaddingCount(dataLen: number, intradayMode = false): number {
 }
 
 export function getLeftPanGutterCount(intradayMode = false): number {
-  return intradayMode ? 1200 : LEFT_PAN_GUTTER_BARS;
+  return intradayMode ? 300 : LEFT_PAN_GUTTER_BARS;
 }
 
 export function getRightPanGutterCount(intradayMode = false): number {
-  return intradayMode ? 1200 : RIGHT_PAN_GUTTER_BARS;
+  return intradayMode ? 300 : RIGHT_PAN_GUTTER_BARS;
 }
 
 /** Category index where real OHLCV data begins (after the left pan gutter). */
@@ -174,7 +174,16 @@ export function defaultPortableZoomPrefs(dataLen: number, intradayMode = false):
 }
 
 const MIN_VISIBLE_BARS = 20;
-const MAX_VISIBLE_BARS = 800;
+const MAX_VISIBLE_BARS = 400;
+const MAX_PRESERVED_ZOOM_ON_SYMBOL = 400;
+
+function windowOverlapsData(
+  startIdx: number,
+  endIdx: number,
+  bounds: ChartDataBounds,
+): boolean {
+  return endIdx >= bounds.dataStart && startIdx <= bounds.lastDataIdx;
+}
 
 export function windowFromPortableZoom(
   prefs: PortableZoomPrefs,
@@ -216,7 +225,43 @@ export function windowFromPortableZoom(
     }
   }
 
-  return { startValue: startIdx, endValue: endIdx };
+  const result = { startValue: startIdx, endValue: endIdx };
+  if (!windowOverlapsData(result.startValue, result.endValue, bounds)) {
+    return windowFromPortableZoom(defaultPortableZoomPrefs(dataLen, intradayMode), dataLen, intradayMode);
+  }
+  return result;
+}
+
+/** Build zoom prefs for a new symbol: keep bar span + right anchor, not gutter position. */
+export function portableZoomPrefsForSymbolSwitch(
+  previous: PortableZoomPrefs | null,
+  dataLen: number,
+  intradayMode = false,
+): PortableZoomPrefs {
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  const dataBars = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
+
+  let visible = previous?.visibleBarCount ?? DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
+  if (!Number.isFinite(visible) || visible < MIN_VISIBLE_BARS) {
+    visible = DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
+  }
+  if (visible > MAX_PRESERVED_ZOOM_ON_SYMBOL || visible >= dataBars * 0.85) {
+    visible = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, dataBars);
+  }
+  visible = Math.min(visible, dataBars);
+
+  let barsPast = previous?.barsPastLastData ?? RIGHT_PAD_BARS;
+  barsPast = Math.min(Math.max(barsPast, -5), RIGHT_PAD_BARS + 5);
+
+  return normalizePortableZoomPrefs(
+    {
+      visibleBarCount: visible,
+      barsPastLastData: barsPast,
+      startOffsetFromDataStart: Math.max(0, dataBars - visible),
+    },
+    dataLen,
+    intradayMode,
+  );
 }
 
 /** Prevent symbol switches from restoring a full-history or gutter-swallowing zoom. */
@@ -228,8 +273,8 @@ export function sanitizePrefsForSymbolSwitch(
   const bounds = getChartDataBounds(dataLen, intradayMode);
   const dataBars = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
 
-  if (prefs.visibleBarCount >= dataBars * 0.7 || prefs.visibleBarCount > MAX_VISIBLE_BARS) {
-    return normalizePortableZoomPrefs(defaultPortableZoomPrefs(dataLen, intradayMode), dataLen, intradayMode);
+  if (prefs.visibleBarCount >= dataBars * 0.85 || prefs.visibleBarCount > MAX_PRESERVED_ZOOM_ON_SYMBOL) {
+    return portableZoomPrefsForSymbolSwitch(null, dataLen, intradayMode);
   }
 
   let p = normalizePortableZoomPrefs(prefs, dataLen, intradayMode);

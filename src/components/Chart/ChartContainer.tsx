@@ -34,6 +34,7 @@ import {
   normalizePortableZoomPrefs,
   sanitizePrefsForSymbolSwitch,
   defaultPortableZoomPrefs,
+  portableZoomPrefsForSymbolSwitch,
   type PortableZoomPrefs,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
@@ -2150,18 +2151,8 @@ export default function ChartContainer({
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
-        if (lastZoomPrefsRef.current) {
-          return sanitizePrefsForSymbolSwitch(lastZoomPrefsRef.current, filtered.length, intradayMode);
-        }
-        const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
-        if (stored) {
-          return sanitizePrefsForSymbolSwitch(stored, filtered.length, intradayMode);
-        }
-        return sanitizePrefsForSymbolSwitch(
-          defaultPortableZoomPrefs(filtered.length, intradayMode),
-          filtered.length,
-          intradayMode,
-        );
+        const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
+        return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
       } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
         if (live.endValue > live.startValue) {
