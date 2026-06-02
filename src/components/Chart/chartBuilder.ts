@@ -456,12 +456,12 @@ function generateFutureDates(lastDate: string, count: number): string[] {
   const dateForParse = hasTime ? lastDate.replace(' ', 'T') + ':00' : lastDate + 'T00:00:00';
   const d = new Date(dateForParse);
   if (isNaN(d.getTime())) return new Array(count).fill('');
-  for (let i = 1; i <= count; i++) {
+  for (let i = 0; i < count; i++) {
     const next = new Date(d);
     if (hasTime) {
-      next.setMinutes(d.getMinutes() + i * 5);
+      next.setMinutes(next.getMinutes() + 5);
     } else {
-      next.setDate(d.getDate() + i);
+      next.setDate(next.getDate() + 1);
       while (next.getDay() === 0 || next.getDay() === 6) {
         next.setDate(next.getDate() + 1);
       }
@@ -1101,7 +1101,10 @@ export function buildOption(
         show: !hasSubPanels,
         color: tc.text,
         fontSize: 11,
-        ...(intradayLabelFormatter ? { formatter: intradayLabelFormatter } : {}),
+        formatter: (value: string) => {
+          if (!value) return '';
+          return intradayLabelFormatter ? intradayLabelFormatter(value) : value;
+        },
       },
       splitLine: { show: false },
       axisTick: { show: false },
@@ -1122,7 +1125,14 @@ export function buildOption(
       boundaryGap: true,
       axisLine: { lineStyle: { color: tc.border } },
       axisLabel: isBottom
-        ? { color: tc.text, fontSize: 10, ...(intradayLabelFormatter ? { formatter: intradayLabelFormatter } : {}) }
+        ? {
+            color: tc.text,
+            fontSize: 10,
+            formatter: (value: string) => {
+              if (!value) return '';
+              return intradayLabelFormatter ? intradayLabelFormatter(value) : value;
+            },
+          }
         : { show: false },
       splitLine: { show: false },
       axisTick: { show: false },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OHLCVData } from '../../api/borsaApi';
 import {
   buildOption,
+  addPadding,
   computeVisiblePriceExtent,
   getPaddingCount,
   readDataZoomWindow,
@@ -15,7 +16,6 @@ import {
   normalizePortableZoomPrefs,
   sanitizePrefsForSymbolSwitch,
   portableZoomPrefsForSymbolSwitch,
-  readDataZoomWindow,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -73,6 +73,18 @@ describe('padded category axis length', () => {
   it('includes symmetric left and right pan gutters', () => {
     const count = getPaddedCategoryCount(3650, false);
     expect(count).toBe(getLeftPanGutterCount(false) + 3650 + getRightPanGutterCount(false));
+  });
+
+  it('right pan gutter dates stay within a few years of the last candle', () => {
+    const lastReal = '2024-06-01';
+    const padded = addPadding([lastReal], [['-', '-', '-', '-']], [{ value: 0 }], [], false);
+    const gutterCount = getRightPanGutterCount(false);
+    const lastPadLabel = padded.dates[padded.dates.length - 1];
+    expect(lastPadLabel).not.toBe('');
+    const lastYear = parseInt(lastPadLabel.slice(0, 4), 10);
+    expect(lastYear).toBeGreaterThanOrEqual(2024);
+    expect(lastYear).toBeLessThan(2030);
+    expect(padded.dates.filter((d) => d !== '').length).toBe(1 + gutterCount);
   });
 });
 

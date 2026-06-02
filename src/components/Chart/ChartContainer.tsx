@@ -721,6 +721,8 @@ export default function ChartContainer({
   const zoomSaveRef = useRef<() => void>(() => {});
   /** Visible span + anchor past last candle — portable when switching symbols. */
   const lastZoomPrefsRef = useRef<PortableZoomPrefs | null>(null);
+  /** Until new OHLCV arrives, ignore stale dataZoom from the previous symbol. */
+  const pendingSymbolZoomRef = useRef(false);
 
   // Snapshot zoom from the outgoing symbol before the chart is rebuilt.
   useLayoutEffect(() => {
@@ -729,25 +731,20 @@ export default function ChartContainer({
       if (!chart || chart.isDisposed()) return;
       const dataLen = currentDataRef.current.length;
       if (dataLen === 0) return;
+      const intraday = isIntraday(intervalRef.current);
       const opt = getSafeChartOption(chart);
       const xLen = opt?.xAxis?.[0]?.data?.length ?? 0;
       if (!opt?.dataZoom?.[0] || xLen === 0) return;
-      const live = readDataZoomWindow(
-        opt.dataZoom[0],
-        xLen,
-        dataLen,
-        isIntraday(intervalRef.current),
-      );
+      const live = readDataZoomWindow(opt.dataZoom[0], xLen, dataLen, intraday);
       if (live.endValue > live.startValue) {
-        const prefs = normalizePortableZoomPrefs(
-          portableZoomFromWindow(
-            live.startValue,
-            live.endValue,
+        const prefs = sanitizePrefsForSymbolSwitch(
+          normalizePortableZoomPrefs(
+            portableZoomFromWindow(live.startValue, live.endValue, dataLen, intraday),
             dataLen,
-            isIntraday(intervalRef.current),
+            intraday,
           ),
           dataLen,
-          isIntraday(intervalRef.current),
+          intraday,
         );
         lastZoomPrefsRef.current = prefs;
         savePortableZoomPrefs(prefs);
@@ -1999,15 +1996,15 @@ export default function ChartContainer({
         return null;
       };
 
-      let startValue = toNumber(dz?.startValue);
-      let endValue = toNumber(dz?.endValue);
-      if (startValue === null || endValue === null) {
-        const startPct = toNumber(dz?.start) ?? 0;
-        const endPct = toNumber(dz?.end) ?? 100;
-        const maxCategoryIdx = Math.max(0, xAxisDataLen - 1);
-        startValue = Math.floor((startPct / 100) * maxCategoryIdx);
-        endValue = Math.ceil((endPct / 100) * maxCategoryIdx);
-      }
+      const dataLen = currentDataRef.current.length;
+      const resolved = readDataZoomWindow(
+        dz,
+        xAxisDataLen,
+        dataLen > 0 ? dataLen : undefined,
+        isIntraday(intervalRef.current),
+      );
+      let startValue = resolved.startValue;
+      let endValue = resolved.endValue;
 
       const axisOffset = getAxisLeadingOffset(currentDataRef.current.length, isIntraday(intervalRef.current));
       const extent = computeVisiblePriceExtent(
@@ -2042,28 +2039,33 @@ export default function ChartContainer({
         const opt = getSafeChartOption(chart);
         if (opt?.dataZoom && opt.dataZoom.length > 0) {
           const dz = opt.dataZoom[0];
-          const startValue = dz.startValue;
-          const endValue = dz.endValue;
           const xAxisDataLen = opt?.xAxis?.[0]?.data?.length;
-          if (
-            startValue !== undefined &&
-            startValue !== null &&
-            endValue !== undefined &&
-            endValue !== null &&
-            currentDataRef.current.length > 0
-          ) {
-            const prefs = normalizePortableZoomPrefs(
-              portableZoomFromWindow(
-                startValue,
-                endValue,
-                currentDataRef.current.length,
-                isIntraday(intervalRef.current),
-              ),
-              currentDataRef.current.length,
+          const dataLen = currentDataRef.current.length;
+          if (xAxisDataLen && dataLen > 0) {
+            const live = readDataZoomWindow(
+              dz,
+              xAxisDataLen,
+              dataLen,
               isIntraday(intervalRef.current),
             );
-            lastZoomPrefsRef.current = prefs;
-            savePortableZoomPrefs(prefs);
+            if (live.endValue > live.startValue) {
+              const prefs = sanitizePrefsForSymbolSwitch(
+                normalizePortableZoomPrefs(
+                  portableZoomFromWindow(
+                    live.startValue,
+                    live.endValue,
+                    dataLen,
+                    isIntraday(intervalRef.current),
+                  ),
+                  dataLen,
+                  isIntraday(intervalRef.current),
+                ),
+                dataLen,
+                isIntraday(intervalRef.current),
+              );
+              lastZoomPrefsRef.current = prefs;
+              savePortableZoomPrefs(prefs);
+            }
           }
         }
       }, 200);
@@ -2129,6 +2131,10 @@ export default function ChartContainer({
     if (!chart || chart.isDisposed()) return;
 
     const symbolChanged = prevSymbolRef.current !== symbol;
+    if (symbolChanged) {
+      pendingSymbolZoomRef.current = true;
+    }
+    const forceSymbolZoom = pendingSymbolZoomRef.current && filtered.length > 0;
     const intradayMode = isIntraday(interval);
     const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
 
@@ -2138,7 +2144,8 @@ export default function ChartContainer({
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
 
-    const axisLengthUnchanged = !symbolChanged && xAxisDataLen === categoryCount;
+    const axisLengthUnchanged =
+      !symbolChanged && !forceSymbolZoom && xAxisDataLen === categoryCount;
 
     // Same symbol + same axis length (e.g. indicator toggle): keep exact indices.
     if (axisLengthUnchanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
@@ -2150,8 +2157,9 @@ export default function ChartContainer({
     }
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
-      if (symbolChanged && filtered.length > 0) {
+      if (forceSymbolZoom) {
         const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
+        pendingSymbolZoomRef.current = false;
         return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
       } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
