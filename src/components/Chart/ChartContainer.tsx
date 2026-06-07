@@ -360,8 +360,8 @@ export default function ChartContainer({
   const latestComputedRef = useRef(computedIndicators);
   latestComputedRef.current = computedIndicators;
 
-  // Preserve visible date range across symbol switches
-  const lastVisibleDatesRef = useRef<{ start: string; end: string } | null>(null);
+  // Preserve zoom amount (visible bar count) across symbol switches
+  const lastVisibleBarCountRef = useRef<number | null>(null);
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
@@ -1922,15 +1922,15 @@ export default function ChartContainer({
     const opt = getSafeChartOption(chart);
     const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
 
-    // Before switching symbols: snapshot the currently visible date range
+    // Before switching symbols: snapshot the current zoom amount (visible bar count)
     if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
       const prevData = currentDataRef.current;
       if (prevData.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
         const si = Math.max(0, Math.round(live.startValue));
         const ei = Math.min(prevData.length - 1, Math.round(live.endValue));
-        if (ei > si && prevData[si] && prevData[ei]) {
-          lastVisibleDatesRef.current = { start: prevData[si].date, end: prevData[ei].date };
+        if (ei > si) {
+          lastVisibleBarCountRef.current = ei - si + 1;
         }
       }
     }
@@ -1951,22 +1951,22 @@ export default function ChartContainer({
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
-        // Try to restore the same visible date window on the new symbol
-        const savedDates = lastVisibleDatesRef.current;
-        if (savedDates) {
-          const startIdx = filtered.findIndex((d) => d.date >= savedDates.start);
-          const endIdx = filtered.findIndex((d) => d.date > savedDates.end);
-          const resolvedEnd = endIdx === -1 ? filtered.length - 1 : endIdx - 1;
-          if (startIdx !== -1 && resolvedEnd > startIdx) {
-            const visibleBarCount = resolvedEnd - startIdx + 1;
-            const barsPastLastData = Math.max(0, resolvedEnd - (filtered.length - 1));
-            const prefs = normalizePortableZoomPrefs(
-              { visibleBarCount, barsPastLastData, startOffsetFromDataStart: startIdx },
-              filtered.length,
-              intradayMode,
-            );
-            return sanitizePrefsForSymbolSwitch(prefs, filtered.length, intradayMode);
-          }
+        // Keep the same zoom amount (visible bar count), anchored to the latest bar.
+        // If the new symbol has fewer bars than that, cover all of them (extend left).
+        const savedCount = lastVisibleBarCountRef.current;
+        if (savedCount && savedCount > 0) {
+          const dataBars = filtered.length;
+          const visibleBarCount = Math.min(savedCount, dataBars);
+          const prefs = normalizePortableZoomPrefs(
+            {
+              visibleBarCount,
+              barsPastLastData: RIGHT_PAD_BARS,
+              startOffsetFromDataStart: Math.max(0, dataBars - visibleBarCount),
+            },
+            filtered.length,
+            intradayMode,
+          );
+          return prefs;
         }
         const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
         return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
