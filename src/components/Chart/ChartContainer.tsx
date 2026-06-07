@@ -360,6 +360,9 @@ export default function ChartContainer({
   const latestComputedRef = useRef(computedIndicators);
   latestComputedRef.current = computedIndicators;
 
+  // Preserve visible date range across symbol switches
+  const lastVisibleDatesRef = useRef<{ start: string; end: string } | null>(null);
+
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
   const currentDataRef = useRef<OHLCVData[]>([]);
@@ -1913,6 +1916,19 @@ export default function ChartContainer({
     if (!chart || chart.isDisposed()) return;
 
     const symbolChanged = prevSymbolRef.current !== symbol;
+
+    // Before switching symbols: snapshot the currently visible date range
+    if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
+      const prevData = currentDataRef.current;
+      if (prevData.length > 0) {
+        const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
+        const si = Math.max(0, Math.round(live.startValue));
+        const ei = Math.min(prevData.length - 1, Math.round(live.endValue));
+        if (ei > si && prevData[si] && prevData[ei]) {
+          lastVisibleDatesRef.current = { start: prevData[si].date, end: prevData[ei].date };
+        }
+      }
+    }
     const intradayMode = isIntraday(interval);
     const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
 
@@ -1935,6 +1951,23 @@ export default function ChartContainer({
 
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
+        // Try to restore the same visible date window on the new symbol
+        const savedDates = lastVisibleDatesRef.current;
+        if (savedDates) {
+          const startIdx = filtered.findIndex((d) => d.date >= savedDates.start);
+          const endIdx = filtered.findIndex((d) => d.date > savedDates.end);
+          const resolvedEnd = endIdx === -1 ? filtered.length - 1 : endIdx - 1;
+          if (startIdx !== -1 && resolvedEnd > startIdx) {
+            const visibleBarCount = resolvedEnd - startIdx + 1;
+            const barsPastLastData = Math.max(0, resolvedEnd - (filtered.length - 1));
+            const prefs = normalizePortableZoomPrefs(
+              { visibleBarCount, barsPastLastData, startOffsetFromDataStart: startIdx },
+              filtered.length,
+              intradayMode,
+            );
+            return sanitizePrefsForSymbolSwitch(prefs, filtered.length, intradayMode);
+          }
+        }
         const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
         return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
       } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
