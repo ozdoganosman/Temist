@@ -16,6 +16,7 @@ import {
   LARGE_MODE_VISIBLE_THRESHOLD,
   RIGHT_PAD_BARS,
   buildOption,
+  buildDrawingUpdatePatch,
   computeVisiblePriceExtent,
   getThemeColors,
   getAxisLeadingOffset,
@@ -363,6 +364,10 @@ export default function ChartContainer({
   // Preserve zoom amount (visible bar count) + right-side gap across symbol switches
   const lastVisibleBarCountRef = useRef<number | null>(null);
   const lastBarsPastLastDataRef = useRef<number | null>(null);
+
+  // Signature of non-drawing inputs — lets us detect drawing-only changes and
+  // skip the full chart rebuild in favour of a lightweight merge update.
+  const structuralSigRef = useRef<unknown[] | null>(null);
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
@@ -1922,6 +1927,33 @@ export default function ChartContainer({
 
     const opt = getSafeChartOption(chart);
     const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
+
+    // ── Fast path: only drawings changed → patch overlay, skip full rebuild ──
+    const structuralSig = [
+      filtered, symbol, interval, logScale, signalEvents, signalConfig,
+      subPanels, panelBottoms, panelHeights, theme,
+      showWilliamsPasa, showNizamiCedid, showEMAOverlay, showPearsonChannels, showCMF,
+    ];
+    const prevSig = structuralSigRef.current;
+    const structuralUnchanged =
+      prevSig !== null && prevSig.length === structuralSig.length &&
+      prevSig.every((v, i) => Object.is(v, structuralSig[i]));
+    structuralSigRef.current = structuralSig;
+
+    if (structuralUnchanged && !symbolChanged && opt?.xAxis?.[0]?.data && filtered.length > 0) {
+      const dates = (opt.xAxis[0].data as string[]) ?? [];
+      const last = filtered[filtered.length - 1];
+      const patch = buildDrawingUpdatePatch(
+        activeDrawing ? [...drawings, activeDrawing] : drawings,
+        dates,
+        selectedDrawingId,
+        last.close,
+        last.open,
+        getThemeColors(),
+      );
+      chart.setOption(patch);
+      return;
+    }
 
     // Before switching symbols: snapshot the current zoom amount + right-side gap
     if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {

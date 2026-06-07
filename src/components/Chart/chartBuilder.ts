@@ -867,6 +867,215 @@ export function getGridMargins() {
   };
 }
 
+/** Stable ECharts series ids so drawing-only changes can be merge-updated. */
+export const CANDLE_SERIES_ID = 'temist-candles';
+export const DRAWINGS_SERIES_ID = 'temist-drawings';
+
+/**
+ * Build the custom overlay series that renders trend lines, fibonacci levels,
+ * and selection handles. Extracted so it can be rebuilt in isolation for
+ * incremental (merge-mode) drawing updates without rebuilding the whole chart.
+ */
+export function buildDrawingsSeries(
+  drawings: ChartDrawing[] | undefined,
+  dates: string[],
+  selectedDrawingId: string | null | undefined,
+  tc: ThemeColors,
+): echarts.SeriesOption[] {
+  if (!drawings || drawings.length === 0) {
+    // Empty placeholder keeps the series id alive for merge updates.
+    return [{ id: DRAWINGS_SERIES_ID, type: 'custom', xAxisIndex: 0, yAxisIndex: 0, data: [], renderItem: () => null, silent: true }];
+  }
+  const isDark = tc.bg !== '#ffffff';
+  // O(1) date→index lookups instead of O(n) indexOf per drawing per render.
+  const dateIndex = new Map<string, number>();
+  for (let i = 0; i < dates.length; i++) dateIndex.set(dates[i], i);
+
+  return [{
+    id: DRAWINGS_SERIES_ID,
+    name: 'Çizimler',
+    type: 'custom',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    z: 30,
+    data: drawings,
+    silent: true,
+    renderItem: (params: any, api: any) => {
+      const item = drawings[params.dataIndex];
+      if (!item) return null;
+
+      let startIdx = item.startBarIdx;
+      if (item.startDate) {
+        const idx = dateIndex.get(item.startDate);
+        if (idx !== undefined) startIdx = idx;
+      }
+
+      const startCoord = api.coord([startIdx, item.startPrice]);
+      if (!startCoord) return null;
+      const startX = startCoord[0];
+      const startY = startCoord[1];
+
+      let endIdx = item.endBarIdx !== undefined ? item.endBarIdx : startIdx;
+      if (item.endDate) {
+        const idx = dateIndex.get(item.endDate);
+        if (idx !== undefined) endIdx = idx;
+      }
+
+      const isSelected = item.id === selectedDrawingId;
+
+      if (item.type === 'trend' && item.endPrice !== undefined) {
+        const endCoord = api.coord([endIdx, item.endPrice]);
+        if (!endCoord) return null;
+        const endX = endCoord[0];
+        const endY = endCoord[1];
+
+        const lineColor = isSelected ? '#ff9800' : '#2962ff';
+        const lineWidth = isSelected ? 3 : 2;
+
+        const lineObj = {
+          type: 'line',
+          shape: { x1: startX, y1: startY, x2: endX, y2: endY },
+          style: { stroke: lineColor, lineWidth: lineWidth }
+        };
+
+        if (isSelected) {
+          return {
+            type: 'group',
+            children: [
+              lineObj,
+              { type: 'circle', shape: { cx: startX, cy: startY, r: 5 }, style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 } },
+              { type: 'circle', shape: { cx: endX, cy: endY, r: 5 }, style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 } }
+            ]
+          };
+        }
+        return lineObj;
+      } else if (item.type === 'horizontal') {
+        if (isSelected) {
+          return { type: 'circle', shape: { cx: startX, cy: startY, r: 5 }, style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 } };
+        }
+        return null;
+      } else if (item.type === 'fibonacci' && item.endPrice !== undefined) {
+        const gridWidth = params.coordSys.width;
+        const gridX = params.coordSys.x;
+
+        const priceDiff = item.endPrice - item.startPrice;
+        const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+
+        const children: any[] = [];
+        levels.forEach((lvl) => {
+          const lvlPrice = item.startPrice + priceDiff * lvl;
+          const lvlCoord = api.coord([startIdx, lvlPrice]);
+          if (!lvlCoord) return;
+          const y = lvlCoord[1];
+
+          children.push({
+            type: 'line',
+            shape: { x1: gridX, y1: y, x2: gridX + gridWidth, y2: y },
+            style: {
+              stroke: isSelected ? '#ff9800' : (lvl === 0 || lvl === 1 ? '#ef5350' : '#8a8e96'),
+              lineWidth: isSelected ? 2 : (lvl === 0 || lvl === 1 ? 1.5 : 1),
+              lineDash: lvl === 0 || lvl === 1 ? undefined : [3, 3]
+            }
+          });
+
+          children.push({
+            type: 'text',
+            x: gridX + 5,
+            y: y - 10,
+            style: {
+              text: `Fib ${(lvl * 100).toFixed(1)}% (${lvlPrice.toFixed(2)})`,
+              fill: isSelected ? '#ff9800' : (isDark ? '#8a8e96' : '#555555'),
+              font: isSelected ? 'bold 10px sans-serif' : '9px sans-serif'
+            }
+          });
+        });
+
+        if (isSelected) {
+          const endCoord = api.coord([endIdx, item.endPrice]);
+          if (endCoord) {
+            const endX = endCoord[0];
+            const endY = endCoord[1];
+            children.push({ type: 'line', shape: { x1: startX, y1: startY, x2: endX, y2: endY }, style: { stroke: '#ff9800', lineWidth: 1.5, lineDash: [4, 4] } });
+            children.push({ type: 'circle', shape: { cx: startX, cy: startY, r: 5 }, style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 } });
+            children.push({ type: 'circle', shape: { cx: endX, cy: endY, r: 5 }, style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 } });
+          }
+        }
+
+        return { type: 'group', children };
+      }
+
+      return null;
+    }
+  }];
+}
+
+/** Build markLine entries for the last-price line + horizontal drawing lines. */
+export function buildPriceMarkLineData(
+  drawings: ChartDrawing[] | undefined,
+  selectedDrawingId: string | null | undefined,
+  lastClose: number | null,
+  lastPriceColor: string,
+): any[] {
+  const markLineData: any[] = [];
+  if (lastClose !== null) {
+    markLineData.push({
+      yAxis: lastClose,
+      lineStyle: { color: lastPriceColor, type: 'dashed', width: 1 },
+      label: {
+        show: true, position: 'end', formatter: () => formatPrice(lastClose),
+        backgroundColor: lastPriceColor, color: '#fff', fontSize: 10, padding: [2, 4], borderRadius: 2,
+      },
+    });
+  }
+  if (drawings && drawings.length > 0) {
+    drawings.forEach((d) => {
+      if (d.type === 'horizontal') {
+        if (d.startPrice == null || !isFinite(d.startPrice)) return;
+        const isSelected = d.id === selectedDrawingId;
+        const color = isSelected ? '#ff9800' : '#26a69a';
+        const width = isSelected ? 3 : 2;
+        markLineData.push({
+          yAxis: d.startPrice,
+          lineStyle: { color: color, type: 'solid', width: width },
+          label: {
+            show: true, position: 'end', formatter: () => formatPrice(d.startPrice),
+            backgroundColor: color, color: '#fff', fontSize: 10, padding: [2, 4], borderRadius: 2,
+          },
+        });
+      }
+    });
+  }
+  return markLineData;
+}
+
+/**
+ * Build a merge-mode setOption patch that updates ONLY the drawing overlay and
+ * the candle series markLine. Used for incremental drawing edits so the whole
+ * chart (candles, indicators, axes, zoom) is not rebuilt on every mouse move.
+ */
+export function buildDrawingUpdatePatch(
+  drawings: ChartDrawing[] | undefined,
+  dates: string[],
+  selectedDrawingId: string | null | undefined,
+  lastClose: number | null,
+  lastOpen: number | null,
+  tc: ThemeColors,
+): { series: echarts.SeriesOption[] } {
+  const lastPriceColor =
+    lastClose !== null && lastOpen !== null ? (lastClose >= lastOpen ? UP_COLOR : DOWN_COLOR) : tc.text;
+  const markLineData = buildPriceMarkLineData(drawings, selectedDrawingId, lastClose, lastPriceColor);
+  return {
+    series: [
+      {
+        id: CANDLE_SERIES_ID,
+        type: 'candlestick',
+        markLine: { silent: true, symbol: 'none', data: markLineData },
+      } as echarts.SeriesOption,
+      ...buildDrawingsSeries(drawings, dates, selectedDrawingId, tc),
+    ],
+  };
+}
+
 export function buildOption(
   filtered: OHLCVData[],
   symbol: string,
@@ -934,49 +1143,7 @@ export function buildOption(
     regimeAreas = computeEMARegimeAreas(closes, rawDates, padded.offset, total);
   }
 
-  const markLineData: any[] = [];
-  if (lastClose !== null) {
-    markLineData.push({
-      yAxis: lastClose,
-      lineStyle: { color: lastPriceColor, type: 'dashed', width: 1 },
-      label: {
-        show: true,
-        position: 'end',
-        formatter: () => formatPrice(lastClose),
-        backgroundColor: lastPriceColor,
-        color: '#fff',
-        fontSize: 10,
-        padding: [2, 4],
-        borderRadius: 2,
-      },
-    });
-  }
-
-  if (drawings && drawings.length > 0) {
-    drawings.forEach((d) => {
-      if (d.type === 'horizontal') {
-        // Guard: skip if startPrice is not a valid finite number
-        if (d.startPrice == null || !isFinite(d.startPrice)) return;
-        const isSelected = d.id === selectedDrawingId;
-        const color = isSelected ? '#ff9800' : '#26a69a';
-        const width = isSelected ? 3 : 2;
-        markLineData.push({
-          yAxis: d.startPrice,
-          lineStyle: { color: color, type: 'solid', width: width },
-          label: {
-            show: true,
-            position: 'end',
-            formatter: () => formatPrice(d.startPrice),
-            backgroundColor: color,
-            color: '#fff',
-            fontSize: 10,
-            padding: [2, 4],
-            borderRadius: 2,
-          },
-        });
-      }
-    });
-  }
+  const markLineData = buildPriceMarkLineData(drawings, selectedDrawingId, lastClose, lastPriceColor);
 
 
   // ECharts "large" candlestick mode auto-enables when the data length exceeds
@@ -992,6 +1159,7 @@ export function buildOption(
   const useLargeMode = visibleSpan > LARGE_MODE_VISIBLE_THRESHOLD;
 
   const mainSeries: echarts.SeriesOption = {
+    id: CANDLE_SERIES_ID,
     name: symbol,
     type: 'candlestick' as const,
     data: ohlc,
@@ -1607,169 +1775,7 @@ export function buildOption(
     );
   }
 
-  const drawingsSeries: echarts.SeriesOption[] = [];
-  if (drawings && drawings.length > 0) {
-    const isDark = tc.bg !== '#ffffff';
-    drawingsSeries.push({
-      name: 'Çizimler',
-      type: 'custom',
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      z: 30,
-      data: drawings,
-      silent: true,
-      renderItem: (params: any, api: any) => {
-        const item = drawings[params.dataIndex];
-        if (!item) return null;
-
-        let startIdx = item.startBarIdx;
-        if (item.startDate) {
-          const idx = dates.indexOf(item.startDate);
-          if (idx !== -1) {
-            startIdx = idx;
-          }
-        }
-
-        const startCoord = api.coord([startIdx, item.startPrice]);
-        if (!startCoord) return null;
-        const startX = startCoord[0];
-        const startY = startCoord[1];
-
-        let endIdx = item.endBarIdx !== undefined ? item.endBarIdx : startIdx;
-        if (item.endDate) {
-          const idx = dates.indexOf(item.endDate);
-          if (idx !== -1) {
-            endIdx = idx;
-          }
-        }
-
-        const isSelected = item.id === selectedDrawingId;
-
-        if (item.type === 'trend' && item.endPrice !== undefined) {
-          const endCoord = api.coord([endIdx, item.endPrice]);
-          if (!endCoord) return null;
-          const endX = endCoord[0];
-          const endY = endCoord[1];
-
-          const lineColor = isSelected ? '#ff9800' : '#2962ff';
-          const lineWidth = isSelected ? 3 : 2;
-
-          const lineObj = {
-            type: 'line',
-            shape: {
-              x1: startX,
-              y1: startY,
-              x2: endX,
-              y2: endY
-            },
-            style: {
-              stroke: lineColor,
-              lineWidth: lineWidth
-            }
-          };
-
-          if (isSelected) {
-            return {
-              type: 'group',
-              children: [
-                lineObj,
-                {
-                  type: 'circle',
-                  shape: { cx: startX, cy: startY, r: 5 },
-                  style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
-                },
-                {
-                  type: 'circle',
-                  shape: { cx: endX, cy: endY, r: 5 },
-                  style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
-                }
-              ]
-            };
-          }
-          return lineObj;
-        } else if (item.type === 'horizontal') {
-          if (isSelected) {
-            return {
-              type: 'circle',
-              shape: { cx: startX, cy: startY, r: 5 },
-              style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
-            };
-          }
-          return null;
-        } else if (item.type === 'fibonacci' && item.endPrice !== undefined) {
-          const gridWidth = params.coordSys.width;
-          const gridX = params.coordSys.x;
-          
-          const priceDiff = item.endPrice - item.startPrice;
-          const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-          
-          const children: any[] = [];
-          levels.forEach((lvl) => {
-            const lvlPrice = item.startPrice + priceDiff * lvl;
-            const lvlCoord = api.coord([startIdx, lvlPrice]);
-            if (!lvlCoord) return;
-            const y = lvlCoord[1];
-            
-            children.push({
-              type: 'line',
-              shape: {
-                x1: gridX,
-                y1: y,
-                x2: gridX + gridWidth,
-                y2: y
-              },
-              style: {
-                stroke: isSelected ? '#ff9800' : (lvl === 0 || lvl === 1 ? '#ef5350' : '#8a8e96'),
-                lineWidth: isSelected ? 2 : (lvl === 0 || lvl === 1 ? 1.5 : 1),
-                lineDash: lvl === 0 || lvl === 1 ? undefined : [3, 3]
-              }
-            });
-
-            children.push({
-              type: 'text',
-              x: gridX + 5,
-              y: y - 10,
-              style: {
-                text: `Fib ${(lvl * 100).toFixed(1)}% (${lvlPrice.toFixed(2)})`,
-                fill: isSelected ? '#ff9800' : (isDark ? '#8a8e96' : '#555555'),
-                font: isSelected ? 'bold 10px sans-serif' : '9px sans-serif'
-              }
-            });
-          });
-
-          if (isSelected) {
-            const endCoord = api.coord([endIdx, item.endPrice]);
-            if (endCoord) {
-              const endX = endCoord[0];
-              const endY = endCoord[1];
-              children.push({
-                type: 'line',
-                shape: { x1: startX, y1: startY, x2: endX, y2: endY },
-                style: { stroke: '#ff9800', lineWidth: 1.5, lineDash: [4, 4] }
-              });
-              children.push({
-                type: 'circle',
-                shape: { cx: startX, cy: startY, r: 5 },
-                style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
-              });
-              children.push({
-                type: 'circle',
-                shape: { cx: endX, cy: endY, r: 5 },
-                style: { fill: '#ffffff', stroke: '#ff9800', lineWidth: 2 }
-              });
-            }
-          }
-          
-          return {
-            type: 'group',
-            children
-          };
-        }
-
-        return null;
-      }
-    });
-  }
+  const drawingsSeries = buildDrawingsSeries(drawings, dates, selectedDrawingId, tc);
 
   return {
     animation: false,
