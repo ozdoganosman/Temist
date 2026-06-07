@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { memo, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
  * Never clipped by overflow:hidden/auto parent containers.
  * Always appears above the trigger element.
  */
-export default function Tip({ text, children }: { text: string; children: React.ReactNode }) {
+const Tip = memo(function Tip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLSpanElement>(null);
@@ -72,4 +72,6 @@ export default function Tip({ text, children }: { text: string; children: React.
         )}
     </span>
   );
-}
+});
+
+export default Tip;

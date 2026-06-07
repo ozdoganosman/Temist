@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LegendData } from '../Chart/types';
 import { formatPrice, formatVolume, formatChange } from '../../utils/formatters';
@@ -11,7 +12,7 @@ interface LegendProps {
   lastVolume?: number;
 }
 
-export default function Legend({ data, symbol, lastClose, prevClose, lastVolume = 0 }: LegendProps) {
+const Legend = memo(function Legend({ data, symbol, lastClose, prevClose, lastVolume = 0 }: LegendProps) {
   const { t } = useTranslation();
   const displayData = data ?? {
     symbol,
@@ -50,4 +51,6 @@ export default function Legend({ data, symbol, lastClose, prevClose, lastVolume 
       </div>
     </div>
   );
-}
+});
+
+export default Legend;

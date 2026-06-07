@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { ActiveDrawingTool } from './types';
 
 interface DrawingToolbarProps {
@@ -6,21 +7,21 @@ interface DrawingToolbarProps {
   onClearAll: () => void;
 }
 
-export default function DrawingToolbar({
+const TOOLS: Array<{ id: ActiveDrawingTool; label: string; icon: string; title: string }> = [
+  { id: 'pointer', label: 'Pointer', icon: '🖱️', title: 'İmleç / Gezinme' },
+  { id: 'trend', label: 'Trend', icon: '📈', title: 'Trend Çizgisi (İki Nokta)' },
+  { id: 'horizontal', label: 'Horizontal', icon: '➖', title: 'Yatay Çizgi / Destek & Direnç' },
+  { id: 'fibonacci', label: 'Fibonacci', icon: '📐', title: 'Fibonacci Düzeyleri (Tepe-Dip)' },
+];
+
+const DrawingToolbar = memo(function DrawingToolbar({
   activeTool,
   setActiveTool,
   onClearAll,
 }: DrawingToolbarProps) {
-  const tools: Array<{ id: ActiveDrawingTool; label: string; icon: string; title: string }> = [
-    { id: 'pointer', label: 'Pointer', icon: '🖱️', title: 'İmleç / Gezinme' },
-    { id: 'trend', label: 'Trend', icon: '📈', title: 'Trend Çizgisi (İki Nokta)' },
-    { id: 'horizontal', label: 'Horizontal', icon: '➖', title: 'Yatay Çizgi / Destek & Direnç' },
-    { id: 'fibonacci', label: 'Fibonacci', icon: '📐', title: 'Fibonacci Düzeyleri (Tepe-Dip)' },
-  ];
-
   return (
     <div className="drawing-toolbar" role="toolbar" aria-label="Çizim araçları">
-      {tools.map((t) => (
+      {TOOLS.map((t) => (
         <button
           key={t.id}
           className={`drawing-tool-btn ${activeTool === t.id ? 'active' : ''}`}
@@ -46,4 +47,6 @@ export default function DrawingToolbar({
       </button>
     </div>
   );
-}
+});
+
+export default DrawingToolbar;

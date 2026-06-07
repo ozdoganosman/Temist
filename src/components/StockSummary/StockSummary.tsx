@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OHLCVData } from '../../api/borsaApi';
 import { formatPrice, formatVolume, formatChange } from '../../utils/formatters';
@@ -9,22 +10,33 @@ interface StockSummaryProps {
   data: OHLCVData[];
 }
 
-export default function StockSummary({ symbol, displayName, data }: StockSummaryProps) {
+const StockSummary = memo(function StockSummary({ symbol, displayName, data }: StockSummaryProps) {
   const { t } = useTranslation();
-  if (data.length === 0) return null;
 
-  const last = data[data.length - 1];
-  const prev = data.length > 1 ? data[data.length - 2] : last;
-  const change = formatChange(last.close, prev.close);
+  const stats = useMemo(() => {
+    if (data.length === 0) return null;
+    const last = data[data.length - 1];
+    const prev = data.length > 1 ? data[data.length - 2] : last;
+    const change = formatChange(last.close, prev.close);
 
-  // 52-week high/low (last 252 trading days)
-  const yearData = data.slice(-252);
-  const high52w = Math.max(...yearData.map((d) => d.high));
-  const low52w = Math.min(...yearData.map((d) => d.low));
+    const start252 = Math.max(0, data.length - 252);
+    let high52w = -Infinity, low52w = Infinity;
+    for (let i = start252; i < data.length; i++) {
+      if (data[i].high > high52w) high52w = data[i].high;
+      if (data[i].low < low52w) low52w = data[i].low;
+    }
 
-  // Average volume (20-day)
-  const vol20 = data.slice(-20);
-  const avgVol20 = vol20.reduce((s, d) => s + d.volume, 0) / vol20.length;
+    const start20 = Math.max(0, data.length - 20);
+    let volSum = 0;
+    const volCount = data.length - start20;
+    for (let i = start20; i < data.length; i++) volSum += data[i].volume;
+    const avgVol20 = volSum / volCount;
+
+    return { last, change, high52w, low52w, avgVol20 };
+  }, [data]);
+
+  if (!stats) return null;
+  const { last, change, high52w, low52w, avgVol20 } = stats;
 
   return (
     <div className="stock-summary">
@@ -62,4 +74,6 @@ export default function StockSummary({ symbol, displayName, data }: StockSummary
       </div>
     </div>
   );
-}
+});
+
+export default StockSummary;
