@@ -360,8 +360,9 @@ export default function ChartContainer({
   const latestComputedRef = useRef(computedIndicators);
   latestComputedRef.current = computedIndicators;
 
-  // Preserve zoom amount (visible bar count) across symbol switches
+  // Preserve zoom amount (visible bar count) + right-side gap across symbol switches
   const lastVisibleBarCountRef = useRef<number | null>(null);
+  const lastBarsPastLastDataRef = useRef<number | null>(null);
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
@@ -1922,15 +1923,18 @@ export default function ChartContainer({
     const opt = getSafeChartOption(chart);
     const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
 
-    // Before switching symbols: snapshot the current zoom amount (visible bar count)
+    // Before switching symbols: snapshot the current zoom amount + right-side gap
     if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
       const prevData = currentDataRef.current;
       if (prevData.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
+        const rawEnd = Math.round(live.endValue);
         const si = Math.max(0, Math.round(live.startValue));
-        const ei = Math.min(prevData.length - 1, Math.round(live.endValue));
+        const ei = Math.min(prevData.length - 1, rawEnd);
         if (ei > si) {
           lastVisibleBarCountRef.current = ei - si + 1;
+          // Gap of empty bars shown to the right of the last candle.
+          lastBarsPastLastDataRef.current = Math.max(0, rawEnd - (prevData.length - 1));
         }
       }
     }
@@ -1957,10 +1961,11 @@ export default function ChartContainer({
         if (savedCount && savedCount > 0) {
           const dataBars = filtered.length;
           const visibleBarCount = Math.min(savedCount, dataBars);
+          const barsPastLastData = lastBarsPastLastDataRef.current ?? RIGHT_PAD_BARS;
           const prefs = normalizePortableZoomPrefs(
             {
               visibleBarCount,
-              barsPastLastData: RIGHT_PAD_BARS,
+              barsPastLastData,
               startOffsetFromDataStart: Math.max(0, dataBars - visibleBarCount),
             },
             filtered.length,
