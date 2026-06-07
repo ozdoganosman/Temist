@@ -53,13 +53,6 @@ function AppContent() {
     legendData,
     handleLegendUpdate,
     handleSymbolClick,
-    showBollinger,
-    showRSI,
-    showMACD,
-    showStochRSI,
-    showSuperTrend,
-    showIchimoku,
-    showOBV,
     showWilliamsPasa,
     showNizamiCedid,
     showEMAOverlay,
@@ -97,11 +90,6 @@ function AppContent() {
       onTogglePearsonChannels,
       onToggleCMF,
       showCMF,
-      onToggleBollinger,
-      onToggleRSI,
-      onToggleMACD,
-      onToggleStochRSI,
-      onToggleOBV,
       onIntervalChange,
       onToggleLogScale,
     } = toolbarProps;
@@ -208,13 +196,6 @@ function AppContent() {
                             symbol={symbol}
                             interval={interval}
                             onLegendUpdate={handleLegendUpdate}
-                            showBollinger={showBollinger}
-                            showRSI={showRSI}
-                            showMACD={showMACD}
-                            showStochRSI={showStochRSI}
-                            showSuperTrend={showSuperTrend}
-                            showIchimoku={showIchimoku}
-                            showOBV={showOBV}
                             showWilliamsPasa={showWilliamsPasa}
                             showNizamiCedid={showNizamiCedid}
                             showEMAOverlay={showEMAOverlay}
@@ -351,13 +332,6 @@ function AppContent() {
                       symbol={symbol}
                       interval={interval}
                       onLegendUpdate={handleLegendUpdate}
-                      showBollinger={showBollinger}
-                      showRSI={showRSI}
-                      showMACD={showMACD}
-                      showStochRSI={showStochRSI}
-                      showSuperTrend={showSuperTrend}
-                      showIchimoku={showIchimoku}
-                      showOBV={showOBV}
                       showWilliamsPasa={showWilliamsPasa}
                       showNizamiCedid={showNizamiCedid}
                       showEMAOverlay={showEMAOverlay}
@@ -401,13 +375,6 @@ function AppContent() {
                 <MultiChartView
                   symbols={symbols}
                   interval={interval}
-                  showBollinger={showBollinger}
-                  showRSI={showRSI}
-                  showMACD={showMACD}
-                  showStochRSI={showStochRSI}
-                  showSuperTrend={showSuperTrend}
-                  showIchimoku={showIchimoku}
-                  showOBV={showOBV}
                   logScale={logScale}
                 />
               </Suspense>

@@ -13,20 +13,6 @@ interface ToolbarProps {
   onIntervalChange: (interval: Interval) => void;
   onToggleFinancials: () => void;
   showFinancials: boolean;
-  onToggleBollinger: () => void;
-  showBollinger: boolean;
-  onToggleRSI: () => void;
-  showRSI: boolean;
-  onToggleMACD: () => void;
-  showMACD: boolean;
-  onToggleStochRSI: () => void;
-  showStochRSI: boolean;
-  onToggleSuperTrend: () => void;
-  showSuperTrend: boolean;
-  onToggleIchimoku: () => void;
-  showIchimoku: boolean;
-  onToggleOBV: () => void;
-  showOBV: boolean;
   onToggleWilliamsPasa: () => void;
   showWilliamsPasa: boolean;
   onToggleNizamiCedid: () => void;
@@ -74,20 +60,6 @@ export default function Toolbar({
   onIntervalChange,
   onToggleFinancials,
   showFinancials,
-  onToggleBollinger: _onToggleBollinger,
-  showBollinger: _showBollinger,
-  onToggleRSI: _onToggleRSI,
-  showRSI: _showRSI,
-  onToggleMACD: _onToggleMACD,
-  showMACD: _showMACD,
-  onToggleStochRSI: _onToggleStochRSI,
-  showStochRSI: _showStochRSI,
-  onToggleSuperTrend: _onToggleSuperTrend,
-  showSuperTrend: _showSuperTrend,
-  onToggleIchimoku: _onToggleIchimoku,
-  showIchimoku: _showIchimoku,
-  onToggleOBV: _onToggleOBV,
-  showOBV: _showOBV,
   onToggleWilliamsPasa,
   showWilliamsPasa,
   onToggleNizamiCedid,

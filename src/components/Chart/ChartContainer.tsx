@@ -3,8 +3,6 @@ import * as echarts from 'echarts';
 import type { Interval, LegendData, ActiveDrawingTool, ChartDrawing } from './types';
 import type { OHLCVData, AllFinancialsResponse } from '../../api/borsaApi';
 import { fetchAllFinancials } from '../../api/borsaApi';
-import type { BollingerOverlayResult } from '../../utils/regressionChannels';
-import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import {
   computeCombinedSignals,
   extractCombinedSignalEvents,
@@ -40,15 +38,8 @@ import {
 import type { ComputedIndicators } from './chartBuilder';
 import { buildSignalScatterSeries } from './signalRenderer';
 import {
-  computeRSI,
-  computeMACD,
-  computeStochRSI,
-  computeOBV,
-  computeSuperTrend,
-  computeIchimoku,
   computeWilliamsPasa,
   computeNizamiCedid,
-  computeBollingerBands,
   computeCMF,
   ema,
 } from '../../utils/indicators';
@@ -130,13 +121,6 @@ interface ChartContainerProps {
   symbol: string;
   interval: Interval;
   onLegendUpdate: (data: LegendData | null) => void;
-  showBollinger?: boolean;
-  showRSI?: boolean;
-  showMACD?: boolean;
-  showStochRSI?: boolean;
-  showSuperTrend?: boolean;
-  showIchimoku?: boolean;
-  showOBV?: boolean;
   showWilliamsPasa?: boolean;
   showNizamiCedid?: boolean;
   showEMAOverlay?: boolean;
@@ -153,13 +137,6 @@ export default function ChartContainer({
   symbol,
   interval,
   onLegendUpdate,
-  showBollinger = false,
-  showRSI = false,
-  showMACD = false,
-  showStochRSI = false,
-  showSuperTrend = false,
-  showIchimoku = false,
-  showOBV = false,
   showWilliamsPasa = false,
   showNizamiCedid = false,
   showEMAOverlay = false,
@@ -200,188 +177,6 @@ export default function ChartContainer({
     const volumes = filtered.map((d) => d.volume);
     const n = closes.length;
     const lastPrice = closes[n - 1];
-
-    // 1. Bollinger Bands
-    if (showBollinger && n >= 20) {
-      const bb = computeBollingerBands(closes);
-      const upper = bb.upper[n - 1];
-      const middle = bb.middle[n - 1];
-      const lower = bb.lower[n - 1];
-      const pctB = bb.pctB[n - 1];
-
-      if (upper !== null && lower !== null && pctB !== null) {
-        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-        let comment = '';
-        if (pctB > 1.0) {
-          signal = 'bearish';
-          comment = `Fiyat Bollinger üst bandının (${upper.toFixed(2)}) dışına taşmış durumda. Bu güçlü bir yükseliş ivmesi veya kısa vadeli aşırı alım (düzeltme riski) işareti olabilir.`;
-        } else if (pctB < 0.0) {
-          signal = 'bullish';
-          comment = `Fiyat Bollinger alt bandının (${lower.toFixed(2)}) altına sarkmış durumda. Kısa vadeli tepki yükselişi olasılığı bulunan bir aşırı satım bölgesidir.`;
-        } else if (pctB >= 0.8) {
-          signal = 'bullish';
-          comment = `Fiyat üst banda yakın seyrediyor. Yükseliş yönlü ivme güçlü şekilde korunmaktadır (Pozisyon: %${(pctB * 100).toFixed(0)}).`;
-        } else if (pctB <= 0.2) {
-          signal = 'bearish';
-          comment = `Fiyat alt banda yakın seyrediyor. Satıcıların baskısı devam etmektedir (Pozisyon: %${(pctB * 100).toFixed(0)}).`;
-        } else {
-          signal = 'neutral';
-          comment = `Fiyat Bollinger orta bandının (${middle?.toFixed(2)}) çevresinde dengeli ve yatay bir seyir izlemektedir.`;
-        }
-        items.push({
-          title: 'Bollinger Bantları',
-          valueText: `Fiyat: ${lastPrice.toFixed(2)}`,
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 2. RSI
-    if (showRSI && n >= 15) {
-      const rsiRes = computeRSI(closes, 14);
-      const rsiVal = rsiRes.rsi[n - 1];
-      if (rsiVal !== null) {
-        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-        let comment = '';
-        if (rsiVal > 70) {
-          signal = 'bearish';
-          comment = `RSI aşırı alım bölgesinde (${rsiVal.toFixed(1)}). Fiyatta yorulma belirtileri ve kısa vadeli bir düzeltme (kar satışı) beklenebilir.`;
-        } else if (rsiVal < 30) {
-          signal = 'bullish';
-          comment = `RSI aşırı satım bölgesinde (${rsiVal.toFixed(1)}). Buradan tepki alımları veya yukarı yönlü bir dönüş hareketi gelebilir.`;
-        } else {
-          signal = 'neutral';
-          comment = `RSI nötr bölgede (${rsiVal.toFixed(1)}). Aşırı alım veya satım sinyali bulunmuyor, trend dengeli seyretmektedir.`;
-        }
-        items.push({
-          title: 'RSI (14)',
-          valueText: `Değer: ${rsiVal.toFixed(1)}`,
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 3. MACD
-    if (showMACD && n >= 26) {
-      const macdRes = computeMACD(closes);
-      const mVal = macdRes.macd[n - 1];
-      const sVal = macdRes.signal[n - 1];
-      if (mVal !== null && sVal !== null) {
-        const signal = mVal > sVal ? 'bullish' : 'bearish';
-        const comment = mVal > sVal
-          ? `MACD çizgisi (${mVal.toFixed(2)}) sinyal çizgisinin (${sVal.toFixed(2)}) üzerinde seyrediyor. Yükseliş ivmesi ve alım iştahı artmaktadır.`
-          : `MACD çizgisi (${mVal.toFixed(2)}) sinyal çizgisinin (${sVal.toFixed(2)}) altında seyrediyor. Satış baskısı ve aşağı yönlü momentum korunmaktadır.`;
-        items.push({
-          title: 'MACD (12/26)',
-          valueText: `Hist: ${(mVal - sVal).toFixed(2)}`,
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 4. Stochastic RSI
-    if (showStochRSI && n >= 28) {
-      const stochRes = computeStochRSI(closes);
-      const kVal = stochRes.k[n - 1];
-      const dVal = stochRes.d[n - 1];
-      if (kVal !== null && dVal !== null) {
-        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-        let comment = '';
-        if (kVal > 80) {
-          signal = 'bearish';
-          comment = `StochRSI aşırı alım bölgesinde (%${kVal.toFixed(0)}). Kısa vadede ivme kaybı ve dönüş riski mevcuttur.`;
-        } else if (kVal < 20) {
-          signal = 'bullish';
-          comment = `StochRSI aşırı satım bölgesinde (%${kVal.toFixed(0)}). Kısa vadeli tepki alımları için elverişli bir seviyededir.`;
-        } else if (kVal > dVal) {
-          signal = 'bullish';
-          comment = `StochRSI K çizgisi D çizgisinin üzerinde seyrediyor (%${kVal.toFixed(0)} > %${dVal.toFixed(0)}). Yükseliş yönlü toparlanma eğilimi mevcuttur.`;
-        } else {
-          signal = 'bearish';
-          comment = `StochRSI K çizgisi D çizgisinin altında seyrediyor (%${kVal.toFixed(0)} < %${dVal.toFixed(0)}). Satış baskısı devam ediyor.`;
-        }
-        items.push({
-          title: 'Stochastic RSI',
-          valueText: `K: %${kVal.toFixed(0)}`,
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 5. SuperTrend
-    if (showSuperTrend && n >= 11) {
-      const stRes = computeSuperTrend(highs, lows, closes);
-      const stVal = stRes.supertrend[n - 1];
-      const dirVal = stRes.direction[n - 1];
-      if (stVal !== null && dirVal !== null) {
-        const signal = dirVal === 1 ? 'bullish' : 'bearish';
-        const comment = dirVal === 1
-          ? `SuperTrend alım (Bullish) sinyali üretiyor. Trend yönü yukarıdır ve destek seviyesi ${stVal.toFixed(2)} olarak takip edilebilir.`
-          : `SuperTrend satım (Bearish) sinyali üretiyor. Trend yönü aşağıdır ve direnç seviyesi ${stVal.toFixed(2)} olarak takip edilebilir.`;
-        items.push({
-          title: 'SuperTrend',
-          valueText: signal === 'bullish' ? 'AL' : 'SAT',
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 6. Ichimoku Cloud
-    if (showIchimoku && n >= 52) {
-      const ichRes = computeIchimoku(highs, lows, closes);
-      const tenkanVal = ichRes.tenkan[n - 1];
-      const kijunVal = ichRes.kijun[n - 1];
-      const senkouAVal = ichRes.senkouA[n - 1];
-      const senkouBVal = ichRes.senkouB[n - 1];
-
-      if (tenkanVal !== null && kijunVal !== null && senkouAVal !== null && senkouBVal !== null) {
-        let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-        let comment = '';
-        if (lastPrice > senkouAVal && lastPrice > senkouBVal) {
-          signal = 'bullish';
-          comment = `Fiyat bulutun (Kumo) üzerinde seyrediyor. Bu orta-uzun vadede güçlü yükseliş trendini destekler. Tenkan-sen: ${tenkanVal.toFixed(2)}, Kijun-sen: ${kijunVal.toFixed(2)}.`;
-        } else if (lastPrice < senkouAVal && lastPrice < senkouBVal) {
-          signal = 'bearish';
-          comment = `Fiyat bulutun (Kumo) altında seyrediyor. Orta-uzun vadeli düşüş trendinin sürdüğünü teyit eder.`;
-        } else if (tenkanVal > kijunVal) {
-          signal = 'bullish';
-          comment = `Kısa vadeli Tenkan-sen çizgisi uzun vadeli Kijun-sen çizgisini yukarı yönlü kesmiş durumda. Fiyat bulut içinde yön aramaktadır.`;
-        } else {
-          signal = 'neutral';
-          comment = `Fiyat bulutun (Kumo) içinde seyrediyor, kararsız ve konsolidasyon (yatay) aşaması devam etmektedir.`;
-        }
-        items.push({
-          title: 'Ichimoku Bulutu',
-          valueText: lastPrice > senkouAVal ? 'Bulut Üstü' : 'Bulut Altı',
-          signal,
-          comment,
-        });
-      }
-    }
-
-    // 7. OBV
-    if (showOBV && n >= 20) {
-      const obvRes = computeOBV(closes, volumes);
-      const obvVal = obvRes.obv[n - 1];
-      const emaVal = obvRes.obvEma[n - 1];
-      if (obvVal !== null && emaVal !== null) {
-        const signal = obvVal > emaVal ? 'bullish' : 'bearish';
-        const comment = obvVal > emaVal
-          ? `OBV kendi 20 günlük EMA ortalamasının üzerinde seyrediyor. Hacim fiyat yükselişini destekliyor, piyasaya alıcı girişi mevcuttur.`
-          : `OBV kendi 20 günlük EMA ortalamasının altında seyrediyor. Hacimsel zayıflık ve piyasadan para çıkışı emaresi mevcuttur.`;
-        items.push({
-          title: 'OBV Hacim',
-          valueText: obvVal > emaVal ? 'Para Girişi' : 'Para Çıkışı',
-          signal,
-          comment,
-        });
-      }
-    }
 
     // 8. Williams Paşa
     if (showWilliamsPasa && n >= 260) {
@@ -522,13 +317,6 @@ export default function ChartContainer({
     return items;
   }, [
     filtered,
-    showBollinger,
-    showRSI,
-    showMACD,
-    showStochRSI,
-    showSuperTrend,
-    showIchimoku,
-    showOBV,
     showWilliamsPasa,
     showNizamiCedid,
     showEMAOverlay,
@@ -615,10 +403,6 @@ export default function ChartContainer({
     }
   };
 
-  const showRSIRef = useRef(showRSI);
-  const showMACDRef = useRef(showMACD);
-  const showStochRSIRef = useRef(showStochRSI);
-  const showOBVRef = useRef(showOBV);
   const showWilliamsPasaRef = useRef(showWilliamsPasa);
   const showNizamiCedidRef = useRef(showNizamiCedid);
   const showCMFRef = useRef(showCMF);
@@ -635,10 +419,6 @@ export default function ChartContainer({
       console.error(e);
     }
     return {
-      rsi: 120,
-      macd: 120,
-      stochRsi: 120,
-      obv: 120,
       williams_pasa: 120,
       nizami_cedid: 120,
       cmf: 120,
@@ -683,10 +463,6 @@ export default function ChartContainer({
 
   const { subPanels, panelBottoms } = useMemo(() => {
     const panels: string[] = [];
-    if (showRSI) panels.push('rsi');
-    if (showMACD) panels.push('macd');
-    if (showStochRSI) panels.push('stochRsi');
-    if (showOBV) panels.push('obv');
     if (showWilliamsPasa) panels.push('williams_pasa');
     if (showNizamiCedid) panels.push('nizami_cedid');
     if (showCMF) panels.push('cmf');
@@ -699,17 +475,13 @@ export default function ChartContainer({
       currentBottom += h + 10;
     }
     return { subPanels: panels, panelBottoms: bottoms };
-  }, [showRSI, showMACD, showStochRSI, showOBV, showWilliamsPasa, showNizamiCedid, showCMF, panelHeights]);
+  }, [showWilliamsPasa, showNizamiCedid, showCMF, panelHeights]);
 
   useEffect(() => {
     subPanelsRef.current = subPanels;
     panelBottomsRef.current = panelBottoms;
   }, [subPanels, panelBottoms]);
 
-  useEffect(() => { showRSIRef.current = showRSI; }, [showRSI]);
-  useEffect(() => { showMACDRef.current = showMACD; }, [showMACD]);
-  useEffect(() => { showStochRSIRef.current = showStochRSI; }, [showStochRSI]);
-  useEffect(() => { showOBVRef.current = showOBV; }, [showOBV]);
   useEffect(() => { showWilliamsPasaRef.current = showWilliamsPasa; }, [showWilliamsPasa]);
   useEffect(() => { showNizamiCedidRef.current = showNizamiCedid; }, [showNizamiCedid]);
   useEffect(() => { showCMFRef.current = showCMF; }, [showCMF]);
@@ -756,22 +528,6 @@ export default function ChartContainer({
   }, [symbol]);
   const currentLargeModeRef = useRef<boolean | null>(null);
 
-  // Toggle visibility of individual Bollinger bands
-  const [visibleBollinger, setVisibleBollinger] = useState<Set<string>>(
-    () => new Set(DEFAULT_BOLLINGER_CONFIGS.map((c) => c.id)),
-  );
-
-  const toggleBollinger = useCallback((id: string) => {
-    setVisibleBollinger((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  void toggleBollinger; // reserved for future UI
-
   // Compute combined signal events for scatter markers
   const signalEvents = useMemo<SignalEvent[]>(() => {
     if (!showSignals || filtered.length < 60) return [];
@@ -780,14 +536,6 @@ export default function ChartContainer({
     return extractCombinedSignalEvents(combined, filtered);
   }, [filtered, showSignals, signalConfig]);
 
-  // Compute Bollinger overlay values for display table
-  const bollingerResults = useMemo<BollingerOverlayResult[]>(() => {
-    if (!showBollinger || filtered.length < 20) return [];
-    const closePrices = filtered.map((d) => d.close);
-    return computeAllBollingerOverlays(closePrices);
-  }, [filtered, showBollinger]);
-
-  void bollingerResults; // used internally by buildOption
 
   // Initialize chart once
   useEffect(() => {
@@ -2204,27 +1952,6 @@ export default function ChartContainer({
     const cmfResult = showCMF && filtered.length > 20 ? computeCMF(highs, lows, closes, volumes, 20) : null;
 
     const computed: ComputedIndicators = {};
-    if (showRSI && filtered.length > 15) {
-      const period = signalConfig?.rsi?.period ?? 14;
-      computed.rsi = computeRSI(closes, period).rsi;
-    }
-    if (showMACD && filtered.length > 35) {
-      const fast = signalConfig?.macd?.fast ?? 12;
-      const slow = signalConfig?.macd?.slow ?? 26;
-      const sigPeriod = signalConfig?.macd?.signalPeriod ?? 9;
-      computed.macd = computeMACD(closes, fast, slow, sigPeriod);
-    }
-    if (showStochRSI && filtered.length > 30) {
-      const rsiP = signalConfig?.stochRsi?.rsiPeriod ?? 14;
-      const stochP = signalConfig?.stochRsi?.stochPeriod ?? 14;
-      const kS = signalConfig?.stochRsi?.kSmooth ?? 3;
-      const dS = signalConfig?.stochRsi?.dSmooth ?? 3;
-      computed.stochRsi = computeStochRSI(closes, rsiP, stochP, kS, dS);
-    }
-    if (showOBV && filtered.length > 20) {
-      const emaPeriod = signalConfig?.obv?.emaPeriod ?? 20;
-      computed.obv = computeOBV(closes, volumes, emaPeriod);
-    }
     if (showWilliamsPasa && filtered.length > 260) {
       const length = signalConfig?.williamsPasa?.length ?? 260;
       const emaLen = signalConfig?.williamsPasa?.emaLen ?? 260;
@@ -2252,18 +1979,10 @@ export default function ChartContainer({
     const newOption = buildOption(
       filtered,
       symbol,
-      showBollinger,
-      visibleBollinger,
-      showRSI,
-      showMACD,
-      showStochRSI,
       logScale,
       themeColors,
       signalEvents,
       signalConfig,
-      showSuperTrend,
-      showIchimoku,
-      showOBV,
       interval,
       showWilliamsPasa,
       showNizamiCedid,
@@ -2321,14 +2040,6 @@ export default function ChartContainer({
     filtered,
     symbol,
     interval,
-    showBollinger,
-    visibleBollinger,
-    showRSI,
-    showMACD,
-    showStochRSI,
-    showSuperTrend,
-    showIchimoku,
-    showOBV,
     showWilliamsPasa,
     showNizamiCedid,
     showEMAOverlay,

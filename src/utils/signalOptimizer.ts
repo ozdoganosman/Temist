@@ -13,14 +13,6 @@ import type { OHLCVData } from '../api/borsaApi';
 import type {
   SignalConfig,
   PairedTradeStats,
-  RSISignalConfig,
-  MACDSignalConfig,
-  BollingerSignalConfig,
-  StochRSISignalConfig,
-  ADXSignalConfig,
-  SuperTrendSignalConfig,
-  IchimokuSignalConfig,
-  OBVSignalConfig,
 } from './signalDetection';
 import { computeCombinedSignals, pairTrades, DEFAULT_SIGNAL_CONFIG } from './signalDetection';
 import type {
@@ -48,30 +40,6 @@ export const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
 export function base(): SignalConfig {
   return {
-    rsi: { ...DEFAULT_SIGNAL_CONFIG.rsi, enabled: false, conditions: { ...DEFAULT_SIGNAL_CONFIG.rsi.conditions } },
-    macd: { ...DEFAULT_SIGNAL_CONFIG.macd, enabled: false, conditions: { ...DEFAULT_SIGNAL_CONFIG.macd.conditions } },
-    bollinger: {
-      ...DEFAULT_SIGNAL_CONFIG.bollinger,
-      enabled: false,
-      conditions: { ...DEFAULT_SIGNAL_CONFIG.bollinger.conditions },
-    },
-    stochRsi: {
-      ...DEFAULT_SIGNAL_CONFIG.stochRsi,
-      enabled: false,
-      conditions: { ...DEFAULT_SIGNAL_CONFIG.stochRsi.conditions },
-    },
-    adx: { ...DEFAULT_SIGNAL_CONFIG.adx, enabled: false, conditions: { ...DEFAULT_SIGNAL_CONFIG.adx.conditions } },
-    supertrend: {
-      ...DEFAULT_SIGNAL_CONFIG.supertrend,
-      enabled: false,
-      conditions: { ...DEFAULT_SIGNAL_CONFIG.supertrend.conditions },
-    },
-    ichimoku: {
-      ...DEFAULT_SIGNAL_CONFIG.ichimoku,
-      enabled: false,
-      conditions: { ...DEFAULT_SIGNAL_CONFIG.ichimoku.conditions },
-    },
-    obv: { ...DEFAULT_SIGNAL_CONFIG.obv, enabled: false, conditions: { ...DEFAULT_SIGNAL_CONFIG.obv.conditions } },
     williamsPasa: {
       ...DEFAULT_SIGNAL_CONFIG.williamsPasa,
       enabled: false,
@@ -147,146 +115,30 @@ export function topN(results: EnhancedOptimizerResult[], n: number): EnhancedOpt
   return results.sort((a, b) => b.fitness - a.fitness).slice(0, n);
 }
 
-// ── Condition combinations ────────────────────
-
-function allCondCombos<T>(keys: string[]): T[] {
-  const combos: T[] = [];
-  const n = keys.length;
-  for (let mask = 1; mask < 1 << n; mask++) {
-    const cond: Record<string, boolean> = {};
-    for (let i = 0; i < n; i++) cond[keys[i]] = !!(mask & (1 << i));
-    combos.push(cond as T);
-  }
-  return combos;
-}
-
-const RSI_ALL_CONDS = allCondCombos<RSISignalConfig['conditions']>(['threshold', 'midLine']);
-const MACD_ALL_CONDS = allCondCombos<MACDSignalConfig['conditions']>(['histogram', 'macdVsSignal', 'macdVsZero']);
-const BOLL_ALL_CONDS = allCondCombos<BollingerSignalConfig['conditions']>(['bandBreak', 'pctB', 'squeeze']);
-const STOCH_ALL_CONDS = allCondCombos<StochRSISignalConfig['conditions']>(['threshold', 'crossover']);
-const ADX_ALL_CONDS = allCondCombos<ADXSignalConfig['conditions']>(['diCross', 'strongTrend']);
-const ST_ALL_CONDS = allCondCombos<SuperTrendSignalConfig['conditions']>(['direction']);
-const ICHI_ALL_CONDS = allCondCombos<IchimokuSignalConfig['conditions']>(['tkCross', 'priceVsCloud', 'cloudColor']);
-const OBV_ALL_CONDS = allCondCombos<OBVSignalConfig['conditions']>(['obvVsEma']);
-
 // ── Grid generators ────────────────────────────
 
-export function generateRSIConfigs(): SignalConfig[] {
-  const periods = [7, 10, 14, 21, 28];
-  const oversolds = [20, 25, 30, 35];
-  const overboughts = [65, 70, 75, 80];
+export function generateWilliamsPasaConfigs(): SignalConfig[] {
+  const lengths = [130, 200, 260, 365];
+  const emaLens = [130, 200, 260, 365];
   const configs: SignalConfig[] = [];
-  for (const period of periods)
-    for (const oversold of oversolds)
-      for (const overbought of overboughts)
-        for (const conditions of RSI_ALL_CONDS) {
-          const b = base();
-          b.rsi = { enabled: true, period, oversold, overbought, conditions };
-          configs.push(b);
-        }
+  for (const length of lengths)
+    for (const emaLen of emaLens) {
+      const b = base();
+      b.williamsPasa = { enabled: true, length, emaLen, conditions: { threshold: true } };
+      configs.push(b);
+    }
   return configs;
 }
 
-export function generateMACDConfigs(): SignalConfig[] {
-  const fasts = [8, 10, 12, 15];
-  const slows = [20, 26, 30, 35];
-  const signals = [5, 7, 9, 12];
+export function generateNizamiCedidConfigs(): SignalConfig[] {
+  const fasts = [80, 100, 120, 150];
+  const slows = [200, 260, 300, 365];
   const configs: SignalConfig[] = [];
   for (const fast of fasts)
-    for (const slow of slows)
-      for (const signalPeriod of signals)
-        for (const conditions of MACD_ALL_CONDS) {
-          if (fast >= slow) continue;
-          const b = base();
-          b.macd = { enabled: true, fast, slow, signalPeriod, conditions };
-          configs.push(b);
-        }
-  return configs;
-}
-
-export function generateBollingerConfigs(): SignalConfig[] {
-  const periods = [15, 20, 25, 30];
-  const mults = [1.5, 2.0, 2.5, 3.0];
-  const configs: SignalConfig[] = [];
-  for (const period of periods)
-    for (const mult of mults)
-      for (const conditions of BOLL_ALL_CONDS) {
-        const b = base();
-        b.bollinger = { enabled: true, period, mult, conditions };
-        configs.push(b);
-      }
-  return configs;
-}
-
-export function generateStochRSIConfigs(): SignalConfig[] {
-  const rsiPeriods = [10, 14, 21];
-  const stochPeriods = [10, 14, 21];
-  const kSmooths = [3, 5];
-  const dSmooths = [3, 5];
-  const configs: SignalConfig[] = [];
-  for (const rsiPeriod of rsiPeriods)
-    for (const stochPeriod of stochPeriods)
-      for (const kSmooth of kSmooths)
-        for (const dSmooth of dSmooths)
-          for (const conditions of STOCH_ALL_CONDS) {
-            const b = base();
-            b.stochRsi = { enabled: true, rsiPeriod, stochPeriod, kSmooth, dSmooth, conditions };
-            configs.push(b);
-          }
-  return configs;
-}
-
-export function generateADXConfigs(): SignalConfig[] {
-  const periods = [10, 14, 20, 28];
-  const thresholds = [20, 25, 30, 35];
-  const configs: SignalConfig[] = [];
-  for (const period of periods)
-    for (const trendThreshold of thresholds)
-      for (const conditions of ADX_ALL_CONDS) {
-        const b = base();
-        b.adx = { enabled: true, period, trendThreshold, conditions };
-        configs.push(b);
-      }
-  return configs;
-}
-
-export function generateSuperTrendConfigs(): SignalConfig[] {
-  const atrPeriods = [7, 10, 14, 20];
-  const multipliers = [2.0, 2.5, 3.0, 3.5, 4.0];
-  const configs: SignalConfig[] = [];
-  for (const atrPeriod of atrPeriods)
-    for (const multiplier of multipliers)
-      for (const conditions of ST_ALL_CONDS) {
-        const b = base();
-        b.supertrend = { enabled: true, atrPeriod, multiplier, conditions };
-        configs.push(b);
-      }
-  return configs;
-}
-
-export function generateIchimokuConfigs(): SignalConfig[] {
-  const tenkans = [7, 9, 12];
-  const kijuns = [22, 26, 30];
-  const senkous = [44, 52, 60];
-  const configs: SignalConfig[] = [];
-  for (const tenkan of tenkans)
-    for (const kijun of kijuns)
-      for (const senkouB of senkous)
-        for (const conditions of ICHI_ALL_CONDS) {
-          const b = base();
-          b.ichimoku = { enabled: true, tenkan, kijun, senkouB, conditions };
-          configs.push(b);
-        }
-  return configs;
-}
-
-export function generateOBVConfigs(): SignalConfig[] {
-  const emaPeriods = [10, 15, 20, 30, 50];
-  const configs: SignalConfig[] = [];
-  for (const emaPeriod of emaPeriods)
-    for (const conditions of OBV_ALL_CONDS) {
+    for (const slow of slows) {
+      if (fast >= slow) continue;
       const b = base();
-      b.obv = { enabled: true, emaPeriod, conditions };
+      b.nizamiCedid = { enabled: true, fast, slow, signalLen: 50, vwmaLen: 185, conditions: { deltaCross: true } };
       configs.push(b);
     }
   return configs;
@@ -303,22 +155,10 @@ function condList(obj: Record<string, boolean>): string {
 
 export function describeConfig(c: SignalConfig): string {
   const parts: string[] = [];
-  if (c.rsi.enabled)
-    parts.push(`RSI(${c.rsi.period},${c.rsi.oversold}/${c.rsi.overbought})[${condList(c.rsi.conditions)}]`);
-  if (c.macd.enabled)
-    parts.push(`MACD(${c.macd.fast},${c.macd.slow},${c.macd.signalPeriod})[${condList(c.macd.conditions)}]`);
-  if (c.bollinger.enabled)
-    parts.push(`BB(${c.bollinger.period},${c.bollinger.mult})[${condList(c.bollinger.conditions)}]`);
-  if (c.stochRsi.enabled)
-    parts.push(`StochRSI(${c.stochRsi.rsiPeriod},${c.stochRsi.stochPeriod})[${condList(c.stochRsi.conditions)}]`);
-  if (c.adx.enabled) parts.push(`ADX(${c.adx.period},${c.adx.trendThreshold})[${condList(c.adx.conditions)}]`);
-  if (c.supertrend.enabled)
-    parts.push(`ST(${c.supertrend.atrPeriod},${c.supertrend.multiplier})[${condList(c.supertrend.conditions)}]`);
-  if (c.ichimoku.enabled)
-    parts.push(
-      `Ichi(${c.ichimoku.tenkan},${c.ichimoku.kijun},${c.ichimoku.senkouB})[${condList(c.ichimoku.conditions)}]`,
-    );
-  if (c.obv.enabled) parts.push(`OBV(${c.obv.emaPeriod})[${condList(c.obv.conditions)}]`);
+  if (c.williamsPasa?.enabled)
+    parts.push(`WP(${c.williamsPasa.length},${c.williamsPasa.emaLen})[${condList(c.williamsPasa.conditions)}]`);
+  if (c.nizamiCedid?.enabled)
+    parts.push(`NC(${c.nizamiCedid.fast},${c.nizamiCedid.slow})[${condList(c.nizamiCedid.conditions)}]`);
   const modeTag = parts.length > 1 ? ` [${c.mode === 'AND' ? 'VE' : 'VEYA'}]` : '';
   return parts.join(' + ') + modeTag;
 }
@@ -339,91 +179,15 @@ export function tournamentSelect<T extends { fitness: number }>(pool: T[], k = 3
 export function mutateConfig(config: SignalConfig, rate: number): SignalConfig {
   const c = deepClone(config);
 
-  if (c.rsi.enabled && Math.random() < rate) {
-    c.rsi.period = clamp(c.rsi.period + randomInt(-5, 5), 5, 50);
-    c.rsi.oversold = clamp(c.rsi.oversold + randomInt(-5, 5), 10, 45);
-    c.rsi.overbought = clamp(c.rsi.overbought + randomInt(-5, 5), 55, 90);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.rsi.conditions) as (keyof RSISignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.rsi.conditions as Record<string, boolean>)[key] = !c.rsi.conditions[key];
-      if (!Object.values(c.rsi.conditions).some((v) => v))
-        (c.rsi.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
+  if (c.williamsPasa?.enabled && Math.random() < rate) {
+    c.williamsPasa.length = clamp(c.williamsPasa.length + randomInt(-20, 20), 50, 500);
+    c.williamsPasa.emaLen = clamp(c.williamsPasa.emaLen + randomInt(-20, 20), 50, 500);
   }
 
-  if (c.macd.enabled && Math.random() < rate) {
-    c.macd.fast = clamp(c.macd.fast + randomInt(-3, 3), 5, 20);
-    c.macd.slow = clamp(c.macd.slow + randomInt(-5, 5), 15, 50);
-    if (c.macd.fast >= c.macd.slow) c.macd.slow = c.macd.fast + 5;
-    c.macd.signalPeriod = clamp(c.macd.signalPeriod + randomInt(-3, 3), 3, 20);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.macd.conditions) as (keyof MACDSignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.macd.conditions as Record<string, boolean>)[key] = !c.macd.conditions[key];
-      if (!Object.values(c.macd.conditions).some((v) => v))
-        (c.macd.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
-  }
-
-  if (c.bollinger.enabled && Math.random() < rate) {
-    c.bollinger.period = clamp(c.bollinger.period + randomInt(-5, 5), 10, 50);
-    c.bollinger.mult = clamp(c.bollinger.mult + (Math.random() - 0.5), 1.0, 4.0);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.bollinger.conditions) as (keyof BollingerSignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.bollinger.conditions as Record<string, boolean>)[key] = !c.bollinger.conditions[key];
-      if (!Object.values(c.bollinger.conditions).some((v) => v))
-        (c.bollinger.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
-  }
-
-  if (c.stochRsi.enabled && Math.random() < rate) {
-    c.stochRsi.rsiPeriod = clamp(c.stochRsi.rsiPeriod + randomInt(-4, 4), 5, 30);
-    c.stochRsi.stochPeriod = clamp(c.stochRsi.stochPeriod + randomInt(-4, 4), 5, 30);
-    c.stochRsi.kSmooth = clamp(c.stochRsi.kSmooth + randomInt(-1, 1), 1, 10);
-    c.stochRsi.dSmooth = clamp(c.stochRsi.dSmooth + randomInt(-1, 1), 1, 10);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.stochRsi.conditions) as (keyof StochRSISignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.stochRsi.conditions as Record<string, boolean>)[key] = !c.stochRsi.conditions[key];
-      if (!Object.values(c.stochRsi.conditions).some((v) => v))
-        (c.stochRsi.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
-  }
-
-  if (c.adx.enabled && Math.random() < rate) {
-    c.adx.period = clamp(c.adx.period + randomInt(-4, 4), 7, 40);
-    c.adx.trendThreshold = clamp(c.adx.trendThreshold + randomInt(-5, 5), 15, 50);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.adx.conditions) as (keyof ADXSignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.adx.conditions as Record<string, boolean>)[key] = !c.adx.conditions[key];
-      if (!Object.values(c.adx.conditions).some((v) => v))
-        (c.adx.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
-  }
-
-  if (c.supertrend.enabled && Math.random() < rate) {
-    c.supertrend.atrPeriod = clamp(c.supertrend.atrPeriod + randomInt(-3, 3), 5, 30);
-    c.supertrend.multiplier = clamp(c.supertrend.multiplier + (Math.random() - 0.5), 1.0, 6.0);
-  }
-
-  if (c.ichimoku.enabled && Math.random() < rate) {
-    c.ichimoku.tenkan = clamp(c.ichimoku.tenkan + randomInt(-3, 3), 5, 20);
-    c.ichimoku.kijun = clamp(c.ichimoku.kijun + randomInt(-5, 5), 15, 40);
-    c.ichimoku.senkouB = clamp(c.ichimoku.senkouB + randomInt(-8, 8), 30, 80);
-    if (Math.random() < 0.3) {
-      const keys = Object.keys(c.ichimoku.conditions) as (keyof IchimokuSignalConfig['conditions'])[];
-      const key = randomChoice(keys);
-      (c.ichimoku.conditions as Record<string, boolean>)[key] = !c.ichimoku.conditions[key];
-      if (!Object.values(c.ichimoku.conditions).some((v) => v))
-        (c.ichimoku.conditions as Record<string, boolean>)[randomChoice(keys)] = true;
-    }
-  }
-
-  if (c.obv.enabled && Math.random() < rate) {
-    c.obv.emaPeriod = clamp(c.obv.emaPeriod + randomInt(-5, 5), 5, 80);
+  if (c.nizamiCedid?.enabled && Math.random() < rate) {
+    c.nizamiCedid.fast = clamp(c.nizamiCedid.fast + randomInt(-10, 10), 50, 200);
+    c.nizamiCedid.slow = clamp(c.nizamiCedid.slow + randomInt(-20, 20), 100, 400);
+    if (c.nizamiCedid.fast >= c.nizamiCedid.slow) c.nizamiCedid.slow = c.nizamiCedid.fast + 50;
   }
 
   if (Math.random() < rate * 0.5) {
@@ -435,14 +199,6 @@ export function mutateConfig(config: SignalConfig, rate: number): SignalConfig {
 
 export function crossover(a: SignalConfig, b: SignalConfig): SignalConfig {
   return {
-    rsi: Math.random() < 0.5 ? deepClone(a.rsi) : deepClone(b.rsi),
-    macd: Math.random() < 0.5 ? deepClone(a.macd) : deepClone(b.macd),
-    bollinger: Math.random() < 0.5 ? deepClone(a.bollinger) : deepClone(b.bollinger),
-    stochRsi: Math.random() < 0.5 ? deepClone(a.stochRsi) : deepClone(b.stochRsi),
-    adx: Math.random() < 0.5 ? deepClone(a.adx) : deepClone(b.adx),
-    supertrend: Math.random() < 0.5 ? deepClone(a.supertrend) : deepClone(b.supertrend),
-    ichimoku: Math.random() < 0.5 ? deepClone(a.ichimoku) : deepClone(b.ichimoku),
-    obv: Math.random() < 0.5 ? deepClone(a.obv) : deepClone(b.obv),
     williamsPasa: Math.random() < 0.5 ? deepClone(a.williamsPasa) : deepClone(b.williamsPasa),
     nizamiCedid: Math.random() < 0.5 ? deepClone(a.nizamiCedid) : deepClone(b.nizamiCedid),
     mode: Math.random() < 0.5 ? a.mode : b.mode,
@@ -452,30 +208,9 @@ export function crossover(a: SignalConfig, b: SignalConfig): SignalConfig {
 
 // ── Phase 3: Multi-indicator combinations ─────
 
-export type IndKey =
-  | 'rsi'
-  | 'macd'
-  | 'bollinger'
-  | 'stochRsi'
-  | 'adx'
-  | 'supertrend'
-  | 'ichimoku'
-  | 'obv'
-  | 'williamsPasa'
-  | 'nizamiCedid';
+export type IndKey = 'williamsPasa' | 'nizamiCedid';
 
-export const IND_KEYS: IndKey[] = [
-  'rsi',
-  'macd',
-  'bollinger',
-  'stochRsi',
-  'adx',
-  'supertrend',
-  'ichimoku',
-  'obv',
-  'williamsPasa',
-  'nizamiCedid',
-];
+export const IND_KEYS: IndKey[] = ['williamsPasa', 'nizamiCedid'];
 
 export function mergeConfigs(configs: SignalConfig[], mode: 'AND' | 'OR'): SignalConfig {
   const b = base();
@@ -546,14 +281,8 @@ export async function optimizeSignals(
   // ─── Phase 1: Grid Search ─────────────────
 
   const allGridConfigs: { configs: SignalConfig[]; label: string }[] = [
-    { configs: generateRSIConfigs(), label: 'RSI' },
-    { configs: generateMACDConfigs(), label: 'MACD' },
-    { configs: generateBollingerConfigs(), label: 'Bollinger' },
-    { configs: generateStochRSIConfigs(), label: 'StochRSI' },
-    { configs: generateADXConfigs(), label: 'ADX' },
-    { configs: generateSuperTrendConfigs(), label: 'SuperTrend' },
-    { configs: generateIchimokuConfigs(), label: 'Ichimoku' },
-    { configs: generateOBVConfigs(), label: 'OBV' },
+    { configs: generateWilliamsPasaConfigs(), label: 'Williams Pasa' },
+    { configs: generateNizamiCedidConfigs(), label: 'Nizami Cedid' },
   ];
 
   const phase1Total = allGridConfigs.reduce((sum, g) => sum + g.configs.length, 0);

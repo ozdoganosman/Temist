@@ -3,14 +3,7 @@ import type { OHLCVData } from '../../api/borsaApi';
 import type { Interval, ChartDrawing } from './types';
 import { isIntraday } from './types';
 import { formatPrice, formatVolume } from '../../utils/formatters';
-import { computeAllBollingerOverlays, DEFAULT_BOLLINGER_CONFIGS } from '../../utils/regressionChannels';
 import {
-  computeRSI,
-  computeMACD,
-  computeStochRSI,
-  computeOBV,
-  computeSuperTrend,
-  computeIchimoku,
   computeWilliamsPasa,
   computeNizamiCedid,
   ema,
@@ -22,20 +15,6 @@ import type { CMFResult } from '../../utils/indicators';
 
 
 export interface ComputedIndicators {
-  rsi?: (number | null)[];
-  macd?: {
-    macd: (number | null)[];
-    signal: (number | null)[];
-    histogram: (number | null)[];
-  };
-  stochRsi?: {
-    k: (number | null)[];
-    d: (number | null)[];
-  };
-  obv?: {
-    obv: (number | null)[];
-    obvEma: (number | null)[];
-  };
   williamsPasa?: {
     percentR: (number | null)[];
     emaWil: (number | null)[];
@@ -889,18 +868,10 @@ export function getGridMargins() {
 export function buildOption(
   filtered: OHLCVData[],
   symbol: string,
-  showBollinger = false,
-  visibleBollinger?: Set<string>,
-  showRSI = false,
-  showMACD = false,
-  showStochRSI = false,
   logScale = false,
   theme?: ThemeColors,
   signalEvents?: SignalEvent[],
   sigConfig?: SignalConfig,
-  showSuperTrend = false,
-  showIchimoku = false,
-  showOBV = false,
   interval?: Interval,
   showWilliamsPasa = false,
   showNizamiCedid = false,
@@ -1050,10 +1021,6 @@ export function buildOption(
   // --- Dynamic panel layout ---
   const panelHeightsMap = panelHeights || {};
   const subPanels: string[] = [];
-  if (showRSI) subPanels.push('rsi');
-  if (showMACD) subPanels.push('macd');
-  if (showStochRSI) subPanels.push('stochRsi');
-  if (showOBV) subPanels.push('obv');
   if (showWilliamsPasa) subPanels.push('williams_pasa');
   if (showNizamiCedid) subPanels.push('nizami_cedid');
   if (showCMF) subPanels.push('cmf');
@@ -1187,85 +1154,7 @@ export function buildOption(
     panelYAxisIdx[subPanels[i]] = yIdx;
     const gridIdx = i + 1;
 
-    if (subPanels[i] === 'rsi') {
-      yAxes.push({
-        id: 'y-axis-rsi',
-        gridIndex: gridIdx,
-        position: 'right',
-        min: 0,
-        max: 100,
-        splitNumber: 2,
-        splitLine: { lineStyle: { color: tc.border } },
-        axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${Math.round(v)}` },
-        axisPointer: {
-          show: true,
-          type: 'line',
-          lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => `${Math.round(p.value)}` },
-        },
-      } as echarts.YAXisComponentOption);
-    } else if (subPanels[i] === 'macd') {
-      yAxes.push({
-        id: 'y-axis-macd',
-        gridIndex: gridIdx,
-        position: 'right',
-        scale: true,
-        splitNumber: 3,
-        splitLine: { lineStyle: { color: tc.border } },
-        axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: {
-          color: tc.text,
-          fontSize: 10,
-          formatter: (v: number) => formatIndicatorVal(v),
-        },
-        axisPointer: {
-          show: true,
-          type: 'line',
-          lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatIndicatorVal(Number(p.value)) },
-        },
-      } as echarts.YAXisComponentOption);
-    } else if (subPanels[i] === 'obv') {
-      yAxes.push({
-        id: 'y-axis-obv',
-        gridIndex: gridIdx,
-        position: 'right',
-        scale: true,
-        splitNumber: 3,
-        splitLine: { lineStyle: { color: tc.border } },
-        axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: {
-          color: tc.text,
-          fontSize: 10,
-          formatter: (v: number) => formatVolume(v),
-        },
-        axisPointer: {
-          show: true,
-          type: 'line',
-          lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => formatVolume(Number(p.value)) },
-        },
-      } as echarts.YAXisComponentOption);
-    } else if (subPanels[i] === 'stochRsi') {
-      yAxes.push({
-        id: 'y-axis-stochRsi',
-        gridIndex: gridIdx,
-        position: 'right',
-        min: 0,
-        max: 100,
-        splitNumber: 2,
-        splitLine: { lineStyle: { color: tc.border } },
-        axisLine: { lineStyle: { color: tc.border } },
-        axisLabel: { color: tc.text, fontSize: 10, formatter: (v: number) => `${Math.round(v)}` },
-        axisPointer: {
-          show: true,
-          type: 'line',
-          lineStyle: { color: tc.pointerLine, type: 'dashed' },
-          label: { backgroundColor: tc.tooltipBg, color: tc.tooltipText, formatter: (p: any) => `${Math.round(Number(p.value))}` },
-        },
-      } as echarts.YAXisComponentOption);
-    } else if (subPanels[i] === 'williams_pasa') {
+    if (subPanels[i] === 'williams_pasa') {
       yAxes.push({
         id: 'y-axis-williams_pasa',
         gridIndex: gridIdx,
@@ -1457,249 +1346,6 @@ export function buildOption(
 
 
 
-
-  // RSI sub panel
-  if (showRSI && filtered.length > 15) {
-    const rsiGridIdx = subPanels.indexOf('rsi') + 1;
-    const rsiYIdx = panelYAxisIdx['rsi'];
-    const closes = filtered.map((d) => d.close);
-    const rsiPeriod = sigConfig?.rsi?.period ?? 14;
-    const rsiResult = computed?.rsi ? { rsi: computed.rsi } : computeRSI(closes, rsiPeriod);
-    const rsiPadded = [...padNull, ...rsiResult.rsi, ...padNull];
-
-    const oversold = sigConfig?.rsi?.oversold ?? 30;
-    const overbought = sigConfig?.rsi?.overbought ?? 70;
-
-    subSeries.push({
-      name: 'RSI',
-      type: 'line',
-      data: rsiPadded,
-      xAxisIndex: rsiGridIdx,
-      yAxisIndex: rsiYIdx,
-      showSymbol: false,
-      lineStyle: { color: '#E040FB', width: 2 },
-      z: 5,
-      clip: true,
-      sampling: 'average',
-      tooltip: { show: false },
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        data: [
-          {
-            yAxis: overbought,
-            lineStyle: { color: 'rgba(239,83,80,0.6)', type: 'dashed' as const, width: 1 },
-            label: {
-              show: true,
-              position: 'insideEndTop' as const,
-              formatter: `${overbought}`,
-              fontSize: 9,
-              color: '#ef5350',
-            },
-          },
-          {
-            yAxis: oversold,
-            lineStyle: { color: 'rgba(38,166,154,0.6)', type: 'dashed' as const, width: 1 },
-            label: {
-              show: true,
-              position: 'insideEndBottom' as const,
-              formatter: `${oversold}`,
-              fontSize: 9,
-              color: '#26a69a',
-            },
-          },
-          { yAxis: 50, lineStyle: { color: 'rgba(255,193,7,0.4)', type: 'dotted' as const, width: 1 } },
-        ],
-      },
-      markArea: {
-        silent: true,
-        data: [
-          [{ yAxis: overbought, itemStyle: { color: 'rgba(239,83,80,0.06)' } }, { yAxis: 100 }],
-          [{ yAxis: 0, itemStyle: { color: 'rgba(38,166,154,0.06)' } }, { yAxis: oversold }],
-        ] as unknown as echarts.MarkAreaComponentOption['data'],
-      },
-    });
-  }
-
-  // MACD sub panel
-  if (showMACD && filtered.length > 35) {
-    const macdGridIdx = subPanels.indexOf('macd') + 1;
-    const macdYIdx = panelYAxisIdx['macd'];
-    const closes = filtered.map((d) => d.close);
-    const fast = sigConfig?.macd?.fast ?? 12;
-    const slow = sigConfig?.macd?.slow ?? 26;
-    const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
-    const macdResult = computed?.macd || computeMACD(closes, fast, slow, sigPeriod);
-
-    const macdPadded = [...padNull, ...macdResult.macd, ...padNull];
-    const signalPadded = [...padNull, ...macdResult.signal, ...padNull];
-    const histPadded = [...padNull, ...macdResult.histogram, ...padNull];
-
-    // Histogram with color
-    const histColored = histPadded.map((val: number | null, idx: number) => {
-      if (val === null) return { value: null };
-      const prev = idx > 0 ? histPadded[idx - 1] : null;
-      let color: string;
-      if (val >= 0) {
-        color = prev !== null && prev < val ? '#26A69A' : '#B2DFDB';
-      } else {
-        color = prev !== null && prev < val ? '#FFCDD2' : '#FF5252';
-      }
-      return { value: val, itemStyle: { color } };
-    });
-
-    subSeries.push(
-      {
-        name: 'MACD Hist',
-        type: 'bar',
-        data: histColored,
-        xAxisIndex: macdGridIdx,
-        yAxisIndex: macdYIdx,
-        barWidth: '60%',
-        z: 1,
-        tooltip: { show: false },
-      },
-      {
-        name: 'MACD',
-        type: 'line',
-        data: macdPadded,
-        xAxisIndex: macdGridIdx,
-        yAxisIndex: macdYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#2196F3', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-      },
-      {
-        name: 'Signal',
-        type: 'line',
-        data: signalPadded,
-        xAxisIndex: macdGridIdx,
-        yAxisIndex: macdYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#FF6D00', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-      },
-      {
-        name: 'MACD Zero',
-        type: 'line',
-        data: new Array(total).fill(0),
-        xAxisIndex: macdGridIdx,
-        yAxisIndex: macdYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#787B86', width: 1, type: 'dashed' },
-        z: 2,
-        silent: true,
-        tooltip: { show: false },
-      },
-    );
-  }
-
-  // Stochastic RSI sub panel
-  if (showStochRSI && filtered.length > 30) {
-    const srGridIdx = subPanels.indexOf('stochRsi') + 1;
-    const srYIdx = panelYAxisIdx['stochRsi'];
-    const closes = filtered.map((d) => d.close);
-    const rsiP = sigConfig?.stochRsi?.rsiPeriod ?? 14;
-    const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
-    const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
-    const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
-    const srResult = computed?.stochRsi || computeStochRSI(closes, rsiP, stochP, kS, dS);
-
-    const kPadded = [...padNull, ...srResult.k, ...padNull];
-    const dPadded = [...padNull, ...srResult.d, ...padNull];
-
-    subSeries.push(
-      {
-        name: '%K',
-        type: 'line',
-        data: kPadded,
-        xAxisIndex: srGridIdx,
-        yAxisIndex: srYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#2196F3', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          data: [
-            { yAxis: 80, lineStyle: { color: 'rgba(239,83,80,0.6)', type: 'dashed' as const, width: 1 } },
-            { yAxis: 20, lineStyle: { color: 'rgba(38,166,154,0.6)', type: 'dashed' as const, width: 1 } },
-          ],
-        },
-        markArea: {
-          silent: true,
-          data: [
-            [{ yAxis: 80, itemStyle: { color: 'rgba(239,83,80,0.06)' } }, { yAxis: 100 }],
-            [{ yAxis: 0, itemStyle: { color: 'rgba(38,166,154,0.06)' } }, { yAxis: 20 }],
-          ] as unknown as echarts.MarkAreaComponentOption['data'],
-        },
-      },
-      {
-        name: '%D',
-        type: 'line',
-        data: dPadded,
-        xAxisIndex: srGridIdx,
-        yAxisIndex: srYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#FF6D00', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-      },
-    );
-  }
-
-  // OBV sub panel
-  if (showOBV && filtered.length > 20) {
-    const obvGridIdx = subPanels.indexOf('obv') + 1;
-    const obvYIdx = panelYAxisIdx['obv'];
-    const closes = filtered.map((d) => d.close);
-    const vols = filtered.map((d) => d.volume);
-    const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
-    const obvResult = computed?.obv || computeOBV(closes, vols, emaPeriod);
-
-    const obvPadded = [...padNull, ...obvResult.obv, ...padNull];
-    const obvEmaPadded = [...padNull, ...obvResult.obvEma, ...padNull];
-
-    subSeries.push(
-      {
-        name: 'OBV',
-        type: 'line',
-        data: obvPadded,
-        xAxisIndex: obvGridIdx,
-        yAxisIndex: obvYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#26a69a', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-      },
-      {
-        name: 'OBV EMA',
-        type: 'line',
-        data: obvEmaPadded,
-        xAxisIndex: obvGridIdx,
-        yAxisIndex: obvYIdx,
-        showSymbol: false,
-        lineStyle: { color: '#FF6D00', width: 2 },
-        z: 5,
-        clip: true,
-        sampling: 'average',
-        tooltip: { show: false },
-      },
-    );
-  }
 
   // Williams Paşa sub panel
   if (showWilliamsPasa && filtered.length > 260) {
@@ -2185,226 +1831,6 @@ export function buildOption(
         z: 1,
         tooltip: { show: false },
       },
-      // ── Bollinger Bands overlay ──
-      ...(showBollinger
-        ? (() => {
-            const closePrices = filtered.map((d) => d.close);
-            const overlays = computeAllBollingerOverlays(closePrices);
-            const vis = visibleBollinger ?? new Set(overlays.map((o) => o.id));
-            const series: echarts.SeriesOption[] = [];
-            for (const ov of overlays) {
-              if (!vis.has(ov.id)) continue;
-              const cfg = DEFAULT_BOLLINGER_CONFIGS.find((c) => c.id === ov.id);
-              if (!cfg) continue;
-              const upperPadded = [...padNull, ...ov.upper, ...padNull];
-              const middlePadded = [...padNull, ...ov.middle, ...padNull];
-              const lowerPadded = [...padNull, ...ov.lower, ...padNull];
-              series.push(
-                {
-                  name: `${cfg.label} Ust`,
-                  type: 'line',
-                  data: upperPadded,
-                  xAxisIndex: 0,
-                  yAxisIndex: 0,
-                  showSymbol: false,
-                  lineStyle: { color: cfg.bandColor, width: cfg.width },
-                  silent: true,
-                  z: 5,
-                  connectNulls: false,
-                  clip: true,
-                  sampling: 'average',
-                  tooltip: { show: false },
-                },
-                {
-                  name: `${cfg.label} Orta`,
-                  type: 'line',
-                  data: middlePadded,
-                  xAxisIndex: 0,
-                  yAxisIndex: 0,
-                  showSymbol: false,
-                  lineStyle: { color: cfg.color, width: 1, type: 'dashed' },
-                  silent: true,
-                  z: 5,
-                  connectNulls: false,
-                  clip: true,
-                  sampling: 'average',
-                  tooltip: { show: false },
-                },
-                {
-                  name: `${cfg.label} Alt`,
-                  type: 'line',
-                  data: lowerPadded,
-                  xAxisIndex: 0,
-                  yAxisIndex: 0,
-                  showSymbol: false,
-                  lineStyle: { color: cfg.bandColor, width: cfg.width },
-                  silent: true,
-                  z: 5,
-                  connectNulls: false,
-                  clip: true,
-                  sampling: 'average',
-                  tooltip: { show: false },
-                },
-              );
-            }
-            return series;
-          })()
-        : []),
-      // ── SuperTrend overlay ──
-      ...(showSuperTrend && filtered.length > 11
-        ? (() => {
-            const highs = filtered.map((d) => d.high);
-            const lows = filtered.map((d) => d.low);
-            const closes = filtered.map((d) => d.close);
-            const atrP = sigConfig?.supertrend?.atrPeriod ?? 10;
-            const mult = sigConfig?.supertrend?.multiplier ?? 3.0;
-            const st = computeSuperTrend(highs, lows, closes, atrP, mult);
-
-            const upData: (number | null)[] = new Array(total).fill(null);
-            const dnData: (number | null)[] = new Array(total).fill(null);
-
-            for (let i = 0; i < st.supertrend.length; i++) {
-              if (st.supertrend[i] === null) continue;
-              const idx = pad + i;
-              if (idx >= 0 && idx < total) {
-                if (st.direction[i] === 1) upData[idx] = st.supertrend[i];
-                else dnData[idx] = st.supertrend[i];
-                // Bridge for color continuity
-                if (i > 0 && st.direction[i] !== st.direction[i - 1] && st.supertrend[i - 1] !== null) {
-                  const prevIdx = pad + i - 1;
-                  if (st.direction[i] === 1) upData[prevIdx] = st.supertrend[i - 1];
-                  else dnData[prevIdx] = st.supertrend[i - 1];
-                  if (st.direction[i - 1] === 1) upData[idx] = st.supertrend[i];
-                  else dnData[idx] = st.supertrend[i];
-                }
-              }
-            }
-
-            return [
-              {
-                name: 'ST Up',
-                type: 'line' as const,
-                data: upData,
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { color: UP_COLOR, width: 2 },
-                connectNulls: false,
-                z: 4,
-                silent: true,
-                clip: true,
-                tooltip: { show: false },
-              },
-              {
-                name: 'ST Down',
-                type: 'line' as const,
-                data: dnData,
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { color: DOWN_COLOR, width: 2 },
-                connectNulls: false,
-                z: 4,
-                silent: true,
-                clip: true,
-                tooltip: { show: false },
-              },
-            ] as echarts.SeriesOption[];
-          })()
-        : []),
-      // ── Ichimoku Cloud overlay ──
-      ...(showIchimoku && filtered.length > 52
-        ? (() => {
-            const highs = filtered.map((d) => d.high);
-            const lows = filtered.map((d) => d.low);
-            const closes = filtered.map((d) => d.close);
-            const tP = sigConfig?.ichimoku?.tenkan ?? 9;
-            const kP = sigConfig?.ichimoku?.kijun ?? 26;
-            const sP = sigConfig?.ichimoku?.senkouB ?? 52;
-            const ich = computeIchimoku(highs, lows, closes, tP, kP, sP);
-
-            const tenkanPadded = [...padNull, ...ich.tenkan, ...padNull];
-            const kijunPadded = [...padNull, ...ich.kijun, ...padNull];
-            const senkouAPadded = [...padNull, ...ich.senkouA, ...padNull];
-            const senkouBPadded = [...padNull, ...ich.senkouB, ...padNull];
-
-            // Cloud fill: use stacked area between Span A and Span B
-            const cloudLower: (number | null)[] = new Array(total).fill(null);
-            const cloudWidth: (number | null)[] = new Array(total).fill(null);
-
-            for (let i = 0; i < total; i++) {
-              const sa = senkouAPadded[i];
-              const sb = senkouBPadded[i];
-              if (sa !== null && sb !== null) {
-                cloudLower[i] = Math.min(sa, sb);
-                cloudWidth[i] = Math.abs(sa - sb);
-              }
-            }
-
-            return [
-              {
-                name: 'Tenkan',
-                type: 'line' as const,
-                data: tenkanPadded,
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { color: '#2196F3', width: 1.5 },
-                z: 5,
-                silent: true,
-                clip: true,
-                sampling: 'average',
-                tooltip: { show: false },
-              },
-              {
-                name: 'Kijun',
-                type: 'line' as const,
-                data: kijunPadded,
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { color: '#ef5350', width: 1.5 },
-                z: 5,
-                silent: true,
-                clip: true,
-                sampling: 'average',
-                tooltip: { show: false },
-              },
-              {
-                name: 'Cloud Base',
-                type: 'line' as const,
-                data: cloudLower,
-                stack: 'ichCloud',
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { width: 0 },
-                areaStyle: { color: 'transparent' },
-                connectNulls: false,
-                z: 2,
-                silent: true,
-                clip: true,
-                tooltip: { show: false },
-              },
-              {
-                name: 'Cloud Fill',
-                type: 'line' as const,
-                data: cloudWidth,
-                stack: 'ichCloud',
-                xAxisIndex: 0,
-                yAxisIndex: 0,
-                showSymbol: false,
-                lineStyle: { width: 0 },
-                areaStyle: { color: 'rgba(76,175,80,0.15)' },
-                connectNulls: false,
-                z: 2,
-                silent: true,
-                clip: true,
-                tooltip: { show: false },
-              },
-            ] as echarts.SeriesOption[];
-          })()
-        : []),
       // ── Signal scatter markers (4-directional) ──
       ...(signalEvents && signalEvents.length > 0
         ? (() => {
@@ -2511,10 +1937,6 @@ export function buildTitlesOption(
   subPanels: string[],
   panelBottoms: number[],
   activeIdx: number,
-  showRSI: boolean,
-  showMACD: boolean,
-  showStochRSI: boolean,
-  showOBV: boolean,
   showWilliamsPasa: boolean,
   showNizamiCedid: boolean,
   showCMF: boolean,
@@ -2541,79 +1963,7 @@ export function buildTitlesOption(
     let text = '';
     let rich: Record<string, any> = {};
 
-    if (panel === 'rsi' && showRSI && filtered.length > 15) {
-      const period = sigConfig?.rsi?.period ?? 14;
-      const rsiResult = computeRSI(closes, period);
-      const val = rsiResult.rsi[activeIdx];
-      const valStr = val !== null && val !== undefined ? val.toFixed(2) : '--';
-      text = `{name|RSI(${period})}  {val|RSI: ${valStr}}`;
-      rich = {
-        name: { color: '#E040FB', fontWeight: 'bold', fontSize: 11 },
-        val: { color: tc.tooltipText, fontSize: 11 },
-      };
-    }
-    else if (panel === 'macd' && showMACD && filtered.length > 35) {
-      const fast = sigConfig?.macd?.fast ?? 12;
-      const slow = sigConfig?.macd?.slow ?? 26;
-      const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
-      const macdResult = computeMACD(closes, fast, slow, sigPeriod);
-      const macdVal = macdResult.macd[activeIdx];
-      const sigVal = macdResult.signal[activeIdx];
-      const histVal = macdResult.histogram[activeIdx];
-      
-      const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
-      const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
-      const hStr = histVal !== null && histVal !== undefined ? histVal.toFixed(2) : '--';
-
-      let histColor = tc.tooltipText;
-      if (histVal !== null && histVal !== undefined) {
-        histColor = histVal >= 0 ? '#26A69A' : '#FF5252';
-      }
-      
-      text = `{name|MACD(${fast}, ${slow}, ${sigPeriod})}  {macd|MACD: ${mStr}}  {sig|Sinyal: ${sStr}}  {hist|Hist: ${hStr}}`;
-      rich = {
-        name: { color: '#2196F3', fontWeight: 'bold', fontSize: 11 },
-        macd: { color: '#2196F3', fontSize: 11 },
-        sig: { color: '#FF6D00', fontSize: 11 },
-        hist: { color: histColor, fontSize: 11 },
-      };
-    }
-    else if (panel === 'stochRsi' && showStochRSI && filtered.length > 30) {
-      const rsiP = sigConfig?.stochRsi?.rsiPeriod ?? 14;
-      const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
-      const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
-      const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
-      const srResult = computeStochRSI(closes, rsiP, stochP, kS, dS);
-      const kVal = srResult.k[activeIdx];
-      const dVal = srResult.d[activeIdx];
-      
-      const kStr = kVal !== null && kVal !== undefined ? kVal.toFixed(2) : '--';
-      const dStr = dVal !== null && dVal !== undefined ? dVal.toFixed(2) : '--';
-      
-      text = `{name|Stoch RSI(${rsiP}, ${stochP}, ${kS}, ${dS})}  {k|%K: ${kStr}}  {d|%D: ${dStr}}`;
-      rich = {
-        name: { color: '#2196F3', fontWeight: 'bold', fontSize: 11 },
-        k: { color: '#2196F3', fontSize: 11 },
-        d: { color: '#FF6D00', fontSize: 11 },
-      };
-    }
-    else if (panel === 'obv' && showOBV && filtered.length > 20) {
-      const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
-      const obvResult = computeOBV(closes, vols, emaPeriod);
-      const obvVal = obvResult.obv[activeIdx];
-      const obvEmaVal = obvResult.obvEma[activeIdx];
-      
-      const oStr = obvVal !== null && obvVal !== undefined ? formatVolume(obvVal) : '--';
-      const oeStr = obvEmaVal !== null && obvEmaVal !== undefined ? formatVolume(obvEmaVal) : '--';
-      
-      text = `{name|OBV}  {obv|OBV: ${oStr}}  {ema|EMA(${emaPeriod}): ${oeStr}}`;
-      rich = {
-        name: { color: '#26a69a', fontWeight: 'bold', fontSize: 11 },
-        obv: { color: '#26a69a', fontSize: 11 },
-        ema: { color: '#FF6D00', fontSize: 11 },
-      };
-    }
-    else if (panel === 'williams_pasa' && showWilliamsPasa && filtered.length > 260) {
+    if (panel === 'williams_pasa' && showWilliamsPasa && filtered.length > 260) {
       const length = sigConfig?.williamsPasa?.length ?? 260;
       const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;
       const wpResult = computeWilliamsPasa(highs, lows, closes, length, emaLen);
@@ -2655,33 +2005,28 @@ export function buildTitlesOption(
     else if (panel === 'cmf' && showCMF && filtered.length > 20) {
       const cmfVal = computed?.cmf?.cmf[activeIdx] ?? (computeCMF(highs, lows, closes, vols, 20).cmf[activeIdx]);
       const cVal = cmfVal !== null && cmfVal !== undefined ? cmfVal.toFixed(4) : '--';
-      
-      let e34Val = null;
-      let e68Val = null;
+
       let e130Val = null;
-      
+      let e260Val = null;
+
       if (computed?.cmf) {
-        e34Val = computed.cmf.ema34[activeIdx];
-        e68Val = computed.cmf.ema68[activeIdx];
         e130Val = computed.cmf.ema130[activeIdx];
+        e260Val = computed.cmf.ema260[activeIdx];
       } else {
         const fullCmf = computeCMF(highs, lows, closes, vols, 20).cmf;
-        e34Val = ema(fullCmf, 34)[activeIdx];
-        e68Val = ema(fullCmf, 68)[activeIdx];
         e130Val = ema(fullCmf, 130)[activeIdx];
+        e260Val = ema(fullCmf, 260)[activeIdx];
       }
-      
-      const e34Str = e34Val !== null && e34Val !== undefined ? e34Val.toFixed(4) : '--';
-      const e68Str = e68Val !== null && e68Val !== undefined ? e68Val.toFixed(4) : '--';
+
       const e130Str = e130Val !== null && e130Val !== undefined ? e130Val.toFixed(4) : '--';
-      
-      text = `{name|CMF(20)}  {cmf|CMF: ${cVal}}  {ema34|EMA(34): ${e34Str}}  {ema68|EMA(68): ${e68Str}}  {ema130|EMA(130): ${e130Str}}`;
+      const e260Str = e260Val !== null && e260Val !== undefined ? e260Val.toFixed(4) : '--';
+
+      text = `{name|CMF(20)}  {cmf|CMF: ${cVal}}  {ema130|EMA(130): ${e130Str}}  {ema260|EMA(260): ${e260Str}}`;
       rich = {
         name: { color: '#9c27b0', fontWeight: 'bold', fontSize: 11 },
         cmf: { color: '#9c27b0', fontSize: 11 },
-        ema34: { color: '#FF9800', fontSize: 11 },
-        ema68: { color: '#e91e63', fontSize: 11 },
-        ema130: { color: '#00e5ff', fontSize: 11 },
+        ema130: { color: '#FF9800', fontSize: 11 },
+        ema260: { color: '#00e5ff', fontSize: 11 },
       };
     }
 
@@ -2721,103 +2066,6 @@ export function getPanelTitleHTML(
   const lows = filtered.map((d) => d.low);
   const vols = filtered.map((d) => d.volume);
 
-  if (panel === 'rsi' && filtered.length > 15) {
-    const period = sigConfig?.rsi?.period ?? 14;
-    let val: number | null = null;
-    if (computed.rsi && computed.rsi[activeIdx] !== undefined) {
-      val = computed.rsi[activeIdx];
-    } else {
-      val = computeRSI(closes, period).rsi[activeIdx];
-    }
-    const valStr = val !== null && val !== undefined ? val.toFixed(2) : '--';
-    return `<span style="color: #E040FB; font-weight: bold; margin-right: 8px;">RSI(${period})</span>` +
-           `<span style="color: ${tc.tooltipText};">RSI: ${valStr}</span>`;
-  }
-  
-  if (panel === 'macd' && filtered.length > 35) {
-    const fast = sigConfig?.macd?.fast ?? 12;
-    const slow = sigConfig?.macd?.slow ?? 26;
-    const sigPeriod = sigConfig?.macd?.signalPeriod ?? 9;
-    
-    let macdVal: number | null = null;
-    let sigVal: number | null = null;
-    let histVal: number | null = null;
-    
-    if (computed.macd) {
-      macdVal = computed.macd.macd[activeIdx];
-      sigVal = computed.macd.signal[activeIdx];
-      histVal = computed.macd.histogram[activeIdx];
-    } else {
-      const res = computeMACD(closes, fast, slow, sigPeriod);
-      macdVal = res.macd[activeIdx];
-      sigVal = res.signal[activeIdx];
-      histVal = res.histogram[activeIdx];
-    }
-    
-    const mStr = macdVal !== null && macdVal !== undefined ? macdVal.toFixed(2) : '--';
-    const sStr = sigVal !== null && sigVal !== undefined ? sigVal.toFixed(2) : '--';
-    const hStr = histVal !== null && histVal !== undefined ? histVal.toFixed(2) : '--';
-
-    let histColor = tc.tooltipText;
-    if (histVal !== null && histVal !== undefined) {
-      histColor = histVal >= 0 ? '#26A69A' : '#FF5252';
-    }
-    
-    return `<span style="color: #2196F3; font-weight: bold; margin-right: 8px;">MACD(${fast}, ${slow}, ${sigPeriod})</span>` +
-           `<span style="color: #2196F3; margin-right: 8px;">MACD: ${mStr}</span>` +
-           `<span style="color: #FF6D00; margin-right: 8px;">Sinyal: ${sStr}</span>` +
-           `<span style="color: ${histColor};">Hist: ${hStr}</span>`;
-  }
-  
-  if (panel === 'stochRsi' && filtered.length > 30) {
-    const rsiP = sigConfig?.stochRsi?.rsiPeriod ?? 14;
-    const stochP = sigConfig?.stochRsi?.stochPeriod ?? 14;
-    const kS = sigConfig?.stochRsi?.kSmooth ?? 3;
-    const dS = sigConfig?.stochRsi?.dSmooth ?? 3;
-    
-    let kVal: number | null = null;
-    let dVal: number | null = null;
-    
-    if (computed.stochRsi) {
-      kVal = computed.stochRsi.k[activeIdx];
-      dVal = computed.stochRsi.d[activeIdx];
-    } else {
-      const res = computeStochRSI(closes, rsiP, stochP, kS, dS);
-      kVal = res.k[activeIdx];
-      dVal = res.d[activeIdx];
-    }
-    
-    const kStr = kVal !== null && kVal !== undefined ? kVal.toFixed(2) : '--';
-    const dStr = dVal !== null && dVal !== undefined ? dVal.toFixed(2) : '--';
-    
-    return `<span style="color: #2196F3; font-weight: bold; margin-right: 8px;">Stoch RSI(${rsiP}, ${stochP}, ${kS}, ${dS})</span>` +
-           `<span style="color: #2196F3; margin-right: 8px;">%K: ${kStr}</span>` +
-           `<span style="color: #FF6D00;">%D: ${dStr}</span>`;
-  }
-  
-  if (panel === 'obv' && filtered.length > 20) {
-    const emaPeriod = sigConfig?.obv?.emaPeriod ?? 20;
-    
-    let obvVal: number | null = null;
-    let obvEmaVal: number | null = null;
-    
-    if (computed.obv) {
-      obvVal = computed.obv.obv[activeIdx];
-      obvEmaVal = computed.obv.obvEma[activeIdx];
-    } else {
-      const res = computeOBV(closes, vols, emaPeriod);
-      obvVal = res.obv[activeIdx];
-      obvEmaVal = res.obvEma[activeIdx];
-    }
-    
-    const oStr = obvVal !== null && obvVal !== undefined ? formatVolume(obvVal) : '--';
-    const oeStr = obvEmaVal !== null && obvEmaVal !== undefined ? formatVolume(obvEmaVal) : '--';
-    
-    return `<span style="color: #26a69a; font-weight: bold; margin-right: 8px;">OBV</span>` +
-           `<span style="color: #26a69a; margin-right: 8px;">OBV: ${oStr}</span>` +
-           `<span style="color: #FF6D00;">EMA(${emaPeriod}): ${oeStr}</span>`;
-  }
-  
   if (panel === 'williams_pasa' && filtered.length > 260) {
     const length = sigConfig?.williamsPasa?.length ?? 260;
     const emaLen = sigConfig?.williamsPasa?.emaLen ?? 260;

@@ -33,34 +33,20 @@ type CombinationMode =
   | 'regime'
   | 'scoring';
 
-type IndicatorKey = 'rsi' | 'macd' | 'bollinger' | 'stochRsi' | 'adx' | 'supertrend' | 'ichimoku' | 'obv';
+type IndicatorKey = 'williamsPasa' | 'nizamiCedid';
 
-const INDICATOR_KEYS: IndicatorKey[] = [
-  'rsi', 'macd', 'bollinger', 'stochRsi', 'adx', 'supertrend', 'ichimoku', 'obv',
-];
+const INDICATOR_KEYS: IndicatorKey[] = ['williamsPasa', 'nizamiCedid'];
 
 const INDICATOR_LABELS: Record<IndicatorKey, string> = {
-  rsi: 'RSI',
-  macd: 'MACD',
-  bollinger: 'Bollinger',
-  stochRsi: 'StochRSI',
-  adx: 'ADX',
-  supertrend: 'SuperTrend',
-  ichimoku: 'Ichimoku',
-  obv: 'OBV',
+  williamsPasa: 'Williams Paşa',
+  nizamiCedid: 'Nizami Cedid',
 };
 
 // ── Feature importance to indicator mapping ──
 
 const FEATURE_TO_IND: Record<string, string> = {
-  rsi_14: 'rsi', rsi_7: 'rsi', rsi_21: 'rsi', rsi_divergence: 'rsi',
-  macd_hist: 'macd', macd_hist_accel: 'macd', macd_signal_dist: 'macd',
-  bb_pct_b: 'bollinger', bb_bandwidth: 'bollinger', bb_squeeze_dur: 'bollinger',
-  stoch_rsi_k: 'stochRsi', stoch_rsi_d: 'stochRsi',
-  adx: 'adx', plus_di: 'adx', minus_di: 'adx', di_diff: 'adx', adx_slope: 'adx',
-  supertrend_dir: 'supertrend', supertrend_flip_bars: 'supertrend',
-  ichimoku_tk_diff: 'ichimoku', ichimoku_price_vs_cloud: 'ichimoku', ichi_cloud_thickness: 'ichimoku',
-  obv_vs_ema: 'obv', obv_slope: 'obv', obv_divergence: 'obv',
+  williams_pasa: 'williamsPasa',
+  nizami_cedid: 'nizamiCedid',
 };
 
 // ── Mode 2 constants ─────────────────────────
@@ -75,84 +61,21 @@ interface ChainIndicatorDef {
 
 const CHAIN_INDICATORS: ChainIndicatorDef[] = [
   {
-    key: 'rsi',
-    label: 'RSI',
+    key: 'williams_pasa',
+    label: 'Williams Paşa %R',
     conditions: [
       { value: 'lt', label: '< deger' },
       { value: 'gt', label: '> deger' },
     ],
     hasValue: true,
-    defaultValue: 30,
+    defaultValue: 5,
   },
   {
-    key: 'macd_hist',
-    label: 'MACD Histogram',
+    key: 'nizami_cedid',
+    label: 'Nizami Cedid Delta',
     conditions: [
       { value: 'gt_zero', label: '> 0' },
       { value: 'lt_zero', label: '< 0' },
-      { value: 'cross', label: 'kesisim' },
-    ],
-    hasValue: false,
-    defaultValue: 0,
-  },
-  {
-    key: 'bb_pctb',
-    label: 'BB %B',
-    conditions: [
-      { value: 'lt', label: '< deger' },
-      { value: 'gt', label: '> deger' },
-    ],
-    hasValue: true,
-    defaultValue: 0.2,
-  },
-  {
-    key: 'stoch_k',
-    label: 'StochRSI K',
-    conditions: [
-      { value: 'lt', label: '< deger' },
-      { value: 'gt', label: '> deger' },
-      { value: 'cross_d', label: 'K/D kesisim' },
-    ],
-    hasValue: true,
-    defaultValue: 20,
-  },
-  {
-    key: 'adx_val',
-    label: 'ADX',
-    conditions: [
-      { value: 'gt', label: '> deger' },
-      { value: 'di_cross', label: 'DI kesisim' },
-    ],
-    hasValue: true,
-    defaultValue: 25,
-  },
-  {
-    key: 'supertrend_dir',
-    label: 'SuperTrend Yon',
-    conditions: [
-      { value: 'bullish', label: 'yukari' },
-      { value: 'bearish', label: 'asagi' },
-    ],
-    hasValue: false,
-    defaultValue: 0,
-  },
-  {
-    key: 'ichimoku_tk',
-    label: 'Ichimoku TK',
-    conditions: [
-      { value: 'tk_above', label: 'ustunde' },
-      { value: 'tk_below', label: 'altinda' },
-      { value: 'tk_cross', label: 'kesisim' },
-    ],
-    hasValue: false,
-    defaultValue: 0,
-  },
-  {
-    key: 'obv_ema',
-    label: 'OBV/EMA',
-    conditions: [
-      { value: 'above', label: 'ustunde' },
-      { value: 'below', label: 'altinda' },
     ],
     hasValue: false,
     defaultValue: 0,
@@ -213,71 +136,33 @@ function defaultWeights(): Record<IndicatorKey, number> {
 
 function buildSignalConfigFromWeights(
   weights: Record<IndicatorKey, number>,
-  threshold: number,
+  _threshold: number,
 ): SignalConfig {
   const config: SignalConfig = JSON.parse(JSON.stringify(DEFAULT_SIGNAL_CONFIG));
   for (const k of INDICATOR_KEYS) {
     (config[k] as { enabled: boolean }).enabled = weights[k] > 0;
   }
-  // Weighted voting uses OR mode: all enabled indicators participate
   config.mode = 'OR';
-  // Store threshold conceptually in RSI overbought (nearest semantic match)
-  // The parent will interpret the full config
-  config.rsi.overbought = threshold;
-  config.rsi.oversold = 100 - threshold;
   return config;
 }
 
 function buildSignalConfigFromChains(rules: ChainRule[]): SignalConfig {
   const config: SignalConfig = JSON.parse(JSON.stringify(DEFAULT_SIGNAL_CONFIG));
-  // Disable all, then enable only those referenced by rules
   for (const k of INDICATOR_KEYS) {
     (config[k] as { enabled: boolean }).enabled = false;
   }
   for (const rule of rules) {
-    const indDef = CHAIN_INDICATORS.find((d) => d.key === rule.indicatorKey);
-    if (!indDef) continue;
     switch (rule.indicatorKey) {
-      case 'rsi':
-        config.rsi.enabled = true;
-        if (rule.condition === 'lt') config.rsi.oversold = rule.value;
-        if (rule.condition === 'gt') config.rsi.overbought = rule.value;
-        config.rsi.conditions.threshold = true;
+      case 'williams_pasa':
+        config.williamsPasa.enabled = true;
+        config.williamsPasa.conditions.threshold = true;
         break;
-      case 'macd_hist':
-        config.macd.enabled = true;
-        config.macd.conditions.histogram = true;
-        break;
-      case 'bb_pctb':
-        config.bollinger.enabled = true;
-        config.bollinger.conditions.pctB = true;
-        break;
-      case 'stoch_k':
-        config.stochRsi.enabled = true;
-        config.stochRsi.conditions.threshold = rule.condition !== 'cross_d';
-        config.stochRsi.conditions.crossover = rule.condition === 'cross_d';
-        break;
-      case 'adx_val':
-        config.adx.enabled = true;
-        config.adx.trendThreshold = rule.value;
-        config.adx.conditions.diCross = rule.condition === 'di_cross';
-        config.adx.conditions.strongTrend = rule.condition === 'gt';
-        break;
-      case 'supertrend_dir':
-        config.supertrend.enabled = true;
-        config.supertrend.conditions.direction = true;
-        break;
-      case 'ichimoku_tk':
-        config.ichimoku.enabled = true;
-        config.ichimoku.conditions.tkCross = true;
-        break;
-      case 'obv_ema':
-        config.obv.enabled = true;
-        config.obv.conditions.obvVsEma = true;
+      case 'nizami_cedid':
+        config.nizamiCedid.enabled = true;
+        config.nizamiCedid.conditions.deltaCross = true;
         break;
     }
   }
-  // Chains are AND-based: all rules must agree
   config.mode = 'AND';
   return config;
 }
@@ -601,8 +486,8 @@ export function SignalCombinator({
   const [newRuleVal, setNewRuleVal] = useState(CHAIN_INDICATORS[0].defaultValue);
 
   // Mode 3: confirmation
-  const [primaryInd, setPrimaryInd] = useState<IndicatorKey>('rsi');
-  const [confirmInd, setConfirmInd] = useState<IndicatorKey>('macd');
+  const [primaryInd, setPrimaryInd] = useState<IndicatorKey>('williamsPasa');
+  const [confirmInd, setConfirmInd] = useState<IndicatorKey>('nizamiCedid');
   const [confirmBars, setConfirmBars] = useState(3);
 
   // Mode 4: regime
@@ -615,9 +500,9 @@ export function SignalCombinator({
       return r as Record<IndicatorKey, boolean>;
     };
     return {
-      low_vol: makeAll(['rsi', 'bollinger', 'stochRsi', 'obv']),
-      high_vol: makeAll(['macd', 'adx', 'supertrend', 'ichimoku']),
-      sideways: makeAll(['rsi', 'bollinger', 'stochRsi', 'obv']),
+      low_vol: makeAll(['williamsPasa']),
+      high_vol: makeAll(['nizamiCedid']),
+      sideways: makeAll(['williamsPasa', 'nizamiCedid']),
     };
   });
 

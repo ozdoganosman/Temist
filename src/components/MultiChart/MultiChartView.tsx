@@ -17,13 +17,6 @@ interface ChartSlot {
 interface MultiChartViewProps {
   symbols: SymbolInfo[];
   interval: Interval;
-  showBollinger: boolean;
-  showRSI: boolean;
-  showMACD: boolean;
-  showStochRSI: boolean;
-  showSuperTrend: boolean;
-  showIchimoku: boolean;
-  showOBV: boolean;
   logScale: boolean;
 }
 
@@ -32,13 +25,6 @@ function SlotChart({
   symbols,
   interval,
   isActive,
-  showBollinger,
-  showRSI,
-  showMACD,
-  showStochRSI,
-  showSuperTrend,
-  showIchimoku,
-  showOBV,
   logScale,
   onActivate,
   onSymbolChange,
@@ -49,13 +35,6 @@ function SlotChart({
   symbols: SymbolInfo[];
   interval: Interval;
   isActive: boolean;
-  showBollinger: boolean;
-  showRSI: boolean;
-  showMACD: boolean;
-  showStochRSI: boolean;
-  showSuperTrend: boolean;
-  showIchimoku: boolean;
-  showOBV: boolean;
   logScale: boolean;
   onActivate: () => void;
   onSymbolChange: (symbol: string) => void;
@@ -107,13 +86,6 @@ function SlotChart({
             symbol={slot.symbol}
             interval={interval}
             onLegendUpdate={handleLegendUpdate}
-            showBollinger={showBollinger}
-            showRSI={showRSI}
-            showMACD={showMACD}
-            showStochRSI={showStochRSI}
-            showSuperTrend={showSuperTrend}
-            showIchimoku={showIchimoku}
-            showOBV={showOBV}
             logScale={logScale}
             showCommentary={false}
           />
@@ -128,13 +100,6 @@ const DEFAULT_SYMBOLS = ['THYAO', 'GARAN', 'AKBNK', 'ASELS'];
 export default function MultiChartView({
   symbols,
   interval,
-  showBollinger,
-  showRSI,
-  showMACD,
-  showStochRSI,
-  showSuperTrend,
-  showIchimoku,
-  showOBV,
   logScale,
 }: MultiChartViewProps) {
   const [layout, setLayout] = useState<Layout>('2x2');
@@ -181,13 +146,6 @@ export default function MultiChartView({
             symbols={symbols}
             interval={interval}
             isActive={slot.id === activeSlotId}
-            showBollinger={showBollinger}
-            showRSI={showRSI}
-            showMACD={showMACD}
-            showStochRSI={showStochRSI}
-            showSuperTrend={showSuperTrend}
-            showIchimoku={showIchimoku}
-            showOBV={showOBV}
             logScale={logScale}
             onActivate={() => setActiveSlotId(slot.id)}
             onSymbolChange={(sym) => handleSymbolChange(slot.id, sym)}

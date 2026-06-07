@@ -2,13 +2,6 @@ import { createContext, useContext, useReducer, useCallback, useState, useEffect
 
 // ── State ──
 interface IndicatorState {
-  showBollinger: boolean;
-  showRSI: boolean;
-  showMACD: boolean;
-  showStochRSI: boolean;
-  showSuperTrend: boolean;
-  showIchimoku: boolean;
-  showOBV: boolean;
   showWilliamsPasa: boolean;
   showNizamiCedid: boolean;
   showEMAOverlay: boolean;
@@ -23,13 +16,6 @@ type ToggleKey = keyof IndicatorState;
 type IndicatorAction = { type: 'TOGGLE'; key: ToggleKey };
 
 const initialState: IndicatorState = {
-  showBollinger: false,
-  showRSI: false,
-  showMACD: false,
-  showStochRSI: false,
-  showSuperTrend: false,
-  showIchimoku: false,
-  showOBV: false,
   showWilliamsPasa: false,
   showNizamiCedid: false,
   showEMAOverlay: false,

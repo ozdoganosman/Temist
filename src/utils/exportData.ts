@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { OHLCVData } from '../api/borsaApi';
-import { computeRSI, computeMACD, computeBollingerBands, computeADX, computeSuperTrend } from './indicators';
+import { computeWilliamsPasa, computeNizamiCedid } from './indicators';
 
 interface ExportRow {
   Tarih: string;
@@ -27,42 +27,21 @@ function buildRows(data: OHLCVData[], includeIndicators: boolean): ExportRow[] {
   const highs = data.map((d) => d.high);
   const lows = data.map((d) => d.low);
   const closes = data.map((d) => d.close);
+  const volumes = data.map((d) => d.volume);
 
-  // RSI
-  const rsi = computeRSI(closes);
+  // Williams Paşa
+  const wp = computeWilliamsPasa(highs, lows, closes);
   for (let i = 0; i < rows.length; i++) {
-    rows[i]['RSI'] = rsi.rsi[i] ?? null;
+    rows[i]['WilliamsPasa_R'] = wp.percentR[i] ?? null;
+    rows[i]['WilliamsPasa_EMA'] = wp.emaWil[i] ?? null;
   }
 
-  // MACD
-  const macd = computeMACD(closes);
+  // Nizami Cedid
+  const nc = computeNizamiCedid(closes, volumes);
   for (let i = 0; i < rows.length; i++) {
-    rows[i]['MACD'] = macd.macd[i] ?? null;
-    rows[i]['MACD_Signal'] = macd.signal[i] ?? null;
-    rows[i]['MACD_Histogram'] = macd.histogram[i] ?? null;
-  }
-
-  // Bollinger Bands
-  const bb = computeBollingerBands(closes);
-  for (let i = 0; i < rows.length; i++) {
-    rows[i]['BB_Upper'] = bb.upper[i] ?? null;
-    rows[i]['BB_Middle'] = bb.middle[i] ?? null;
-    rows[i]['BB_Lower'] = bb.lower[i] ?? null;
-  }
-
-  // ADX
-  const adx = computeADX(highs, lows, closes);
-  for (let i = 0; i < rows.length; i++) {
-    rows[i]['ADX'] = adx.adx[i] ?? null;
-    rows[i]['+DI'] = adx.plusDI[i] ?? null;
-    rows[i]['-DI'] = adx.minusDI[i] ?? null;
-  }
-
-  // SuperTrend
-  const st = computeSuperTrend(highs, lows, closes);
-  for (let i = 0; i < rows.length; i++) {
-    rows[i]['SuperTrend'] = st.supertrend[i] ?? null;
-    rows[i]['ST_Direction'] = st.direction[i] ?? null;
+    rows[i]['NizamiCedid_MACD'] = nc.macd[i] ?? null;
+    rows[i]['NizamiCedid_Signal'] = nc.signal[i] ?? null;
+    rows[i]['NizamiCedid_Delta'] = nc.delta[i] ?? null;
   }
 
   return rows;
