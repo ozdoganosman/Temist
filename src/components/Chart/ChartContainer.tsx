@@ -1908,7 +1908,7 @@ export default function ChartContainer({
 
   // Track previous data identity
   const prevDataLenRef = useRef<number>(0);
-  const prevSymbolRef = useRef<string>(symbol);
+  const prevSymbolRef = useRef<string>('');
 
   // Update chart when data/type/timeframe changes
   const updateChart = useCallback(() => {

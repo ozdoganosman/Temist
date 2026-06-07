@@ -310,7 +310,9 @@ export function loadPortableZoomPrefs(
       barsPastLastData,
       startOffsetFromDataStart: Number.isFinite(startOffsetFromDataStart) ? startOffsetFromDataStart : 0,
     };
-    return sanitizePrefsForSymbolSwitch(loaded, dataLen, intradayMode);
+    // Always anchor to the end of data when loading from storage across sessions;
+    // only the zoom level (visibleBarCount) is worth preserving.
+    return portableZoomPrefsForSymbolSwitch(loaded, dataLen, intradayMode);
   } catch {
     return null;
   }
