@@ -1916,6 +1916,11 @@ export default function ChartContainer({
     if (!chart || chart.isDisposed()) return;
 
     const symbolChanged = prevSymbolRef.current !== symbol;
+    const intradayMode = isIntraday(interval);
+    const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
+
+    const opt = getSafeChartOption(chart);
+    const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
 
     // Before switching symbols: snapshot the currently visible date range
     if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
@@ -1929,11 +1934,6 @@ export default function ChartContainer({
         }
       }
     }
-    const intradayMode = isIntraday(interval);
-    const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
-
-    const opt = getSafeChartOption(chart);
-    const xAxisDataLen = opt?.xAxis?.[0]?.data?.length ?? categoryCount;
 
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
