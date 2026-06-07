@@ -160,6 +160,41 @@ export default function ChartContainer({
     localStorage.setItem('temist_chart_commentary_open', String(commentaryOpen));
   }, [commentaryOpen]);
 
+  // ── Shared indicator computation (used by both commentary and updateChart) ──
+  const computedIndicators = useMemo(() => {
+    const n = filtered.length;
+    if (n < 10) return { highs: [], lows: [], closes: [], volumes: [], computed: {} as ComputedIndicators, cmfResult: null };
+
+    const highs = filtered.map((d) => d.high);
+    const lows = filtered.map((d) => d.low);
+    const closes = filtered.map((d) => d.close);
+    const volumes = filtered.map((d) => d.volume);
+
+    const computed: ComputedIndicators = {};
+    let cmfResult: ReturnType<typeof computeCMF> | null = null;
+
+    if (showWilliamsPasa && n > 260) {
+      const length = signalConfig?.williamsPasa?.length ?? 260;
+      const emaLen = signalConfig?.williamsPasa?.emaLen ?? 260;
+      computed.williamsPasa = computeWilliamsPasa(highs, lows, closes, length, emaLen);
+    }
+    if (showNizamiCedid && n > 260) {
+      const fast = signalConfig?.nizamiCedid?.fast ?? 120;
+      const slow = signalConfig?.nizamiCedid?.slow ?? 260;
+      const signalLen = signalConfig?.nizamiCedid?.signalLen ?? 50;
+      const vwmaLen = signalConfig?.nizamiCedid?.vwmaLen ?? 185;
+      computed.nizamiCedid = computeNizamiCedid(closes, volumes, fast, slow, signalLen, vwmaLen);
+    }
+    if (showCMF && n > 20) {
+      cmfResult = computeCMF(highs, lows, closes, volumes, 20);
+      const ema130Cmf = ema(cmfResult.cmf, 130);
+      const ema260Cmf = ema(cmfResult.cmf, 260);
+      computed.cmf = { cmf: cmfResult.cmf, ema130: ema130Cmf, ema260: ema260Cmf };
+    }
+
+    return { highs, lows, closes, volumes, computed, cmfResult };
+  }, [filtered, showWilliamsPasa, showNizamiCedid, showCMF, signalConfig]);
+
   // ── Commentary generation ──
   const commentaries = useMemo(() => {
     const items: Array<{
@@ -171,16 +206,13 @@ export default function ChartContainer({
 
     if (filtered.length < 10) return items;
 
-    const highs = filtered.map((d) => d.high);
-    const lows = filtered.map((d) => d.low);
-    const closes = filtered.map((d) => d.close);
-    const volumes = filtered.map((d) => d.volume);
+    const { highs, lows, closes, volumes, computed: comp, cmfResult } = computedIndicators;
     const n = closes.length;
     const lastPrice = closes[n - 1];
 
     // 8. Williams Paşa
-    if (showWilliamsPasa && n >= 260) {
-      const wpRes = computeWilliamsPasa(highs, lows, closes);
+    if (showWilliamsPasa && n >= 260 && comp.williamsPasa) {
+      const wpRes = comp.williamsPasa;
       const wpVal = wpRes.percentR[n - 1];
       const emaVal = wpRes.emaWil[n - 1];
       if (wpVal !== null && emaVal !== null) {
@@ -209,8 +241,8 @@ export default function ChartContainer({
     }
 
     // 9. Nizami Cedid
-    if (showNizamiCedid && n >= 260) {
-      const ncRes = computeNizamiCedid(closes, volumes);
+    if (showNizamiCedid && n >= 260 && comp.nizamiCedid) {
+      const ncRes = comp.nizamiCedid;
       const deltaVal = ncRes.delta[n - 1];
       if (deltaVal !== null) {
         const signal = deltaVal > 0.002 ? 'bullish' : deltaVal < -0.002 ? 'bearish' : 'neutral';
@@ -286,9 +318,8 @@ export default function ChartContainer({
 
 
     // 12. Chaikin Money Flow (CMF)
-    if (showCMF && n >= 20) {
-      const cmfRes = computeCMF(highs, lows, closes, volumes, 20);
-      const cmfVal = cmfRes.cmf[n - 1];
+    if (showCMF && n >= 20 && cmfResult) {
+      const cmfVal = cmfResult.cmf[n - 1];
       if (cmfVal !== null) {
         let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
         let comment = '';
@@ -316,6 +347,7 @@ export default function ChartContainer({
 
     return items;
   }, [
+    computedIndicators,
     filtered,
     showWilliamsPasa,
     showNizamiCedid,
@@ -323,6 +355,10 @@ export default function ChartContainer({
     showPearsonChannels,
     showCMF,
   ]);
+
+  // Always-current ref so updateChart never stale-reads computedIndicators
+  const latestComputedRef = useRef(computedIndicators);
+  latestComputedRef.current = computedIndicators;
 
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const lastBarRef = useRef<OHLCVData | null>(null);
@@ -1945,34 +1981,7 @@ export default function ChartContainer({
     subPanelsRef.current = subPanels;
     panelBottomsRef.current = panelBottoms;
 
-    const highs = filtered.map((d) => d.high);
-    const lows = filtered.map((d) => d.low);
-    const closes = filtered.map((d) => d.close);
-    const volumes = filtered.map((d) => d.volume);
-    const cmfResult = showCMF && filtered.length > 20 ? computeCMF(highs, lows, closes, volumes, 20) : null;
-
-    const computed: ComputedIndicators = {};
-    if (showWilliamsPasa && filtered.length > 260) {
-      const length = signalConfig?.williamsPasa?.length ?? 260;
-      const emaLen = signalConfig?.williamsPasa?.emaLen ?? 260;
-      computed.williamsPasa = computeWilliamsPasa(highs, lows, closes, length, emaLen);
-    }
-    if (showNizamiCedid && filtered.length > 260) {
-      const fast = signalConfig?.nizamiCedid?.fast ?? 120;
-      const slow = signalConfig?.nizamiCedid?.slow ?? 260;
-      const signalLen = signalConfig?.nizamiCedid?.signalLen ?? 50;
-      const vwmaLen = signalConfig?.nizamiCedid?.vwmaLen ?? 185;
-      computed.nizamiCedid = computeNizamiCedid(closes, volumes, fast, slow, signalLen, vwmaLen);
-    }
-    if (showCMF && cmfResult) {
-      const ema130Cmf = ema(cmfResult.cmf, 130);
-      const ema260Cmf = ema(cmfResult.cmf, 260);
-      computed.cmf = {
-        cmf: cmfResult.cmf,
-        ema130: ema130Cmf,
-        ema260: ema260Cmf
-      };
-    }
+    const { computed, cmfResult } = latestComputedRef.current;
     computedIndicatorsRef.current = computed;
     lastHoveredIdxRef.current = null;
 
