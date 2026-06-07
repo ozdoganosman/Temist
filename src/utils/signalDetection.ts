@@ -200,17 +200,27 @@ export function computeCombinedSignals(data: OHLCVData[], config: SignalConfig):
   if (active.length === 0) return new Array(n).fill(0);
 
   const combined = new Array<number>(n).fill(0);
+  const m = active.length;
   for (let i = 0; i < n; i++) {
-    const vals = active.map((s) => s[i]);
     if (config.mode === 'AND') {
-      const nonZero = vals.filter((v) => v !== 0);
-      if (nonZero.length === active.length) {
-        if (nonZero.every((v) => v === 1)) combined[i] = 1;
-        else if (nonZero.every((v) => v === -1)) combined[i] = -1;
+      let allBull = true, allBear = true, anyZero = false;
+      for (let k = 0; k < m; k++) {
+        const v = active[k][i];
+        if (v === 0) { anyZero = true; break; }
+        if (v !== 1) allBull = false;
+        if (v !== -1) allBear = false;
+      }
+      if (!anyZero) {
+        if (allBull) combined[i] = 1;
+        else if (allBear) combined[i] = -1;
       }
     } else {
-      const bull = vals.filter((v) => v === 1).length;
-      const bear = vals.filter((v) => v === -1).length;
+      let bull = 0, bear = 0;
+      for (let k = 0; k < m; k++) {
+        const v = active[k][i];
+        if (v === 1) bull++;
+        else if (v === -1) bear++;
+      }
       if (bull > 0 && bull >= bear) combined[i] = 1;
       else if (bear > 0 && bear > bull) combined[i] = -1;
     }

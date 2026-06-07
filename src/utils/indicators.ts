@@ -21,21 +21,27 @@ export function ema(src: (number | null)[], period: number): (number | null)[] {
   return out;
 }
 
-/** SMA (Simple Moving Average) */
+/** SMA (Simple Moving Average) — sliding window O(n) */
 export function smaCalc(src: (number | null)[], period: number): (number | null)[] {
   const n = src.length;
   const out: (number | null)[] = new Array(n).fill(null);
-  for (let i = period - 1; i < n; i++) {
-    let sum = 0;
-    let valid = true;
-    for (let j = i - period + 1; j <= i; j++) {
-      if (src[j] === null) {
-        valid = false;
-        break;
-      }
-      sum += src[j]!;
+  let windowSum = 0;
+  let nullCount = 0;
+
+  for (let i = 0; i < n; i++) {
+    const v = src[i];
+    if (v === null) nullCount++;
+    else windowSum += v;
+
+    if (i >= period) {
+      const old = src[i - period];
+      if (old === null) nullCount--;
+      else windowSum -= old;
     }
-    if (valid) out[i] = sum / period;
+
+    if (i >= period - 1 && nullCount === 0) {
+      out[i] = windowSum / period;
+    }
   }
   return out;
 }
@@ -231,18 +237,20 @@ export function computeCMF(
     }
   }
 
-  // Calculate rolling CMF values
-  for (let i = period - 1; i < n; i++) {
-    let sumMFV = 0;
-    let sumVol = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      sumMFV += mfv[j];
-      sumVol += volumes[j];
+  // Calculate rolling CMF values — sliding window O(n)
+  let sumMFV = 0;
+  let sumVol = 0;
+  for (let i = 0; i < n; i++) {
+    sumMFV += mfv[i];
+    sumVol += volumes[i];
+
+    if (i >= period) {
+      sumMFV -= mfv[i - period];
+      sumVol -= volumes[i - period];
     }
-    if (sumVol > 0) {
-      cmf[i] = sumMFV / sumVol;
-    } else {
-      cmf[i] = 0;
+
+    if (i >= period - 1) {
+      cmf[i] = sumVol > 0 ? sumMFV / sumVol : 0;
     }
   }
 
