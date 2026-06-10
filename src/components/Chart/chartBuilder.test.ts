@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OHLCVData } from '../../api/borsaApi';
 import {
+  addPadding,
   buildOption,
   computeVisiblePriceExtent,
   getPaddingCount,
@@ -9,13 +10,12 @@ import {
   getPaddedCategoryCount,
   getLeftPanGutterCount,
   getRightPanGutterCount,
+  maxVisibleSpanForData,
   portableZoomFromWindow,
   windowFromPortableZoom,
   legacyAxisOffsetToBarsPast,
   normalizePortableZoomPrefs,
-  sanitizePrefsForSymbolSwitch,
   portableZoomPrefsForSymbolSwitch,
-  readDataZoomWindow,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -97,14 +97,14 @@ describe('portable zoom (data-anchored)', () => {
     expect(window.endValue - window.startValue).toBeGreaterThanOrEqual(10);
   });
 
-  it('normalizes absurd visible bar counts from full-axis percent', () => {
-    const prefs = normalizePortableZoomPrefs({ visibleBarCount: 5000, barsPastLastData: 11 }, 3650, false);
-    expect(prefs.visibleBarCount).toBeLessThanOrEqual(400);
-    expect(prefs.visibleBarCount).toBeGreaterThanOrEqual(20);
+  it('normalizes absurd visible bar counts to at most the data span plus margins', () => {
+    const prefs = normalizePortableZoomPrefs({ visibleBarCount: 50000, barsPastLastData: 11 }, 3650, false);
+    expect(prefs.visibleBarCount).toBeLessThanOrEqual(maxVisibleSpanForData(3650));
+    expect(prefs.visibleBarCount).toBeGreaterThanOrEqual(10);
   });
 
   it('symbol switch keeps bar span on data, not empty gutter', () => {
-    const prev = { visibleBarCount: 120, barsPastLastData: 8, startOffsetFromDataStart: -300 };
+    const prev = { visibleBarCount: 120, barsPastLastData: 8 };
     const prefs = portableZoomPrefsForSymbolSwitch(prev, 800, false);
     const window = windowFromPortableZoom(prefs, 800, false);
     const left = getLeftPanGutterCount(false);
@@ -112,6 +112,17 @@ describe('portable zoom (data-anchored)', () => {
     expect(window.endValue).toBeGreaterThanOrEqual(left);
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
     expect(window.endValue - window.startValue).toBeLessThanOrEqual(130);
+  });
+
+  it('switching to a symbol with less history still anchors at the latest bar', () => {
+    // Regression: a wide span clamped down used to leave the window anchored
+    // at the START of the new symbol's data (a historical view).
+    const prev = { visibleBarCount: 1300, barsPastLastData: 10 };
+    const prefs = portableZoomPrefsForSymbolSwitch(prev, 800, false);
+    const window = windowFromPortableZoom(prefs, 800, false);
+    const lastData = getLeftPanGutterCount(false) + 800 - 1;
+    expect(window.endValue).toBeGreaterThanOrEqual(lastData);
+    expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
 
   it('maps percent zoom to the data region not the gutter', () => {
@@ -125,32 +136,28 @@ describe('portable zoom (data-anchored)', () => {
   });
 
   it('clamps deep gutter views back to sensible end', () => {
-    const prefs = { visibleBarCount: 80, barsPastLastData: 2000, startOffsetFromDataStart: 0 };
+    const prefs = { visibleBarCount: 80, barsPastLastData: 2000 };
     const window = windowFromPortableZoom(prefs, 3650, false);
     const lastData = getLeftPanGutterCount(false) + 3650 - 1;
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
 
-  it('falls back to data view when prefs target only empty gutter', () => {
-    const left = getLeftPanGutterCount(false);
-    const gutterOnly = {
-      visibleBarCount: 120,
-      barsPastLastData: 10,
-      startOffsetFromDataStart: -400,
-    };
-    const window = windowFromPortableZoom(gutterOnly, 3650, false);
-    const lastData = left + 3650 - 1;
-    expect(window.endValue).toBeGreaterThanOrEqual(lastData - 150);
+  it('restored windows always include the latest bar', () => {
+    const window = windowFromPortableZoom({ visibleBarCount: 120, barsPastLastData: -400 }, 3650, false);
+    const lastData = getLeftPanGutterCount(false) + 3650 - 1;
+    expect(window.endValue).toBeGreaterThanOrEqual(lastData - 5);
     expect(window.endValue).toBeLessThanOrEqual(lastData + 15);
   });
+});
 
-  it('rejects full-history zoom on symbol switch', () => {
-    const insane = sanitizePrefsForSymbolSwitch(
-      { visibleBarCount: 5000, barsPastLastData: 11, startOffsetFromDataStart: 0 },
-      3650,
-      false,
-    );
-    expect(insane.visibleBarCount).toBeLessThanOrEqual(82);
+describe('future date padding', () => {
+  it('extends the axis by single business days, not compounding jumps', () => {
+    const padded = addPadding(['2026-06-05'], [[1, 2, 0.5, 2.5]], [{ value: 1 }], [1], false);
+    const futureDates = padded.dates.slice(padded.offset + 1);
+    expect(futureDates[0]).toBe('2026-06-08'); // Friday -> Monday
+    const last = new Date(futureDates[futureDates.length - 1]);
+    // 600 business days ≈ 2.4 calendar years — nowhere near the year 2489.
+    expect(last.getFullYear()).toBeLessThanOrEqual(2029);
   });
 });
 
@@ -171,5 +178,17 @@ describe('dataZoom pan window', () => {
     const shifted = shiftDataZoomWindow(10, 50, -20, 100);
     expect(shifted.startValue).toBe(0);
     expect(shifted.endValue).toBe(40);
+  });
+
+  it('panning never pushes all data off screen', () => {
+    // Data occupies categories 600..699 (left gutter 600); try to fling the
+    // window deep into the right gutter.
+    const bounds = { dataStart: 600, lastDataIdx: 699 };
+    const shifted = shiftDataZoomWindow(650, 730, 500, 1299, bounds);
+    expect(shifted.startValue).toBeLessThanOrEqual(bounds.lastDataIdx - 10);
+
+    // And deep into the left gutter.
+    const shiftedLeft = shiftDataZoomWindow(650, 730, -600, 1299, bounds);
+    expect(shiftedLeft.endValue).toBeGreaterThanOrEqual(bounds.dataStart + 10);
   });
 });

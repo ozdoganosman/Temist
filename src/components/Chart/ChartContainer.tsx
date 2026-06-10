@@ -12,7 +12,6 @@ import type { SignalConfig, SignalEvent } from '../../utils/signalDetection';
 import { isIntraday } from './types';
 import {
   DEFAULT_VISIBLE_CANDLE_COUNT,
-  MAX_PERSISTED_VISIBLE_CANDLE_COUNT,
   LARGE_MODE_VISIBLE_THRESHOLD,
   RIGHT_PAD_BARS,
   buildOption,
@@ -20,6 +19,7 @@ import {
   computeVisiblePriceExtent,
   getThemeColors,
   getAxisLeadingOffset,
+  getChartDataBounds,
   getPaddingCount,
   getGridMargins,
   getPanelTitleHTML,
@@ -31,7 +31,6 @@ import {
   loadPortableZoomPrefs,
   savePortableZoomPrefs,
   normalizePortableZoomPrefs,
-  sanitizePrefsForSymbolSwitch,
   defaultPortableZoomPrefs,
   portableZoomPrefsForSymbolSwitch,
   type PortableZoomPrefs,
@@ -987,11 +986,13 @@ export default function ChartContainer({
         dragRafId = null;
         const optNow = getSafeChartOption(chart);
         const maxIdx = Math.max(0, (optNow?.xAxis?.[0]?.data?.length ?? 1) - 1);
+        const dataLenNow = currentDataRef.current.length;
         const shifted = shiftDataZoomWindow(
           capturedStartValue,
           capturedEndValue,
           shiftBars,
           maxIdx,
+          dataLenNow > 0 ? getChartDataBounds(dataLenNow, isIntraday(intervalRef.current)) : undefined,
         );
         // Batch the horizontal pan (dataZoom) and the vertical pan (yAxis) into
         // a SINGLE setOption so the chart re-renders once per frame instead of
@@ -1915,6 +1916,7 @@ export default function ChartContainer({
   // Track previous data identity
   const prevDataLenRef = useRef<number>(0);
   const prevSymbolRef = useRef<string>('');
+  const prevZoomIntervalRef = useRef<Interval | null>(null);
 
   // Update chart when data/type/timeframe changes
   const updateChart = useCallback(() => {
@@ -1960,13 +1962,11 @@ export default function ChartContainer({
       const prevData = currentDataRef.current;
       if (prevData.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
-        const rawEnd = Math.round(live.endValue);
-        const si = Math.max(0, Math.round(live.startValue));
-        const ei = Math.min(prevData.length - 1, rawEnd);
-        if (ei > si) {
-          lastVisibleBarCountRef.current = ei - si + 1;
+        if (live.endValue > live.startValue) {
+          const prevBounds = getChartDataBounds(prevData.length, intradayMode);
+          lastVisibleBarCountRef.current = live.endValue - live.startValue;
           // Gap of empty bars shown to the right of the last candle.
-          lastBarsPastLastDataRef.current = Math.max(0, rawEnd - (prevData.length - 1));
+          lastBarsPastLastDataRef.current = live.endValue - prevBounds.lastDataIdx;
         }
       }
     }
@@ -1985,25 +1985,47 @@ export default function ChartContainer({
       }
     }
 
+    // Same symbol + same interval but the bar count changed (live/background
+    // data refresh): category indices are stable (fixed left gutter), so keep
+    // the exact window; if the user is at the right edge, follow the newly
+    // appended bars instead.
+    const intervalChanged = prevZoomIntervalRef.current !== interval;
+    if (
+      zoomStartVal === null &&
+      !symbolChanged &&
+      !intervalChanged &&
+      opt?.dataZoom?.[0] &&
+      xAxisDataLen > 0 &&
+      prevDataLenRef.current > 0 &&
+      filtered.length > 0
+    ) {
+      const prevLen = prevDataLenRef.current;
+      const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevLen, intradayMode);
+      if (live.endValue > live.startValue) {
+        const oldBounds = getChartDataBounds(prevLen, intradayMode);
+        const newBounds = getChartDataBounds(filtered.length, intradayMode);
+        const appended = filtered.length - prevLen;
+        const atRightEdge = live.endValue >= oldBounds.lastDataIdx - 2;
+        const span = live.endValue - live.startValue;
+        zoomEndVal = Math.min(live.endValue + (atRightEdge ? appended : 0), newBounds.maxCategoryIdx);
+        zoomStartVal = Math.max(0, zoomEndVal - span);
+      }
+    }
+
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
-        // Keep the same zoom amount (visible bar count), anchored to the latest bar.
-        // If the new symbol has fewer bars than that, cover all of them (extend left).
+        // TradingView behaviour: keep the same zoom amount (visible bar count)
+        // and right-edge gap, re-anchored to the new symbol's latest bar.
         const savedCount = lastVisibleBarCountRef.current;
         if (savedCount && savedCount > 0) {
-          const dataBars = filtered.length;
-          const visibleBarCount = Math.min(savedCount, dataBars);
-          const barsPastLastData = lastBarsPastLastDataRef.current ?? RIGHT_PAD_BARS;
-          const prefs = normalizePortableZoomPrefs(
+          return normalizePortableZoomPrefs(
             {
-              visibleBarCount,
-              barsPastLastData,
-              startOffsetFromDataStart: Math.max(0, dataBars - visibleBarCount),
+              visibleBarCount: savedCount,
+              barsPastLastData: lastBarsPastLastDataRef.current ?? RIGHT_PAD_BARS,
             },
             filtered.length,
             intradayMode,
           );
-          return prefs;
         }
         const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
         return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
@@ -2027,11 +2049,7 @@ export default function ChartContainer({
         return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
       }
 
-      return sanitizePrefsForSymbolSwitch(
-        defaultPortableZoomPrefs(filtered.length, intradayMode),
-        filtered.length,
-        intradayMode,
-      );
+      return defaultPortableZoomPrefs(filtered.length, intradayMode);
     };
 
     if (zoomStartVal === null && filtered.length > 0) {
@@ -2043,6 +2061,7 @@ export default function ChartContainer({
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;
+    prevZoomIntervalRef.current = interval;
 
     currentDataRef.current = [...filtered];
     const themeColors = getThemeColors();
