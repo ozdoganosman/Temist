@@ -15,7 +15,7 @@ import {
   normalizePortableZoomPrefs,
   sanitizePrefsForSymbolSwitch,
   portableZoomPrefsForSymbolSwitch,
-  readDataZoomWindow,
+  generateFutureDates,
 } from './chartBuilder';
 import type { ThemeColors } from './chartBuilder';
 
@@ -151,6 +151,30 @@ describe('portable zoom (data-anchored)', () => {
       false,
     );
     expect(insane.visibleBarCount).toBeLessThanOrEqual(82);
+  });
+});
+
+describe('future gutter dates', () => {
+  it('advances one business day per bar (no quadratic blow-up)', () => {
+    const dates = generateFutureDates('2026-01-02', getRightPanGutterCount(false));
+    const last = new Date(dates[dates.length - 1] + 'T00:00:00');
+    const start = new Date('2026-01-02T00:00:00');
+    const calendarDays = (last.getTime() - start.getTime()) / 86_400_000;
+    // ~110 business days ≈ 22 weeks ≈ 154 calendar days — must stay well under a year.
+    expect(calendarDays).toBeLessThan(220);
+    expect(last.getFullYear()).toBeLessThanOrEqual(2027);
+    // No weekends should appear among the generated daily slots.
+    for (const ds of dates) {
+      const day = new Date(ds + 'T00:00:00').getDay();
+      expect(day).not.toBe(0);
+      expect(day).not.toBe(6);
+    }
+  });
+
+  it('advances 5 minutes per bar for intraday', () => {
+    const dates = generateFutureDates('2026-01-02 10:00', 6);
+    expect(dates[0]).toBe('2026-01-02 10:05');
+    expect(dates[5]).toBe('2026-01-02 10:30');
   });
 });
 
