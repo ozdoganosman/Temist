@@ -28,12 +28,9 @@ import {
   getPaddedCategoryCount,
   portableZoomFromWindow,
   windowFromPortableZoom,
-  loadPortableZoomPrefs,
   savePortableZoomPrefs,
   normalizePortableZoomPrefs,
-  sanitizePrefsForSymbolSwitch,
   defaultPortableZoomPrefs,
-  portableZoomPrefsForSymbolSwitch,
   type PortableZoomPrefs,
 } from './chartBuilder';
 import type { ComputedIndicators } from './chartBuilder';
@@ -363,7 +360,6 @@ export default function ChartContainer({
 
   // Preserve zoom amount (visible bar count) + right-side gap across symbol switches
   const lastVisibleBarCountRef = useRef<number | null>(null);
-  const lastBarsPastLastDataRef = useRef<number | null>(null);
 
   // Signature of non-drawing inputs — lets us detect drawing-only changes and
   // skip the full chart rebuild in favour of a lightweight merge update.
@@ -1915,13 +1911,26 @@ export default function ChartContainer({
   // Track previous data identity
   const prevDataLenRef = useRef<number>(0);
   const prevSymbolRef = useRef<string>('');
+  // Symbol we last drew *real candles* for. updateChart can run once with an
+  // empty `filtered` (data still loading) before the data arrives; keying the
+  // "did the symbol change" decision off this ref instead of prevSymbolRef
+  // ensures the first render that actually has data is treated as a symbol
+  // switch and gets a clean, right-anchored default window — otherwise the
+  // empty pre-render marked the symbol as "seen" and the data render fell into
+  // the keep-current-window path, restoring a full-history zoom.
+  const dataRenderedSymbolRef = useRef<string>('');
 
   // Update chart when data/type/timeframe changes
   const updateChart = useCallback(() => {
     const chart = chartInstanceRef.current;
     if (!chart || chart.isDisposed()) return;
 
-    const symbolChanged = prevSymbolRef.current !== symbol;
+    const haveData = filtered.length > 0;
+    // For the zoom-window decision, a symbol "changed" only once we have its
+    // data and it differs from the symbol we last rendered candles for.
+    const symbolChanged = haveData
+      ? dataRenderedSymbolRef.current !== symbol
+      : prevSymbolRef.current !== symbol;
     const intradayMode = isIntraday(interval);
     const categoryCount = getPaddedCategoryCount(filtered.length, intradayMode);
 
@@ -1955,18 +1964,16 @@ export default function ChartContainer({
       return;
     }
 
-    // Before switching symbols: snapshot the current zoom amount + right-side gap
+    // Before switching symbols: snapshot the current zoom *amount* so the next
+    // symbol can open on the same number of bars (anchored to its latest bar).
     if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
       const prevData = currentDataRef.current;
       if (prevData.length > 0) {
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
-        const rawEnd = Math.round(live.endValue);
         const si = Math.max(0, Math.round(live.startValue));
-        const ei = Math.min(prevData.length - 1, rawEnd);
+        const ei = Math.min(prevData.length - 1, Math.round(live.endValue));
         if (ei > si) {
           lastVisibleBarCountRef.current = ei - si + 1;
-          // Gap of empty bars shown to the right of the last candle.
-          lastBarsPastLastDataRef.current = Math.max(0, rawEnd - (prevData.length - 1));
         }
       }
     }
@@ -1985,29 +1992,37 @@ export default function ChartContainer({
       }
     }
 
+    // Largest window we ever *open* a symbol on. The user can freely zoom out
+    // further afterwards (preserved on same-symbol re-renders below), but a
+    // symbol should never first appear squished across its whole history —
+    // TradingView always opens on recent bars with the last price at the edge.
+    const MAX_OPEN_BARS = 160;
+
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
-        // Keep the same zoom amount (visible bar count), anchored to the latest bar.
-        // If the new symbol has fewer bars than that, cover all of them (extend left).
+        // Opening a (possibly new) symbol. Carry only the zoom *amount* from the
+        // symbol we were just on, clamped to a recent-window range, and always
+        // anchor to the latest bar. We deliberately ignore localStorage width
+        // here: restoring a stale, wide, or old-anchored window from a previous
+        // session is exactly what made symbols open on their full history.
+        const dataBars = filtered.length;
         const savedCount = lastVisibleBarCountRef.current;
-        if (savedCount && savedCount > 0) {
-          const dataBars = filtered.length;
-          const visibleBarCount = Math.min(savedCount, dataBars);
-          const barsPastLastData = lastBarsPastLastDataRef.current ?? RIGHT_PAD_BARS;
-          const prefs = normalizePortableZoomPrefs(
-            {
-              visibleBarCount,
-              barsPastLastData,
-              startOffsetFromDataStart: Math.max(0, dataBars - visibleBarCount),
-            },
-            filtered.length,
-            intradayMode,
-          );
-          return prefs;
-        }
-        const previous = lastZoomPrefsRef.current ?? loadPortableZoomPrefs(filtered.length, intradayMode);
-        return portableZoomPrefsForSymbolSwitch(previous, filtered.length, intradayMode);
+        const visibleBarCount =
+          savedCount && savedCount > 0
+            ? Math.min(savedCount, dataBars, MAX_OPEN_BARS)
+            : Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, dataBars);
+        return normalizePortableZoomPrefs(
+          {
+            visibleBarCount,
+            barsPastLastData: RIGHT_PAD_BARS,
+            startOffsetFromDataStart: Math.max(0, dataBars - visibleBarCount),
+          },
+          filtered.length,
+          intradayMode,
+        );
       } else if (opt?.dataZoom?.[0] && xAxisDataLen > 0 && filtered.length > 0) {
+        // Same symbol re-render (indicator toggle, theme, drawings…): keep the
+        // user's exact current window, however far they've zoomed out.
         const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, filtered.length, intradayMode);
         if (live.endValue > live.startValue) {
           return normalizePortableZoomPrefs(
@@ -2022,12 +2037,7 @@ export default function ChartContainer({
         return normalizePortableZoomPrefs(lastZoomPrefsRef.current, filtered.length, intradayMode);
       }
 
-      const stored = loadPortableZoomPrefs(filtered.length, intradayMode);
-      if (stored) {
-        return normalizePortableZoomPrefs(stored, filtered.length, intradayMode);
-      }
-
-      return sanitizePrefsForSymbolSwitch(
+      return normalizePortableZoomPrefs(
         defaultPortableZoomPrefs(filtered.length, intradayMode),
         filtered.length,
         intradayMode,
@@ -2043,6 +2053,11 @@ export default function ChartContainer({
     }
     prevDataLenRef.current = filtered.length;
     prevSymbolRef.current = symbol;
+    // Only mark the symbol as "rendered with data" once we actually have candles,
+    // so an empty pre-render never suppresses the symbol-switch zoom reset.
+    if (filtered.length > 0) {
+      dataRenderedSymbolRef.current = symbol;
+    }
 
     currentDataRef.current = [...filtered];
     const themeColors = getThemeColors();
