@@ -68,6 +68,14 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Variant that floats above a still-mounted chart instead of replacing it. */
+.loading-overlay-floating {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: var(--bg-primary);
+}
+
 .splitter {
   height: 10px;
   background: var(--bg-secondary);

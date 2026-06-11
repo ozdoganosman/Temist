@@ -78,6 +78,12 @@ function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
 
+// Zoom window of the symbol we last left, carried at module level so it
+// survives ChartContainer remounts (view switches, loading overlays).
+// Deliberately NOT persisted to storage: a fresh session must always open on
+// the default recent window, never on a stale wide one.
+let sessionZoomCarry: { symbol: string; prefs: PortableZoomPrefs } | null = null;
+
 function calculateEMARibbonLast(closes: number[]): { spread: number; score: number; signal: 'bullish' | 'bearish' | 'neutral' } {
   const n = closes.length;
   const periods = [8, 13, 21, 34, 55, 89, 144, 233, 377, 610].filter(p => n >= p);
@@ -358,9 +364,6 @@ export default function ChartContainer({
   const latestComputedRef = useRef(computedIndicators);
   latestComputedRef.current = computedIndicators;
 
-  // Preserve zoom amount (visible bar count) + right-side gap across symbol switches
-  const lastVisibleBarCountRef = useRef<number | null>(null);
-
   // Signature of non-drawing inputs — lets us detect drawing-only changes and
   // skip the full chart rebuild in favour of a lightweight merge update.
   const structuralSigRef = useRef<unknown[] | null>(null);
@@ -563,6 +566,9 @@ export default function ChartContainer({
           isIntraday(intervalRef.current),
         );
         lastZoomPrefsRef.current = prefs;
+        // `symbol` here is the symbol being left (cleanup closure), so a later
+        // re-open of the same symbol can restore this exact window.
+        sessionZoomCarry = { symbol, prefs };
         savePortableZoomPrefs(prefs);
       }
     };
@@ -1964,19 +1970,8 @@ export default function ChartContainer({
       return;
     }
 
-    // Before switching symbols: snapshot the current zoom *amount* so the next
-    // symbol can open on the same number of bars (anchored to its latest bar).
-    if (symbolChanged && opt?.dataZoom?.[0] && xAxisDataLen > 0) {
-      const prevData = currentDataRef.current;
-      if (prevData.length > 0) {
-        const live = readDataZoomWindow(opt.dataZoom[0], xAxisDataLen, prevData.length, intradayMode);
-        const si = Math.max(0, Math.round(live.startValue));
-        const ei = Math.min(prevData.length - 1, Math.round(live.endValue));
-        if (ei > si) {
-          lastVisibleBarCountRef.current = ei - si + 1;
-        }
-      }
-    }
+    // The outgoing symbol's window is snapshotted into sessionZoomCarry by the
+    // useLayoutEffect cleanup keyed on [symbol], which runs before this effect.
 
     let zoomStartVal: number | null = null;
     let zoomEndVal: number | null = null;
@@ -1992,24 +1987,27 @@ export default function ChartContainer({
       }
     }
 
-    // Largest window we ever *open* a symbol on. The user can freely zoom out
-    // further afterwards (preserved on same-symbol re-renders below), but a
-    // symbol should never first appear squished across its whole history —
-    // TradingView always opens on recent bars with the last price at the edge.
-    const MAX_OPEN_BARS = 160;
-
     const resolvePortableZoomPrefs = (): PortableZoomPrefs => {
       if (symbolChanged && filtered.length > 0) {
-        // Opening a (possibly new) symbol. Carry only the zoom *amount* from the
-        // symbol we were just on, clamped to a recent-window range, and always
-        // anchor to the latest bar. We deliberately ignore localStorage width
-        // here: restoring a stale, wide, or old-anchored window from a previous
-        // session is exactly what made symbols open on their full history.
+        // Opening a (possibly new) symbol. sessionZoomCarry holds the window of
+        // the symbol we last left (module-level, so it survives remounts). We
+        // deliberately ignore localStorage here: restoring a stale, wide, or
+        // old-anchored window from a previous session is exactly what made
+        // symbols open on their full history.
+        const carry = sessionZoomCarry;
+        if (carry && carry.symbol === symbol) {
+          // Re-opening the symbol we left (view switch round-trip, loading
+          // remount): restore the exact window, pan position included.
+          return normalizePortableZoomPrefs(carry.prefs, filtered.length, intradayMode);
+        }
+        // Coming from a different symbol: carry only the zoom *amount* and
+        // re-anchor to the latest bar — TradingView keeps your zoom level
+        // across symbol switches but always shows the most recent price.
         const dataBars = filtered.length;
-        const savedCount = lastVisibleBarCountRef.current;
+        const carriedCount = carry?.prefs.visibleBarCount ?? null;
         const visibleBarCount =
-          savedCount && savedCount > 0
-            ? Math.min(savedCount, dataBars, MAX_OPEN_BARS)
+          carriedCount && carriedCount > 0
+            ? Math.min(carriedCount, dataBars)
             : Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, dataBars);
         return normalizePortableZoomPrefs(
           {
