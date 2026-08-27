@@ -120,13 +120,18 @@ export function getChartDataBounds(dataLen: number, intradayMode = false): Chart
   return { padBefore, dataStart, dataEndExclusive, lastDataIdx, maxCategoryIdx, maxSensibleEndIdx };
 }
 
-/** Zoom prefs anchored to the last real candle — portable across symbols. */
+/**
+ * Zoom prefs anchored to the last real candle — portable across symbols.
+ *
+ * TradingView model: only the zoom level (bar count) and the whitespace gap
+ * right of the last candle travel between symbols/reloads. The window is
+ * always re-anchored to the most recent bar; absolute positions never carry
+ * over, so a restored window can never land on a historical region.
+ */
 export interface PortableZoomPrefs {
   visibleBarCount: number;
   /** Window end minus last data index (0 ≈ last candle visible at right edge). */
   barsPastLastData: number;
-  /** Window start minus first data index (negative = panned into left gutter). */
-  startOffsetFromDataStart: number;
 }
 
 export function portableZoomFromWindow(
@@ -139,29 +144,27 @@ export function portableZoomFromWindow(
   return {
     visibleBarCount: Math.max(1, endValue - startValue),
     barsPastLastData: endValue - bounds.lastDataIdx,
-    startOffsetFromDataStart: startValue - bounds.dataStart,
   };
 }
 
 export function defaultPortableZoomPrefs(dataLen: number, intradayMode = false): PortableZoomPrefs {
-  const visible = DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
+  void dataLen;
+  void intradayMode;
   return {
-    visibleBarCount: visible,
+    visibleBarCount: DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
     barsPastLastData: RIGHT_PAD_BARS,
-    startOffsetFromDataStart: Math.max(0, dataLen - visible),
   };
 }
 
-const MIN_VISIBLE_BARS = 20;
-const MAX_VISIBLE_BARS = 400;
-const MAX_PRESERVED_ZOOM_ON_SYMBOL = 400;
+const MIN_VISIBLE_BARS = 10;
+/** Hard ceiling regardless of data length (rendering sanity). */
+const MAX_VISIBLE_BARS = 3000;
+export const MIN_BARS_PAST_LAST_DATA = -5;
+export const MAX_BARS_PAST_LAST_DATA = RIGHT_PAD_BARS + 5;
 
-function windowOverlapsData(
-  startIdx: number,
-  endIdx: number,
-  bounds: ChartDataBounds,
-): boolean {
-  return endIdx >= bounds.dataStart && startIdx <= bounds.lastDataIdx;
+/** Widest sensible window for a symbol: all of its data plus small margins. */
+export function maxVisibleSpanForData(dataLen: number): number {
+  return Math.min(MAX_VISIBLE_BARS, Math.max(dataLen + RIGHT_PAD_BARS * 2, DEFAULT_VISIBLE_CANDLE_COUNT));
 }
 
 export function windowFromPortableZoom(
@@ -169,104 +172,41 @@ export function windowFromPortableZoom(
   dataLen: number,
   intradayMode = false,
 ): { startValue: number; endValue: number } {
-  const bounds = getChartDataBounds(dataLen, intradayMode);
   if (dataLen === 0) {
     return { startValue: 0, endValue: 0 };
   }
+  const bounds = getChartDataBounds(dataLen, intradayMode);
+  const p = normalizePortableZoomPrefs(prefs, dataLen, intradayMode);
 
-  const maxPast = RIGHT_PAD_BARS + 5;
-  const barsPast = Math.min(Math.max(prefs.barsPastLastData, -5), maxPast);
-  let visible = Math.max(10, Math.min(prefs.visibleBarCount, MAX_VISIBLE_BARS));
-
-  const hasStartOffset = Number.isFinite(prefs.startOffsetFromDataStart);
-  let startIdx: number;
-  let endIdx: number;
-
-  if (hasStartOffset) {
-    const dataBars = bounds.lastDataIdx - bounds.dataStart + 1;
-    const minOffset = -getLeftPanGutterCount(intradayMode) + 5;
-    const maxOffset = Math.max(0, dataBars - 10);
-    const offset = Math.min(Math.max(prefs.startOffsetFromDataStart, minOffset), maxOffset);
-    startIdx = Math.max(0, bounds.dataStart + offset);
-    endIdx = startIdx + visible;
-    endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx, bounds.maxCategoryIdx);
-    if (endIdx <= startIdx) {
-      endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
-    }
-  } else {
-    endIdx = bounds.lastDataIdx + barsPast;
-    endIdx = Math.min(endIdx, bounds.maxSensibleEndIdx);
-    endIdx = Math.min(endIdx, bounds.maxCategoryIdx);
-    startIdx = endIdx - visible;
-    if (startIdx < 0) {
-      startIdx = 0;
-      endIdx = Math.min(bounds.maxCategoryIdx, startIdx + visible);
-    }
+  let endIdx = Math.min(bounds.lastDataIdx + p.barsPastLastData, bounds.maxSensibleEndIdx, bounds.maxCategoryIdx);
+  let startIdx = endIdx - p.visibleBarCount;
+  if (startIdx < 0) {
+    startIdx = 0;
+    endIdx = Math.min(bounds.maxCategoryIdx, startIdx + p.visibleBarCount);
   }
-
-  const result = { startValue: startIdx, endValue: endIdx };
-  if (!windowOverlapsData(result.startValue, result.endValue, bounds)) {
-    return windowFromPortableZoom(defaultPortableZoomPrefs(dataLen, intradayMode), dataLen, intradayMode);
-  }
-  return result;
+  return { startValue: startIdx, endValue: endIdx };
 }
 
-/** Build zoom prefs for a new symbol: keep bar span + right anchor, not gutter position. */
+/** Build zoom prefs for a new symbol: keep bar span + right-edge gap, re-anchor to latest bar. */
 export function portableZoomPrefsForSymbolSwitch(
   previous: PortableZoomPrefs | null,
   dataLen: number,
   intradayMode = false,
 ): PortableZoomPrefs {
-  const bounds = getChartDataBounds(dataLen, intradayMode);
-  const dataBars = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
-
-  let visible = previous?.visibleBarCount ?? DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
-  if (!Number.isFinite(visible) || visible < MIN_VISIBLE_BARS) {
-    visible = DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS;
-  }
-  if (visible > MAX_PRESERVED_ZOOM_ON_SYMBOL || visible >= dataBars * 0.85) {
-    visible = Math.min(DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS, dataBars);
-  }
-  visible = Math.min(visible, dataBars);
-
-  let barsPast = previous?.barsPastLastData ?? RIGHT_PAD_BARS;
-  barsPast = Math.min(Math.max(barsPast, -5), RIGHT_PAD_BARS + 5);
-
+  const visible = previous?.visibleBarCount;
+  const barsPast = previous?.barsPastLastData;
   return normalizePortableZoomPrefs(
     {
-      visibleBarCount: visible,
-      barsPastLastData: barsPast,
-      startOffsetFromDataStart: Math.max(0, dataBars - visible),
+      visibleBarCount:
+        typeof visible === 'number' && Number.isFinite(visible) && visible >= MIN_VISIBLE_BARS
+          ? visible
+          : DEFAULT_VISIBLE_CANDLE_COUNT + RIGHT_PAD_BARS,
+      barsPastLastData:
+        typeof barsPast === 'number' && Number.isFinite(barsPast) ? barsPast : RIGHT_PAD_BARS,
     },
     dataLen,
     intradayMode,
   );
-}
-
-/** Prevent symbol switches from restoring a full-history or gutter-swallowing zoom. */
-export function sanitizePrefsForSymbolSwitch(
-  prefs: PortableZoomPrefs,
-  dataLen: number,
-  intradayMode = false,
-): PortableZoomPrefs {
-  const bounds = getChartDataBounds(dataLen, intradayMode);
-  const dataBars = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
-
-  if (prefs.visibleBarCount >= dataBars * 0.85 || prefs.visibleBarCount > MAX_PRESERVED_ZOOM_ON_SYMBOL) {
-    return portableZoomPrefsForSymbolSwitch(null, dataLen, intradayMode);
-  }
-
-  let p = normalizePortableZoomPrefs(prefs, dataLen, intradayMode);
-
-  const leftGutter = getLeftPanGutterCount(intradayMode);
-  const minOffset = -leftGutter + 5;
-  const maxOffset = Math.max(0, dataBars - 10);
-  if (!Number.isFinite(p.startOffsetFromDataStart)) {
-    p.startOffsetFromDataStart = Math.max(0, dataBars - p.visibleBarCount);
-  }
-  p.startOffsetFromDataStart = Math.min(Math.max(p.startOffsetFromDataStart, minOffset), maxOffset);
-
-  return p;
 }
 
 /** Convert legacy axis-end offset (pre data-anchor) to barsPastLastData. */
@@ -299,20 +239,11 @@ export function loadPortableZoomPrefs(
         ? legacyAxisOffsetToBarsPast(offsetNum, dataLen, intradayMode)
         : offsetNum;
 
-    const offsetRaw2 = localStorage.getItem('temist_chart_start_offset_from_data');
-    const startOffsetFromDataStart =
-      offsetRaw2 !== null && offsetRaw2 !== ''
-        ? parseInt(offsetRaw2, 10)
-        : Math.max(0, dataLen - visibleBarCount);
-
-    const loaded: PortableZoomPrefs = {
-      visibleBarCount,
-      barsPastLastData,
-      startOffsetFromDataStart: Number.isFinite(startOffsetFromDataStart) ? startOffsetFromDataStart : 0,
-    };
-    // Always anchor to the end of data when loading from storage across sessions;
-    // only the zoom level (visibleBarCount) is worth preserving.
-    return portableZoomPrefsForSymbolSwitch(loaded, dataLen, intradayMode);
+    return portableZoomPrefsForSymbolSwitch(
+      { visibleBarCount, barsPastLastData },
+      dataLen,
+      intradayMode,
+    );
   } catch {
     return null;
   }
@@ -322,29 +253,28 @@ export function savePortableZoomPrefs(prefs: PortableZoomPrefs): void {
   try {
     localStorage.setItem('temist_chart_visible_bar_count', String(prefs.visibleBarCount));
     localStorage.setItem('temist_chart_zoom_offset_from_end', String(prefs.barsPastLastData));
-    localStorage.setItem('temist_chart_start_offset_from_data', String(prefs.startOffsetFromDataStart));
+    // Obsolete key from the position-carrying model — clear it so old builds
+    // can't restore a historical window.
+    localStorage.removeItem('temist_chart_start_offset_from_data');
   } catch {
     // ignore quota errors
   }
 }
 
-/** Clamp portable prefs so symbol switches never land on gutter-wide spans. */
+/** Clamp portable prefs so restored windows stay on real candles. */
 export function normalizePortableZoomPrefs(
   prefs: PortableZoomPrefs,
   dataLen: number,
   intradayMode = false,
 ): PortableZoomPrefs {
-  const bounds = getChartDataBounds(dataLen, intradayMode);
-  const dataBarCount = Math.max(1, bounds.lastDataIdx - bounds.dataStart + 1);
-  const maxVisible = Math.min(dataBarCount + RIGHT_PAD_BARS, MAX_VISIBLE_BARS);
-  const startOffset = Number.isFinite(prefs.startOffsetFromDataStart)
-    ? prefs.startOffsetFromDataStart
-    : Math.max(0, dataBarCount - Math.min(Math.max(prefs.visibleBarCount, MIN_VISIBLE_BARS), maxVisible));
-
+  void intradayMode;
+  const maxVisible = maxVisibleSpanForData(dataLen);
   return {
     visibleBarCount: Math.min(Math.max(prefs.visibleBarCount, MIN_VISIBLE_BARS), maxVisible),
-    barsPastLastData: Math.min(Math.max(prefs.barsPastLastData, -5), RIGHT_PAD_BARS + 5),
-    startOffsetFromDataStart: startOffset,
+    barsPastLastData: Math.min(
+      Math.max(prefs.barsPastLastData, MIN_BARS_PAST_LAST_DATA),
+      MAX_BARS_PAST_LAST_DATA,
+    ),
   };
 }
 
@@ -396,12 +326,18 @@ export function readDataZoomWindow(
   };
 }
 
-/** Shift a dataZoom window by bar count, clamped to [0, maxCategoryIdx]. */
+/**
+ * Shift a dataZoom window by bar count, clamped to [0, maxCategoryIdx].
+ * When `dataBounds` is given, panning is additionally clamped so a few real
+ * candles always stay on screen (TradingView never lets the data scroll
+ * fully out of view into the empty gutters).
+ */
 export function shiftDataZoomWindow(
   startValue: number,
   endValue: number,
   shiftBars: number,
   maxCategoryIdx: number,
+  dataBounds?: { dataStart: number; lastDataIdx: number },
 ): { startValue: number; endValue: number } {
   if (maxCategoryIdx <= 0) {
     return { startValue: 0, endValue: 0 };
@@ -426,6 +362,21 @@ export function shiftDataZoomWindow(
     newEnd = Math.min(maxCategoryIdx, newStart + span);
   }
 
+  if (dataBounds) {
+    const dataBarCount = Math.max(1, dataBounds.lastDataIdx - dataBounds.dataStart + 1);
+    const keep = Math.min(10, dataBarCount);
+    const minEnd = dataBounds.dataStart + keep; // panned too far left
+    const maxStart = dataBounds.lastDataIdx - keep; // panned too far right
+    if (newEnd < minEnd) {
+      newEnd = minEnd;
+      newStart = Math.max(0, newEnd - span);
+    }
+    if (newStart > maxStart) {
+      newStart = Math.max(0, maxStart);
+      newEnd = Math.min(maxCategoryIdx, newStart + span);
+    }
+  }
+
   return { startValue: newStart, endValue: newEnd };
 }
 
@@ -438,22 +389,20 @@ function generateFutureDates(lastDate: string, count: number): string[] {
   const d = new Date(dateForParse);
   if (isNaN(d.getTime())) return new Array(count).fill('');
   for (let i = 1; i <= count; i++) {
-    const next = new Date(d);
     if (hasTime) {
-      next.setMinutes(d.getMinutes() + i * 5);
+      d.setMinutes(d.getMinutes() + 5);
     } else {
-      next.setDate(d.getDate() + i);
-      while (next.getDay() === 0 || next.getDay() === 6) {
-        next.setDate(next.getDate() + 1);
+      d.setDate(d.getDate() + 1);
+      while (d.getDay() === 0 || d.getDay() === 6) {
+        d.setDate(d.getDate() + 1);
       }
     }
-    d.setTime(next.getTime());
-    const yyyy = next.getFullYear();
-    const mm = String(next.getMonth() + 1).padStart(2, '0');
-    const dd = String(next.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     if (hasTime) {
-      const hh = String(next.getHours()).padStart(2, '0');
-      const min = String(next.getMinutes()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
       result.push(`${yyyy}-${mm}-${dd} ${hh}:${min}`);
     } else {
       result.push(`${yyyy}-${mm}-${dd}`);
@@ -1792,6 +1741,10 @@ export function buildOption(
         end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
         startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
         endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
+        // TradingView-style zoom-out limit: stop once all data (plus a small
+        // margin) is on screen instead of zooming into the empty pan gutters.
+        minValueSpan: 10,
+        maxValueSpan: maxVisibleSpanForData(dataTotal),
         zoomOnMouseWheel: true,
         moveOnMouseMove: false,
         moveOnMouseWheel: false,
@@ -1805,6 +1758,8 @@ export function buildOption(
         end: (zoomEndValue !== undefined && zoomEndValue !== null) ? undefined : zoomEnd,
         startValue: (zoomStartValue !== undefined && zoomStartValue !== null) ? zoomStartValue : undefined,
         endValue: (zoomEndValue !== undefined && zoomEndValue !== null) ? zoomEndValue : undefined,
+        minValueSpan: 10,
+        maxValueSpan: maxVisibleSpanForData(dataTotal),
         bottom: 8,
         height: 20,
         borderColor: tc.border,

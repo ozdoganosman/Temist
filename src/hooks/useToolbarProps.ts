@@ -11,8 +11,10 @@ import { useWatchlist } from './useWatchlist';
 import { useIsMobile } from './useMediaQuery';
 import { useHistoryData } from './useHistoryData';
 import type { Interval, LegendData, ActiveView } from '../components/Chart/types';
+import { isIntraday } from '../components/Chart/types';
 import { fetchSymbols, fetchDataTimestamp } from '../api/borsaApi';
 import type { SymbolInfo } from '../api/borsaApi';
+import { loadFromStorage, saveToStorage } from '../utils/storage';
 
 // --- Hash routing helpers ---
 
@@ -31,6 +33,16 @@ function writeHash(view: ActiveView, symbol: string) {
   if (window.location.hash !== next) {
     window.history.replaceState(null, '', next);
   }
+}
+
+const INTERVAL_STORAGE_KEY = 'temist_chart_interval';
+// Intraday intervals need the live backend, so only daily+ choices are restored
+// after a reload — otherwise a static deployment would open with an empty chart.
+const PERSISTABLE_INTERVALS: Interval[] = ['1d', '1wk', '1mo', '3mo'];
+
+function loadInitialInterval(): Interval {
+  const saved = loadFromStorage<Interval | null>(INTERVAL_STORAGE_KEY, null);
+  return saved && PERSISTABLE_INTERVALS.includes(saved) ? saved : '1d';
 }
 
 // --- Hook ---
@@ -55,7 +67,7 @@ export function useToolbarProps() {
   const initial = parseHash();
   const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
   const [symbol, setSymbol] = useState(initial.symbol ?? 'THYAO');
-  const [interval, setInterval_] = useState<Interval>('1d');
+  const [interval, setInterval_] = useState<Interval>(loadInitialInterval);
   const [legendData, setLegendData] = useState<LegendData | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>(initial.view ?? 'chart');
   const [dataTimestamp, setDataTimestamp] = useState<number | null>(null);
@@ -87,6 +99,13 @@ export function useToolbarProps() {
   useEffect(() => {
     setLegendData(null);
   }, [symbol]);
+
+  // Persist the selected interval so the chart layout survives reloads
+  useEffect(() => {
+    if (!isIntraday(interval)) {
+      saveToStorage(INTERVAL_STORAGE_KEY, interval);
+    }
+  }, [interval]);
 
   // Fetch symbol list + data timestamp on mount
   useEffect(() => {
