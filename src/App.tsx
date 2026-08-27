@@ -187,9 +187,10 @@ function AppContent() {
                         lastVolume={lastBar?.volume ?? 0}
                       />
                       {!loading && data.length > 0 && <ExportMenu data={data} symbol={symbol} />}
-                      {loading ? (
-                        <div className="loading-overlay">{t('common.dataLoading')}</div>
-                      ) : (
+                      {/* Keep the chart mounted while loading: unmounting it resets all
+                          in-chart state (zoom, pan), so the overlay floats on top instead. */}
+                      {loading && <div className="loading-overlay loading-overlay-floating">{t('common.dataLoading')}</div>}
+                      {(data.length > 0 || !loading) && (
                         <ErrorBoundary>
                           <ChartContainer
                             data={data}
@@ -323,9 +324,10 @@ function AppContent() {
                   lastVolume={lastBar?.volume ?? 0}
                 />
                 {!loading && data.length > 0 && <ExportMenu data={data} symbol={symbol} />}
-                {loading ? (
-                  <div className="loading-overlay">{t('common.dataLoading')}</div>
-                ) : (
+                {/* Keep the chart mounted while loading: unmounting it resets all
+                    in-chart state (zoom, pan), so the overlay floats on top instead. */}
+                {loading && <div className="loading-overlay loading-overlay-floating">{t('common.dataLoading')}</div>}
+                {(data.length > 0 || !loading) && (
                   <ErrorBoundary>
                     <ChartContainer
                       data={data}

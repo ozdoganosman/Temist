@@ -4,9 +4,13 @@ const DB_NAME = 'borsa_history';
 const DB_VERSION = 1;
 const STORE_NAME = 'ohlcv';
 
-// TTL: how long cached data is considered fresh
-const MEMORY_TTL_MS = 2 * 60 * 1000;   // 2 min for in-memory (same session)
-const DB_TTL_MS     = 5 * 60 * 1000;   // 5 min for IndexedDB (persisted)
+// TTL: hard bound after which cached data is discarded entirely. Freshness is
+// handled by useHistoryData, which serves any cached entry instantly and
+// background-refreshes entries older than its 4h STALE_MS — so these only need
+// to guard against truly ancient data. Short TTLs here made every symbol
+// switch fall through to a loading-state fetch, unmounting the chart.
+const MEMORY_TTL_MS = 24 * 3600_000;   // in-memory (same session)
+const DB_TTL_MS     = 24 * 3600_000;   // IndexedDB (persisted)
 
 
 interface CacheEntry {

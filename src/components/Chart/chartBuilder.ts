@@ -65,10 +65,20 @@ export function getThemeColors(): ThemeColors {
 const EMPTY_OHLC = ['-', '-', '-', '-'];
 const EMPTY_VOL = { value: 0, itemStyle: { color: 'transparent' } };
 export const RIGHT_PAD_BARS = 10;
-/** Empty x-axis slots on each side so the chart can be panned to center in the viewport. */
-export const LEFT_PAN_GUTTER_BARS = 600;
-/** Empty x-axis slots after the last candle so pan-right can reveal whitespace. */
-export const RIGHT_PAN_GUTTER_BARS = 600;
+/**
+ * Blank x-axis slots before the first candle so old data can be panned toward
+ * the centre of the viewport. These carry empty labels (no dates), so the size
+ * only affects how far left you can scroll — kept generous but well below the
+ * old 600 so the bottom range slider isn't dominated by empty track.
+ */
+export const LEFT_PAN_GUTTER_BARS = 220;
+/**
+ * Projected slots after the last candle so pan-right can reveal whitespace, the
+ * way TradingView shows a short stretch of future dates past the latest bar.
+ * Capped tight (~5 months of business days) so the axis never runs years into
+ * the future and the slider stays proportionate.
+ */
+export const RIGHT_PAN_GUTTER_BARS = 110;
 export const DEFAULT_VISIBLE_CANDLE_COUNT = 72;
 export const MAX_PERSISTED_VISIBLE_CANDLE_COUNT = 96;
 // Above this many visible candles, switch ECharts candlestick "large" mode back
@@ -83,11 +93,11 @@ export function getPaddingCount(dataLen: number, intradayMode = false): number {
 }
 
 export function getLeftPanGutterCount(intradayMode = false): number {
-  return intradayMode ? 300 : LEFT_PAN_GUTTER_BARS;
+  return intradayMode ? 120 : LEFT_PAN_GUTTER_BARS;
 }
 
 export function getRightPanGutterCount(intradayMode = false): number {
-  return intradayMode ? 300 : RIGHT_PAN_GUTTER_BARS;
+  return intradayMode ? 80 : RIGHT_PAN_GUTTER_BARS;
 }
 
 /** Category index where real OHLCV data begins (after the left pan gutter). */
@@ -429,7 +439,7 @@ export function shiftDataZoomWindow(
   return { startValue: newStart, endValue: newEnd };
 }
 
-function generateFutureDates(lastDate: string, count: number): string[] {
+export function generateFutureDates(lastDate: string, count: number): string[] {
   const result: string[] = [];
   if (!lastDate) return new Array(count).fill('');
   // Handle intraday dates like "2024-01-15 09:30"
@@ -438,22 +448,23 @@ function generateFutureDates(lastDate: string, count: number): string[] {
   const d = new Date(dateForParse);
   if (isNaN(d.getTime())) return new Array(count).fill('');
   for (let i = 1; i <= count; i++) {
-    const next = new Date(d);
+    // Advance exactly one step per iteration. (A previous version added `i`
+    // days each pass on top of an already-advancing date, so the gutter dates
+    // grew quadratically — 600 bars landed ~500 years out, year 2500+.)
     if (hasTime) {
-      next.setMinutes(d.getMinutes() + i * 5);
+      d.setMinutes(d.getMinutes() + 5);
     } else {
-      next.setDate(d.getDate() + i);
-      while (next.getDay() === 0 || next.getDay() === 6) {
-        next.setDate(next.getDate() + 1);
+      d.setDate(d.getDate() + 1);
+      while (d.getDay() === 0 || d.getDay() === 6) {
+        d.setDate(d.getDate() + 1);
       }
     }
-    d.setTime(next.getTime());
-    const yyyy = next.getFullYear();
-    const mm = String(next.getMonth() + 1).padStart(2, '0');
-    const dd = String(next.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     if (hasTime) {
-      const hh = String(next.getHours()).padStart(2, '0');
-      const min = String(next.getMinutes()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
       result.push(`${yyyy}-${mm}-${dd} ${hh}:${min}`);
     } else {
       result.push(`${yyyy}-${mm}-${dd}`);
